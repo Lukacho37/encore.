@@ -21,6 +21,19 @@ export default defineConfig(({ mode }) => {
       outDir: demo ? '../dist-demo' : '../dist',
       emptyOutDir: true,
       chunkSizeWarningLimit: 1500,
+      // La démo doit tourner dans des lecteurs intégrés (WebView mobile, cadre isolé) :
+      // un seul script classique, sans module ni import.meta, et une syntaxe plus ancienne.
+      ...(demo && {
+        target: ['es2019', 'safari13', 'chrome80', 'firefox78'],
+        modulePreload: false,
+        rolldownOptions: {
+          output: { format: 'iife', inlineDynamicImports: true },
+          // import.meta (préchargement de modules, routes paresseuses de react-router) devient {} : inutilisé ici.
+          onLog(level, log, handler) {
+            if (log.code !== 'EMPTY_IMPORT_META') handler(level, log);
+          },
+        },
+      }),
     },
   };
 });

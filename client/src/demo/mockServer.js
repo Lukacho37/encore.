@@ -102,15 +102,71 @@ function fresh() {
   return data;
 }
 
+const isObj = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
+const num = (x, fallback) => (Number.isFinite(x) ? x : fallback);
+
+/** Répare une sauvegarde d'une version précédente de la démo ; null si elle est inutilisable. */
+function sanitize(d) {
+  if (!isObj(d) || !Array.isArray(d.users)) return null;
+  const now = Date.now();
+  for (const k of ['friendships', 'tokens', 'ratings']) if (!Array.isArray(d[k])) d[k] = [];
+  for (const k of ['cards', 'achievements', 'games']) if (!isObj(d[k])) d[k] = {};
+  d.users = d.users.filter((u) => isObj(u) && Number.isInteger(u.id) && typeof u.username === 'string' && u.username);
+  if (!d.users.length) return null;
+  for (const u of d.users) {
+    u.showcase = Array.from({ length: SHOWCASE_SLOTS }, (_, i) => (Array.isArray(u.showcase) && TRACK_BY_ID[u.showcase[i]] ? u.showcase[i] : null));
+    if (typeof u.avatar !== 'string' || (u.avatar !== 'initials' && !ALBUM_BY_ID[u.avatar.replace(/^album:/, '')])) u.avatar = 'initials';
+    if (typeof u.avatarColor !== 'string') u.avatarColor = AVATAR_COLORS[0];
+    if (u.lang !== 'fr' && u.lang !== 'en') u.lang = 'fr';
+    if (u.role !== 'admin') u.role = 'player';
+    if (u.ratingScale !== 'stars' && u.ratingScale !== 'points') delete u.ratingScale;
+    u.royalties = num(u.royalties, 0);
+    u.xp = num(u.xp, 0);
+    u.packs = num(u.packs, 0);
+    u.bonusPacks = num(u.bonusPacks, 0);
+    u.packsAt = num(u.packsAt, now);
+    u.createdAt = num(u.createdAt, now);
+  }
+  const ids = new Set(d.users.map((u) => u.id));
+  for (const key of Object.keys(d.cards)) {
+    const cards = d.cards[key];
+    if (!ids.has(Number(key)) || !isObj(cards)) {
+      delete d.cards[key];
+      continue;
+    }
+    for (const k of Object.keys(cards)) {
+      const [t, v] = k.split('|');
+      if (!TRACK_BY_ID[t] || (v !== 'std' && v !== 'holo') || !isObj(cards[k]) || !(cards[k].count > 0)) delete cards[k];
+      else cards[k].at = num(cards[k].at, now);
+    }
+  }
+  for (const key of Object.keys(d.achievements)) {
+    const list = d.achievements[key];
+    if (!ids.has(Number(key)) || !isObj(list)) {
+      delete d.achievements[key];
+      continue;
+    }
+    for (const k of Object.keys(list)) {
+      const [type, id] = [k.slice(0, k.indexOf(':')), k.slice(k.indexOf(':') + 1)];
+      if (!((type === 'album' && ALBUM_BY_ID[id]) || (type === 'artist' && ARTIST_BY_ID[id]))) delete list[k];
+    }
+  }
+  d.ratings = d.ratings.filter((r) => isObj(r) && ids.has(r.userId) && Number.isInteger(r.score) && r.score >= 0 && r.score <= 10
+    && ((r.type === 'album' && ALBUM_BY_ID[r.id]) || (r.type === 'track' && TRACK_BY_ID[r.id])));
+  d.friendships = d.friendships.filter((f) => isObj(f) && ids.has(f.requester) && ids.has(f.addressee));
+  d.nextId = Math.max(num(d.nextId, 1), ...d.users.map((u) => u.id + 1));
+  if (!ids.has(d.session)) d.session = null;
+  return d;
+}
+
 function load() {
   if (db) return;
   try {
-    db = JSON.parse(storage.get(KEY) || 'null');
+    db = sanitize(JSON.parse(storage.get(KEY) || 'null'));
   } catch {
     db = null;
   }
-  if (!db || !db.users) db = fresh();
-  db.ratings ||= [];
+  if (!db) db = fresh();
 }
 
 function save() {

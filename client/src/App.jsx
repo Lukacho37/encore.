@@ -213,7 +213,11 @@ function Header() {
 
 function ScrollToTop() {
   const { pathname } = useLocation();
-  useEffect(() => window.scrollTo(0, 0), [pathname]);
+  // Accolades obligatoires : un effet ne doit rien renvoyer d'autre qu'une fonction de nettoyage.
+  // Dans certains lecteurs intégrés (claude.ai), scrollTo renvoie une valeur, que React tenterait d'appeler.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
   return null;
 }
 

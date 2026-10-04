@@ -48,12 +48,16 @@ export default class ErrorBoundary extends Component {
     console.error('AlbumMania', error, info?.componentStack);
   }
 
+  // Certains lecteurs intégrés ignorent location.reload() : on remonte alors l'application sur place.
+  remount = () => this.setState((s) => ({ error: null, attempt: s.attempt + 1 }));
+
   retry = () => {
     try {
       window.location.reload();
     } catch {
-      this.setState((s) => ({ error: null, attempt: s.attempt + 1 }));
+      // ignoré : le remontage ci-dessous prend le relais
     }
+    setTimeout(this.remount, 400);
   };
 
   resetDemo = () => {
@@ -69,6 +73,7 @@ export default class ErrorBoundary extends Component {
       <div className="boot crash" role="alert">
         <h1>{t.title}</h1>
         <p className="muted measure">{t.body}</p>
+        <p className="crash__message mono">{String(error?.message || error).slice(0, 300)}</p>
         <div className="crash__actions">
           <button type="button" className="btn btn--primary" onClick={this.retry}>{t.reload}</button>
           {__DEMO__ && <button type="button" className="btn btn--ghost" onClick={this.resetDemo}>{t.reset}</button>}

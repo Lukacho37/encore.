@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import CoverArt from './CoverArt.jsx';
+import { Vinyl } from './Vinyl.jsx';
 import { Icon, Modal } from './ui.jsx';
 import { ALBUM_BY_ID, ARTIST_BY_ID } from '@shared/catalog.js';
 import { useI18n } from '../i18n/index.jsx';
@@ -9,9 +9,11 @@ export function AchievementList({ achievements }) {
   const { t } = useI18n();
   return achievements.map((a) => (
     <div key={a.key} className={`achievement achievement--${a.type}`}>
-      <span className="achievement__disc">
-        {a.type === 'album' ? <CoverArt art={{ ...ALBUM_BY_ID[a.id].art, seed: a.id }} /> : <Icon name="star" size={28} />}
-      </span>
+      {a.type === 'album' ? (
+        <span className="achievement__vinyl"><Vinyl albumId={a.id} reveal /></span>
+      ) : (
+        <span className="achievement__disc"><Icon name="star" size={28} /></span>
+      )}
       <span className="achievement__text">
         <span className="eyebrow">{a.type === 'album' ? t('open.albumDone') : t('open.artistDone')}</span>
         <strong>{a.type === 'album' ? ALBUM_BY_ID[a.id].title : t('artist.master', { name: ARTIST_BY_ID[a.id].name })}</strong>

@@ -20,13 +20,16 @@ export function Disc({ albumId, edition = 'black', spinning = false }) {
   const [, c1, c2] = album.art.palette;
   return (
     <span className={`disc disc--${edition}${spinning ? ' is-spinning' : ''}`} style={{ '--lc': c1, '--lr': c2 }} aria-hidden="true">
-      <span className="disc__sheen" />
-      <span className="disc__label">
-        <span className="disc__title">{album.title}</span>
-        <span className="disc__artist">{ARTIST_BY_ID[album.artist].name}</span>
-        <span className="disc__brand">AlbumMania · 33⅓</span>
+      {/* Le corps tourne ; les reflets restent fixes, comme sur une vraie platine. */}
+      <span className="disc__body">
+        <span className="disc__label">
+          <span className="disc__title">{album.title}</span>
+          <span className="disc__artist">{ARTIST_BY_ID[album.artist].name}</span>
+          <span className="disc__brand">AlbumMania · 33⅓</span>
+        </span>
+        <span className="disc__hole" />
       </span>
-      <span className="disc__hole" />
+      <span className="disc__sheen" />
     </span>
   );
 }

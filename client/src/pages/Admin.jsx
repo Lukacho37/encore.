@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate } from 'react-router';
-import { get, post } from '../api.js';
+import { get, post, api } from '../api.js';
 import { useGame } from '../state/GameContext.jsx';
 import { useI18n } from '../i18n/index.jsx';
 import PackOpening from '../components/PackOpening.jsx';
@@ -12,13 +12,17 @@ const pct = (x) => `${(x * 100).toFixed(x < 0.1 ? 1 : 0)} %`;
 
 export default function Admin() {
   const { t, error, date, num } = useI18n();
-  const { isAdmin, applyState, user } = useGame();
+  const { isAdmin, applyState } = useGame();
   const toast = useToast();
   const [data, setData] = useState(null);
+  const [reviews, setReviews] = useState(null);
   const [opening, setOpening] = useState(null);
   const [albumId, setAlbumId] = useState(ALBUMS[0].id);
 
-  const load = useCallback(() => get('/admin/overview').then(setData).catch((err) => toast(error(err.code), 'error')), [toast, error]);
+  const load = useCallback(() => {
+    get('/admin/overview').then(setData).catch((err) => toast(error(err.code), 'error'));
+    get('/admin/reviews').then(setReviews).catch(() => setReviews([]));
+  }, [toast, error]);
   useEffect(() => {
     if (isAdmin) load();
   }, [isAdmin, load]);
@@ -47,6 +51,11 @@ export default function Admin() {
           {data && <p className="muted small mono">{t('admin.totals', data.totals)}</p>}
         </div>
       </header>
+
+      <section className="panel admin-owner">
+        <p><Icon name="shield" size={16} /> {t('admin.ownerOnly')}</p>
+        <p className="muted small">{t('admin.powers')}</p>
+      </section>
 
       <section className="panel">
         <h2 className="panel__title">{t('admin.tools')}</h2>
@@ -105,17 +114,41 @@ export default function Admin() {
                       <td className="table__actions">
                         <button type="button" className="btn btn--ghost btn--xs" onClick={() => run(`/admin/users/${u.id}/grant`, { packs: 5 })}>{t('admin.grantPacks')}</button>
                         <button type="button" className="btn btn--ghost btn--xs" onClick={() => run(`/admin/users/${u.id}/grant`, { royalties: 1000 })}>{t('admin.grantRoyalties')}</button>
-                        {u.id !== user.id && (
-                          <button type="button" className="btn btn--ghost btn--xs" onClick={() => run(`/admin/users/${u.id}/role`, { role: u.role === 'admin' ? 'player' : 'admin' })}>
-                            {u.role === 'admin' ? t('admin.makePlayer') : t('admin.makeAdmin')}
-                          </button>
-                        )}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+          </section>
+
+          <section className="section">
+            <header className="section__head"><h2>{t('admin.reviews')}</h2></header>
+            {!reviews?.length ? <p className="empty">{t('admin.reviewsEmpty')}</p> : (
+              <ul className="mod-list">
+                {reviews.map((r) => {
+                  const title = r.type === 'album' ? ALBUM_BY_ID[r.id]?.title : TRACK_BY_ID[r.id]?.title;
+                  return (
+                    <li key={`${r.user.id}-${r.type}-${r.id}`} className="mod-item">
+                      <div className="mod-item__head">
+                        <Link to={`/u/${r.user.username}`} className="table__user"><Avatar user={r.user} size={24} /> {r.user.username}</Link>
+                        <span className="muted small">· {title} · <span className="mono">{r.score}/10</span> · {date(r.updatedAt)}</span>
+                      </div>
+                      <p className="mod-item__text">{r.review}</p>
+                      <ConfirmButton className="btn btn--ghost btn--xs" confirmLabel={t('admin.deleteConfirm')}
+                        onConfirm={async () => {
+                          try {
+                            setReviews(await api('DELETE', `/admin/reviews/${r.user.id}/${r.type}/${encodeURIComponent(r.id)}`));
+                            toast(t('common.done'), 'success');
+                          } catch (err) {
+                            toast(error(err.code), 'error');
+                          }
+                        }}>{t('admin.deleteReview')}</ConfirmButton>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </section>
 
           <section className="section">
@@ -149,7 +182,7 @@ export default function Admin() {
             <h2 className="panel__title">{t('admin.settings')}</h2>
             <p className="mono small">{t('admin.regen', { n: data.config.packRegenMinutes, m: data.config.packMaxStock })}</p>
             <p className="mono small">{t('admin.audio', { v: data.config.blindtestAudio })}</p>
-            {!__DEMO__ && <Link to="/dev/mailbox" className="btn btn--ghost btn--sm"><Icon name="mail" /> {t('admin.mailbox')}</Link>}
+            {__DEMO__ ? <p className="small muted">{t('admin.demoNote')}</p> : <Link to="/dev/mailbox" className="btn btn--ghost btn--sm"><Icon name="mail" /> {t('admin.mailbox')}</Link>}
             <p className="small muted">{num(Object.keys(TRACK_BY_ID).length)} cartes · {ALBUMS.length} albums</p>
           </section>
         </>

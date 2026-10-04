@@ -2,7 +2,9 @@ import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, NavLink, Link, useLocation, useNavigate } from 'react-router';
 import { useGame } from './state/GameContext.jsx';
 import { useI18n, LANGS } from './i18n/index.jsx';
-import { Avatar, Icon, Logo, Royalties, formatDuration, useNow, Spinner } from './components/ui.jsx';
+import { Avatar, Icon, Logo, Modal, Royalties, formatDuration, useNow, Spinner, useToast } from './components/ui.jsx';
+import { ScaleSwitch } from './components/Rating.jsx';
+import { post } from './api.js';
 import { sound } from './sound.js';
 import Home from './pages/Home.jsx';
 import Collection from './pages/Collection.jsx';
@@ -59,10 +61,44 @@ function PackPill() {
   );
 }
 
+/** Démo uniquement : l'accès admin se déverrouille avec le code secret du propriétaire. */
+function DemoAdminUnlock({ open, onClose }) {
+  const { t, error } = useI18n();
+  const { applyState } = useGame();
+  const toast = useToast();
+  const [code, setCode] = useState('');
+  const [err, setErr] = useState(null);
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr(null);
+    try {
+      const res = await post('/demo/unlock-admin', { code });
+      applyState(res.state);
+      toast(t('demo.unlocked'), 'success');
+      setCode('');
+      onClose();
+    } catch (ex) {
+      setErr(error(ex.code));
+    }
+  };
+  return (
+    <Modal open={open} onClose={onClose} title={t('demo.unlock')} className="modal--narrow">
+      <form className="auth__form" onSubmit={submit}>
+        <p className="muted small">{t('demo.hint')}</p>
+        <label className="field__label" htmlFor="demo-admin-code">{t('demo.code')}</label>
+        <input id="demo-admin-code" className="input mono" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} autoComplete="off" spellCheck={false} data-autofocus />
+        {err && <p className="form-error">{err}</p>}
+        <button type="submit" className="btn btn--primary" disabled={!code.trim()}>{t('demo.submit')}</button>
+      </form>
+    </Modal>
+  );
+}
+
 function AccountMenu() {
   const { user, logout, isAdmin, pendingFriends } = useGame();
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
+  const [unlock, setUnlock] = useState(false);
   const [muted, toggleMuted] = useSound();
   const ref = useRef(null);
   const navigate = useNavigate();
@@ -106,6 +142,15 @@ function AccountMenu() {
             <span className="menu__label"><Icon name="globe" /> {t('nav.language')}</span>
             <LangSwitch />
           </div>
+          <div className="menu__row">
+            <span className="menu__label"><Icon name="star" /> {t('nav.scale')}</span>
+            <ScaleSwitch />
+          </div>
+          {__DEMO__ && !isAdmin && (
+            <button type="button" className="menu__item" role="menuitem" onClick={() => { setOpen(false); setUnlock(true); }}>
+              <Icon name="lock" /> {t('demo.unlock')}
+            </button>
+          )}
           <button type="button" className="menu__item" role="menuitemcheckbox" aria-checked={!muted} onClick={toggleMuted}>
             <Icon name={muted ? 'mute' : 'sound'} /> {t('nav.sound')}
             <span className={`switch${muted ? '' : ' is-on'}`} aria-hidden="true" />
@@ -115,6 +160,7 @@ function AccountMenu() {
           </button>
         </div>
       )}
+      {__DEMO__ && <DemoAdminUnlock open={unlock} onClose={() => setUnlock(false)} />}
     </div>
   );
 }

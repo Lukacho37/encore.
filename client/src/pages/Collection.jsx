@@ -9,6 +9,8 @@ import { useCardModal } from '../components/CardModal.jsx';
 import { Icon, Progress } from '../components/ui.jsx';
 import { ALBUMS, ARTISTS, ALBUMS_BY_ARTIST, PROMO_TRACKS, GENRES, DECADES, COUNTRIES } from '@shared/catalog.js';
 import { RARITIES, RARITY } from '@shared/rules.js';
+import { RarityGem } from '../components/Card.jsx';
+import { RarityGuideButton } from '../components/RarityGuide.jsx';
 
 const TABS = ['albums', 'artists', 'promos', 'genres', 'decades', 'countries'];
 const pct = (x) => `${Math.round(x * 100)} %`;
@@ -29,7 +31,7 @@ function RarityBar({ byRarity }) {
     <div className="rarity-bar" aria-label={t('collection.byRarity')}>
       {RARITIES.map((r) => (
         <div key={r} className="rarity-bar__item" style={{ '--rc': RARITY[r].color }}>
-          <span className="rarity-bar__label">{t(`rarity.${r}`)}</span>
+          <span className="rarity-bar__label"><RarityGem rarity={r} size={11} /> {t(`rarity.${r}`)}</span>
           <Progress value={byRarity[r].owned} max={byRarity[r].total} color={RARITY[r].color} size="sm" />
           <span className="mono small">{byRarity[r].owned}/{byRarity[r].total}</span>
         </div>
@@ -90,6 +92,7 @@ export default function Collection() {
       </header>
 
       <RarityBar byRarity={stats.byRarity} />
+      <div className="rarity-help"><RarityGuideButton /></div>
 
       <nav className="tabs" aria-label={t('collection.title')}>
         {TABS.map((id) => (

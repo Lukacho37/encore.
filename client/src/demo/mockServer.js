@@ -41,7 +41,7 @@ function seededRng(seed) {
 
 function fresh() {
   const now = Date.now();
-  const data = { nextId: 1, users: [], cards: {}, achievements: {}, friendships: [], tokens: [], games: {}, session: null };
+  const data = { nextId: 1, users: [], cards: {}, achievements: {}, friendships: [], tokens: [], games: {}, ratings: [], session: null };
   // Quelques joueurs fictifs pour tester les amis.
   const bots = [
     { username: 'lea.beats', packs: 60, color: '#3fd6c4' },
@@ -74,6 +74,31 @@ function fresh() {
     const firstDone = Object.keys(data.achievements[id]).find((k) => k.startsWith('album:'));
     if (firstDone) user.avatar = firstDone;
   }
+  // Notes et critiques des joueurs fictifs, pour que les pages d'albums ne soient pas vides.
+  const byName = (n) => data.users.find((u) => u.username === n).id;
+  const seed = [
+    ['maxvinyl', 'album', 'discovery', 10, 'Le disque qui m’a fait aimer l’électro. Digital Love, c’est le soleil en musique.'],
+    ['maxvinyl', 'album', 'abbey-road', 9, 'La face B s’enchaîne sans un temps mort, du début à la fin.'],
+    ['maxvinyl', 'album', 'thriller', 8, null],
+    ['maxvinyl', 'track', 'thriller:06', 10, null],
+    ['lea.beats', 'album', 'racine-carree', 9, 'Des textes qui piquent sur des rythmes qui font danser. Formidable reste mon préféré.'],
+    ['lea.beats', 'album', 'back-to-black', 10, 'Une voix incroyable, chaque morceau raconte une histoire.'],
+    ['lea.beats', 'album', '21', 7, null],
+    ['lea.beats', 'album', 'discovery', 8, null],
+    ['lea.beats', 'track', 'when-we-all-fall-asleep:02', 8, null],
+    ['soulcollector', 'album', 'kind-of-blue', 10, 'À écouter tard le soir. Blue in Green me donne des frissons à chaque fois.'],
+    ['soulcollector', 'album', 'exodus', 8, null],
+    ['soulcollector', 'album', 'back-to-black', 9, 'Rehab tourne en boucle chez moi depuis des années.'],
+    ['k.dot_fan', 'album', 'good-kid-maad-city', 10, 'Un vrai film en album. Le passage de Sherane à Compton est parfait.'],
+    ['k.dot_fan', 'album', 'the-college-dropout', 9, 'Jesus Walks, rien à ajouter.'],
+    ['k.dot_fan', 'album', 'the-marshall-mathers-lp', 8, null],
+    ['k.dot_fan', 'album', 'graduation', 8, 'Flashing Lights a très bien vieilli.'],
+    ['k.dot_fan', 'track', 'discovery:04', 9, null],
+  ];
+  seed.forEach(([name, type, itemId, score, review], i) => {
+    const at = now - (i + 1) * 5_400_000;
+    data.ratings.push({ userId: byName(name), type, id: itemId, score, review, createdAt: at, updatedAt: at });
+  });
   return data;
 }
 
@@ -85,6 +110,7 @@ function load() {
     db = null;
   }
   if (!db || !db.users) db = fresh();
+  db.ratings ||= [];
 }
 
 function save() {
@@ -135,7 +161,7 @@ function state() {
   return {
     user: {
       id: u.id, username: u.username, email: u.email, role: u.role, lang: u.lang, avatar: u.avatar, avatarColor: u.avatarColor,
-      royalties: u.royalties, level: levelFromXp(u.xp), showcase: u.showcase, createdAt: u.createdAt,
+      royalties: u.royalties, level: levelFromXp(u.xp), showcase: u.showcase, createdAt: u.createdAt, ratingScale: u.ratingScale || 'stars',
     },
     packs: {
       regen: u.packs, bonus: u.bonusPacks, available: u.packs + u.bonusPacks, max: MAX_STOCK, intervalMs: REGEN_MS,
@@ -146,6 +172,7 @@ function state() {
       return { t, v: variant, c: v.count, at: v.at };
     }),
     achievements: Object.entries(achOf(u.id)).map(([key, at]) => ({ key, at })),
+    ratings: db.ratings.filter((r) => r.userId === u.id).map((r) => ({ t: r.type, i: r.id, s: r.score })),
     pendingFriends: db.friendships.filter((f) => f.addressee === u.id && f.status === 'pending').length,
     serverTime: Date.now(),
   };
@@ -245,13 +272,66 @@ const dayStart = () => {
 };
 const rewardedToday = (uid) => Object.values(db.games).filter((g) => g.userId === uid && g.rewarded && g.createdAt >= dayStart()).length;
 
-function roundPayload(questions, index) {
+function roundPayload(questions, index, admin) {
   const q = questions[index];
   return {
+    answer: admin ? q.answer : undefined,
     index, rounds: questions.length,
     choices: q.choices.map((id) => ({ id, title: TRACK_BY_ID[id].title, artist: ARTIST_BY_ID[TRACK_BY_ID[id].artistId].name })),
     audio: null, clues: blindtestClues(q.answer), seconds: BLINDTEST.roundSeconds,
   };
+}
+
+const ADMIN_CODE_SHA256 = '22ecf3278dbed86211363046e3c6cc4a43be18686bc9a35e9815f6ac4d949fd9';
+
+const itemExists = (type, id) => (type === 'album' ? !!ALBUM_BY_ID[id] : type === 'track' ? !!TRACK_BY_ID[id] : false);
+
+function friendIds(uid) {
+  return new Set(db.friendships.filter((f) => f.status === 'accepted' && (f.requester === uid || f.addressee === uid))
+    .map((f) => (f.requester === uid ? f.addressee : f.requester)));
+}
+
+function author(uid) {
+  const u = userById(uid);
+  return { id: u.id, username: u.username, avatar: u.avatar, avatarColor: u.avatarColor, level: levelFromXp(u.xp).level };
+}
+
+function summarize(scores) {
+  const distribution = Array(11).fill(0);
+  for (const s of scores) distribution[s] += 1;
+  return { count: scores.length, average: scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null, distribution };
+}
+
+function itemRatings(viewerId, type, id) {
+  if (!itemExists(type, id)) fail(404, 'unknown_item');
+  const rows = db.ratings.filter((r) => r.type === type && r.id === id);
+  const mine = rows.find((r) => r.userId === viewerId);
+  const friends = friendIds(viewerId);
+  const others = rows.filter((r) => r.userId !== viewerId).sort((a, b) => b.updatedAt - a.updatedAt);
+  const result = {
+    summary: summarize(rows.map((r) => r.score)),
+    mine: mine ? { score: mine.score, review: mine.review, updatedAt: mine.updatedAt } : null,
+    reviews: others.filter((r) => r.review)
+      .sort((a, b) => Number(friends.has(b.userId)) - Number(friends.has(a.userId)) || b.updatedAt - a.updatedAt)
+      .slice(0, 30)
+      .map((r) => ({ user: author(r.userId), score: r.score, review: r.review, updatedAt: r.updatedAt, friend: friends.has(r.userId) })),
+    friendScores: others.filter((r) => friends.has(r.userId)).slice(0, 12).map((r) => ({ user: author(r.userId), score: r.score })),
+  };
+  if (type === 'album') {
+    const tracks = {};
+    for (const tr of TRACKS_BY_ALBUM[id]) {
+      const list = db.ratings.filter((r) => r.type === 'track' && r.id === tr.id);
+      const m = list.find((r) => r.userId === viewerId);
+      if (list.length) tracks[tr.id] = { count: list.length, average: list.reduce((a, r) => a + r.score, 0) / list.length, ...(m ? { mine: m.score } : {}) };
+    }
+    result.tracks = tracks;
+  }
+  return result;
+}
+
+function adminReviews() {
+  return db.ratings.filter((r) => r.review).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 60)
+    .map((r) => ({ user: author(r.userId), type: r.type, id: r.id, score: r.score, review: r.review, updatedAt: r.updatedAt }));
 }
 
 function requireAdmin() {
@@ -278,9 +358,8 @@ const routes = [
     if (db.users.some((u) => u.email === email)) fail(409, 'email_taken');
     if (userByName(username)) fail(409, 'username_taken');
     const now = Date.now();
-    const first = !db.users.some((u) => !u.bot);
     const u = {
-      id: db.nextId++, email, username, password: hash(body.password), verified: null, role: first ? 'admin' : 'player',
+      id: db.nextId++, email, username, password: hash(body.password), verified: null, role: 'player',
       lang: body.lang === 'en' ? 'en' : 'fr', avatar: 'initials', avatarColor: AVATAR_COLORS[Math.floor(rand() * AVATAR_COLORS.length)],
       royalties: ECONOMY.welcomeRoyalties, xp: 0, packs: 0, packsAt: now, bonusPacks: ECONOMY.welcomePacks, showcase: [], createdAt: now,
     };
@@ -375,8 +454,10 @@ const routes = [
     const u = me();
     const track = TRACK_BY_ID[body.trackId];
     if (!track) fail(404, 'unknown_track');
-    const cost = pressCost(track.id);
-    if (cost == null) fail(400, 'not_pressable');
+    const admin = u.role === 'admin';
+    const base = pressCost(track.id);
+    if (base == null && !admin) fail(400, 'not_pressable');
+    const cost = admin ? 0 : base;
     if (ownedSet(u.id).has(track.id)) fail(409, 'already_owned');
     if (u.royalties < cost) fail(409, 'not_enough_royalties');
     u.royalties -= cost;
@@ -388,7 +469,7 @@ const routes = [
     if (body.avatar !== undefined && body.avatar !== 'initials') {
       const m = /^album:(.+)$/.exec(String(body.avatar));
       if (!m || !ALBUM_BY_ID[m[1]]) fail(400, 'invalid_avatar');
-      if (!achOf(u.id)[`album:${m[1]}`]) fail(403, 'avatar_locked');
+      if (u.role !== 'admin' && !achOf(u.id)[`album:${m[1]}`]) fail(403, 'avatar_locked');
     }
     u.avatar = body.avatar ?? u.avatar;
     u.avatarColor = body.color ?? u.avatarColor;
@@ -434,11 +515,86 @@ const routes = [
         return id && owned.has(id) ? { trackId: id, variant: holo.has(id) ? 'holo' : 'std' } : null;
       }),
       completedAlbums: ach.filter((k) => k.startsWith('album:')).map((k) => k.slice(6)),
+      vinyls: Object.entries(achOf(target.id)).filter(([k]) => k.startsWith('album:')).sort((a, b) => a[1] - b[1])
+        .map(([k, at]) => ({ albumId: k.slice(6), at, edition: TRACKS_BY_ALBUM[k.slice(6)].every((tr) => holo.has(tr.id)) ? 'holo' : 'black' })),
       masteredArtists: ach.filter((k) => k.startsWith('artist:')).map((k) => k.slice(7)),
       albumProgress: stats.albums, friendship, requestId,
     };
   }],
 
+  ['POST', /^\/profile\/settings$/, ({ body }) => {
+    const u = me();
+    if (body.ratingScale !== undefined) {
+      if (!['stars', 'points'].includes(body.ratingScale)) fail(400, 'invalid_scale');
+      u.ratingScale = body.ratingScale;
+    }
+    return { state: state() };
+  }],
+  ['GET', /^\/users\/([^/]+)\/ratings$/, ({ params }) => {
+    me();
+    const target = userByName(decodeURIComponent(params[0]));
+    if (!target || !target.verified) fail(404, 'user_not_found');
+    const rows = db.ratings.filter((r) => r.userId === target.id && itemExists(r.type, r.id)).sort((a, b) => b.updatedAt - a.updatedAt);
+    const entry = (r) => ({ type: r.type, id: r.id, score: r.score, review: r.review, updatedAt: r.updatedAt });
+    const albums = rows.filter((r) => r.type === 'album');
+    return {
+      stats: { ...summarize(rows.map((r) => r.score)), albums: albums.length, tracks: rows.length - albums.length, reviews: rows.filter((r) => r.review).length },
+      topAlbums: [...albums].sort((a, b) => b.score - a.score || b.updatedAt - a.updatedAt).slice(0, 4).map(entry),
+      topTracks: rows.filter((r) => r.type === 'track').sort((a, b) => b.score - a.score || b.updatedAt - a.updatedAt).slice(0, 5).map(entry),
+      recent: rows.slice(0, 12).map(entry),
+      reviews: rows.filter((r) => r.review).slice(0, 10).map(entry),
+    };
+  }],
+  ['GET', /^\/ratings\/feed$/, () => {
+    const u = me();
+    botsRespond(u);
+    const friends = friendIds(u.id);
+    return db.ratings.filter((r) => friends.has(r.userId)).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 20)
+      .map((r) => ({ user: author(r.userId), type: r.type, id: r.id, score: r.score, review: r.review, updatedAt: r.updatedAt }));
+  }],
+  ['GET', /^\/ratings\/(album|track)\/([^/]+)$/, ({ params }) => itemRatings(me().id, params[0], decodeURIComponent(params[1]))],
+  ['PUT', /^\/ratings\/(album|track)\/([^/]+)$/, ({ params, body }) => {
+    const u = me();
+    const [type, id] = [params[0], decodeURIComponent(params[1])];
+    if (!itemExists(type, id)) fail(404, 'unknown_item');
+    if (!Number.isInteger(body.score) || body.score < 0 || body.score > 10) fail(400, 'invalid_score');
+    const existing = db.ratings.find((r) => r.userId === u.id && r.type === type && r.id === id);
+    let text = body.review === undefined ? existing?.review || '' : String(body.review || '');
+    text = text.trim();
+    if (text.length > 2000) fail(400, 'review_too_long');
+    const now = Date.now();
+    if (existing) Object.assign(existing, { score: body.score, review: text || null, updatedAt: now });
+    else db.ratings.push({ userId: u.id, type, id, score: body.score, review: text || null, createdAt: now, updatedAt: now });
+    return { ...itemRatings(u.id, type, id), state: state() };
+  }],
+  ['DELETE', /^\/ratings\/(album|track)\/([^/]+)$/, ({ params }) => {
+    const u = me();
+    const [type, id] = [params[0], decodeURIComponent(params[1])];
+    if (!itemExists(type, id)) fail(404, 'unknown_item');
+    db.ratings = db.ratings.filter((r) => !(r.userId === u.id && r.type === type && r.id === id));
+    return { ...itemRatings(u.id, type, id), state: state() };
+  }],
+  ['GET', /^\/admin\/reviews$/, () => {
+    requireAdmin();
+    return adminReviews();
+  }],
+  ['DELETE', /^\/admin\/reviews\/(\d+)\/(album|track)\/([^/]+)$/, ({ params }) => {
+    requireAdmin();
+    const [userId, type, id] = [Number(params[0]), params[1], decodeURIComponent(params[2])];
+    const before = db.ratings.length;
+    db.ratings = db.ratings.filter((r) => !(r.userId === userId && r.type === type && r.id === id));
+    if (db.ratings.length === before) fail(404, 'review_not_found');
+    return adminReviews();
+  }],
+  // Démo : l'accès admin se déverrouille avec le code du propriétaire (seule son empreinte SHA-256 est ici).
+  ['POST', /^\/demo\/unlock-admin$/, async ({ body }) => {
+    const u = me();
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(body.code || '').trim().toUpperCase()));
+    const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+    if (hex !== ADMIN_CODE_SHA256) fail(403, 'invalid_code');
+    u.role = 'admin';
+    return { state: state() };
+  }],
   ['GET', /^\/friends$/, () => {
     const u = me();
     botsRespond(u);
@@ -499,7 +655,7 @@ const routes = [
     questions[0].startedAt = Date.now();
     const id = token();
     db.games[id] = { id, userId: u.id, questions, current: 0, score: 0, correct: 0, rewarded, createdAt: Date.now() };
-    return { gameId: id, rewarded, round: roundPayload(questions, 0) };
+    return { gameId: id, rewarded, round: roundPayload(questions, 0, u.role === 'admin') };
   }],
   ['POST', /^\/blindtest\/([^/]+)\/answer$/, ({ params, body }) => {
     const u = me();
@@ -532,7 +688,7 @@ const routes = [
     if (g.finishedAt) fail(409, 'game_finished');
     g.current += 1;
     g.questions[g.current].startedAt = Date.now();
-    return { round: roundPayload(g.questions, g.current) };
+    return { round: roundPayload(g.questions, g.current, u.role === 'admin') };
   }],
 
   ['GET', /^\/admin\/overview$/, () => {
@@ -543,7 +699,7 @@ const routes = [
     }));
     return {
       users,
-      totals: { users: users.length, verified: users.filter((u) => u.verified).length, openings: 0, cards: Object.values(db.cards).reduce((s, c) => s + Object.values(c).reduce((a, v) => a + v.count, 0), 0) },
+      totals: { users: users.length, verified: users.filter((u) => u.verified).length, openings: 0, cards: Object.values(db.cards).reduce((s, c) => s + Object.values(c).reduce((a, v) => a + v.count, 0), 0), ratings: db.ratings.length },
       odds: packOdds(), slots: PACK_SLOTS, config: { packRegenMinutes: 30, packMaxStock: MAX_STOCK, blindtestAudio: 'off (démo)' },
     };
   }],
@@ -553,14 +709,6 @@ const routes = [
     if (!t) fail(404, 'user_not_found');
     t.bonusPacks += Math.max(0, Math.floor(Number(body.packs) || 0));
     t.royalties += Math.max(0, Math.floor(Number(body.royalties) || 0));
-    return { ok: true };
-  }],
-  ['POST', /^\/admin\/users\/(\d+)\/role$/, ({ params, body }) => {
-    const admin = requireAdmin();
-    const t = userById(Number(params[0]));
-    if (!t) fail(404, 'user_not_found');
-    if (t.id === admin.id && body.role !== 'admin') fail(400, 'cannot_demote_self');
-    t.role = body.role === 'admin' ? 'admin' : 'player';
     return { ok: true };
   }],
   ['POST', /^\/admin\/me\/reset$/, () => {
@@ -605,7 +753,7 @@ export async function handle(method, path, body = {}) {
     if (m !== method) continue;
     const match = re.exec(pathname);
     if (!match) continue;
-    const result = fn({ params: match.slice(1), body: body || {}, query: new URLSearchParams(qs || '') });
+    const result = await fn({ params: match.slice(1), body: body || {}, query: new URLSearchParams(qs || '') });
     save();
     return JSON.parse(JSON.stringify(result));
   }

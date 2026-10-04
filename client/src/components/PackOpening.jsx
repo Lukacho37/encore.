@@ -5,6 +5,7 @@ import Card, { CardBack } from './Card.jsx';
 import CoverArt from './CoverArt.jsx';
 import { Icon, Progress, RoyaltyIcon } from './ui.jsx';
 import { AchievementList } from './Achievements.jsx';
+import { RarityGuideButton } from './RarityGuide.jsx';
 import { TRACK_BY_ID, ALBUM_BY_ID } from '@shared/catalog.js';
 import { RARITY } from '@shared/rules.js';
 import { useI18n } from '../i18n/index.jsx';
@@ -362,6 +363,8 @@ export default function PackOpening({ promise, count = 1, onClose, onAgain }) {
               </ul>
             </section>
           )}
+
+          <div className="summary__help"><RarityGuideButton /></div>
 
           <footer className="summary__actions">
             {canAgain && (

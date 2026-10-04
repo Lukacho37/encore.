@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useState } from 'react';
 import { Link } from 'react-router';
-import Card from './Card.jsx';
-import { Modal, Icon, useToast } from './ui.jsx';
+import Card, { RarityGem } from './Card.jsx';
+import { Modal, Icon, Progress, useToast } from './ui.jsx';
+import { RatingValue, ReviewEditor, useItemRatings } from './Rating.jsx';
 import { TRACK_BY_ID, ARTIST_BY_ID, ALBUM_BY_ID } from '@shared/catalog.js';
 import { RARITY, SHOWCASE_SLOTS } from '@shared/rules.js';
 import { useI18n } from '../i18n/index.jsx';
@@ -18,6 +19,23 @@ export function listenLinks(track) {
     { name: 'Apple Music', href: `https://music.apple.com/search?term=${q}` },
     { name: 'YouTube', href: `https://www.youtube.com/results?search_query=${q}` },
   ];
+}
+
+function TrackRating({ trackId }) {
+  const { t } = useI18n();
+  const ratingsApi = useItemRatings('track', trackId);
+  const summary = ratingsApi.data?.summary;
+  return (
+    <div className="track-rating">
+      <div className="track-rating__head">
+        <span className="eyebrow">{t('card.yourRating')}</span>
+        {summary?.count > 0 && (
+          <span className="small muted"><RatingValue value={summary.average} average size={11} /> · {t('rating.count', { n: summary.count })}</span>
+        )}
+      </div>
+      {ratingsApi.data && <ReviewEditor key={trackId} data={ratingsApi.data} save={ratingsApi.save} remove={ratingsApi.remove} compact />}
+    </div>
+  );
 }
 
 function CardDetail({ trackId, onClose }) {
@@ -59,7 +77,7 @@ function CardDetail({ trackId, onClose }) {
         <Card trackId={trackId} variant={mine?.holo ? 'holo' : 'std'} ghost={!mine} tilt />
       </div>
       <div className="card-detail__info">
-        <span className="eyebrow" style={{ color: RARITY[track.rarity].color }}>{t(`rarity.${track.rarity}`)}</span>
+        <span className="eyebrow card-detail__rarity" style={{ color: RARITY[track.rarity].color }}><RarityGem rarity={track.rarity} size={13} /> {t(`rarity.${track.rarity}`)}</span>
         <h2 className="card-detail__title">{track.title}</h2>
         <p className="card-detail__artist">
           <Link to={`/artist/${artist.id}`} onClick={onClose}>{artist.name}</Link>
@@ -79,6 +97,11 @@ function CardDetail({ trackId, onClose }) {
               <dd>{t(`promoKind.${track.promoKind}`)}{track.context ? ` · ${track.context}` : ''}</dd>
             </>
           )}
+          <dt>{t('card.popularity')}</dt>
+          <dd className="pop-line">
+            <Progress value={track.pop} max={100} color={RARITY[track.rarity].color} size="sm" />
+            <span className="mono">{t('card.popularityValue', { v: track.pop })}</span>
+          </dd>
           <dt>{t('card.year')}</dt>
           <dd className="mono">{track.year}</dd>
           <dt>{t('card.owned')}</dt>
@@ -97,6 +120,7 @@ function CardDetail({ trackId, onClose }) {
             </>
           )}
         </dl>
+        <TrackRating trackId={trackId} />
         <div className="listen">
           <span className="eyebrow">{t('card.listen')}</span>
           <div className="listen__links">

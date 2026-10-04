@@ -1,6 +1,9 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { post } from '../api.js';
+import { get, post } from '../api.js';
+import { RarityGuideButton } from '../components/RarityGuide.jsx';
+import { RatingValue } from '../components/Rating.jsx';
+import { Avatar } from '../components/ui.jsx';
 import { useGame } from '../state/GameContext.jsx';
 import { useI18n } from '../i18n/index.jsx';
 import PackOpening, { PackArt } from '../components/PackOpening.jsx';
@@ -8,7 +11,7 @@ import Card from '../components/Card.jsx';
 import CoverArt from '../components/CoverArt.jsx';
 import { useCardModal } from '../components/CardModal.jsx';
 import { Icon, Progress, Royalties, RoyaltyIcon, formatDuration, useNow, useToast } from '../components/ui.jsx';
-import { ALBUMS, ARTIST_BY_ID } from '@shared/catalog.js';
+import { ALBUMS, ALBUM_BY_ID, ARTIST_BY_ID, TRACK_BY_ID } from '@shared/catalog.js';
 import { ECONOMY, recycleValue } from '@shared/rules.js';
 import { sound } from '../sound.js';
 
@@ -19,7 +22,7 @@ export function AlbumTile({ album, progress, compact = false }) {
     <Link to={`/album/${album.id}`} className={`album-tile${done ? ' album-tile--done' : ''}${compact ? ' album-tile--compact' : ''}`}>
       <span className="album-tile__cover">
         <CoverArt art={{ ...album.art, seed: album.id }} />
-        {done && <span className="album-tile__badge"><Icon name="check" size={14} /> {t('collection.completed')}</span>}
+        {done && <span className="album-tile__badge"><Icon name="disc" size={14} /> {t('collection.completed')}</span>}
       </span>
       <span className="album-tile__meta">
         <span className="album-tile__title">{album.title}</span>
@@ -30,6 +33,43 @@ export function AlbumTile({ album, progress, compact = false }) {
         </span>
       </span>
     </Link>
+  );
+}
+
+/** Dernières notes données par les amis (façon fil Letterboxd). */
+function FriendsFeed() {
+  const { t, date } = useI18n();
+  const [items, setItems] = useState(null);
+  useEffect(() => {
+    get('/ratings/feed').then(setItems).catch(() => setItems([]));
+  }, []);
+  if (!items?.length) return null;
+  return (
+    <section className="section">
+      <header className="section__head"><h2>{t('home.feed')}</h2></header>
+      <ul className="feed">
+        {items.slice(0, 8).map((f) => {
+          const album = f.type === 'album' ? ALBUM_BY_ID[f.id] : ALBUM_BY_ID[TRACK_BY_ID[f.id]?.albumId];
+          const title = f.type === 'album' ? album?.title : TRACK_BY_ID[f.id]?.title;
+          if (!title) return null;
+          const art = album ? { ...album.art, seed: album.id } : { ...TRACK_BY_ID[f.id].art, seed: f.id };
+          return (
+            <li key={`${f.user.id}-${f.type}-${f.id}`} className="feed__item">
+              <Link to={album ? `/album/${album.id}` : '/collection/promos'} className="feed__cover"><CoverArt art={art} /></Link>
+              <div className="feed__body">
+                <p className="feed__line">
+                  <Link to={`/u/${f.user.username}`} className="feed__user"><Avatar user={f.user} size={20} /> {f.user.username}</Link>
+                  <span className="muted"> {t('home.feedRated')} </span>
+                  <Link to={album ? `/album/${album.id}` : '/collection/promos'} className="feed__title">{title}</Link>
+                </p>
+                <div className="feed__meta"><RatingValue value={f.score} size={13} /><span className="small muted">{date(f.updatedAt)}</span></div>
+                {f.review && <p className="feed__review">{f.review.length > 180 ? `${f.review.slice(0, 170).trimEnd()}…` : f.review}</p>}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
@@ -106,6 +146,7 @@ export default function Home() {
             </p>
           )}
           {!packs.unlimited && packs.bonus > 0 && <p className="muted small">{t('home.bonus', { n: packs.bonus })}</p>}
+          <RarityGuideButton className="link-btn hero__help" />
           <div className="hero__actions">
             <button type="button" className="btn btn--primary btn--xl" onClick={() => open(1)} disabled={!canOpen}>
               <Icon name="pack" /> {canOpen ? t('home.open') : t('home.empty')}
@@ -172,6 +213,8 @@ export default function Home() {
           <p className="empty">{t('home.start')}</p>
         )}
       </section>
+
+      <FriendsFeed />
 
       {opening && (
         <PackOpening key={opening.key} promise={opening.promise} count={opening.count} onClose={closeOpening} onAgain={() => open(opening.count)} />

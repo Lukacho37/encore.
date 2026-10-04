@@ -7,6 +7,7 @@ import Card from '../components/Card.jsx';
 import { Icon, Spinner, useToast } from '../components/ui.jsx';
 import { TRACK_BY_ID, ARTIST_BY_ID } from '@shared/catalog.js';
 import { sound } from '../sound.js';
+import { storage } from '../storage.js';
 
 const CLUE_STEP = 4; // secondes entre deux indices
 
@@ -47,8 +48,13 @@ function Equalizer({ playing }) {
 
 export default function BlindTest() {
   const { t, error, num } = useI18n();
-  const { applyState } = useGame();
+  const { applyState, isAdmin } = useGame();
   const toast = useToast();
+  const [reveal, setReveal] = useState(() => storage.get('albummania.btReveal') === '1');
+  const toggleReveal = () => {
+    storage.set('albummania.btReveal', reveal ? '0' : '1');
+    setReveal(!reveal);
+  };
   const [info, setInfo] = useState(null);
   const [genre, setGenre] = useState('all');
   const [game, setGame] = useState(null); // { id, rewarded }
@@ -205,6 +211,11 @@ export default function BlindTest() {
             {Array.from({ length: round.rounds }, (_, i) => <i key={i} className={i < round.index ? 'is-done' : i === round.index ? 'is-now' : ''} />)}
           </span>
           <span className="mono bt-bar__score">{num(score)} pts</span>
+          {isAdmin && (
+            <label className="bt-reveal small">
+              <input type="checkbox" checked={reveal} onChange={toggleReveal} /> {t('bt.adminReveal')}
+            </label>
+          )}
           <button type="button" className="btn btn--ghost btn--sm" onClick={quit}>{t('bt.quit')}</button>
         </header>
 
@@ -241,6 +252,7 @@ export default function BlindTest() {
               <button key={c.id} type="button" className={`bt-choice${state}`} onClick={() => submit(c.id)} disabled={!!answer || busy}>
                 <span className="bt-choice__title">{c.title}</span>
                 <span className="bt-choice__artist">{c.artist}</span>
+                {isAdmin && reveal && !answer && round.answer === c.id && <span className="bt-choice__admin">{t('bt.adminTag')}</span>}
               </button>
             );
           })}

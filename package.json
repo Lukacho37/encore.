@@ -1,0 +1,34 @@
+{
+  "name": "encore",
+  "version": "0.1.0",
+  "private": true,
+  "description": "encore. — le jeu de collection de morceaux de musique : ouvre des boosters, complète des albums, deviens maître d'une discographie.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c magenta,cyan \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "node --disable-warning=ExperimentalWarning --watch-path=server --watch-path=shared server/index.js",
+    "dev:web": "vite",
+    "build": "vite build",
+    "build:demo": "vite build --mode demo && node scripts/package-demo.js",
+    "start": "NODE_ENV=production node --disable-warning=ExperimentalWarning server/index.js",
+    "admin": "node --disable-warning=ExperimentalWarning server/scripts/make-admin.js",
+    "test": "node --disable-warning=ExperimentalWarning --test server/test/*.test.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "nodemailer": "^10.0.14",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router": "^7.18.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.1",
+    "concurrently": "^10.0.5",
+    "playwright": "^1.63.0",
+    "vite": "^8.3.2",
+    "vite-plugin-singlefile": "^2.3.3"
+  }
+}

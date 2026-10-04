@@ -152,10 +152,15 @@ export function useItemRatings(type, id) {
   const [data, setData] = useState(null);
   const [version, setVersion] = useState(0);
   const path = `/ratings/${type}/${encodeURIComponent(id)}`;
+  const lastPath = useRef(path);
 
   useEffect(() => {
     let alive = true;
-    if (version === 0) setData(null);
+    // Nouvel album / morceau : on n'affiche pas les notes du précédent pendant le chargement.
+    if (lastPath.current !== path) {
+      lastPath.current = path;
+      setData(null);
+    }
     get(path).then((d) => alive && setData(d)).catch(() => alive && setData({ summary: { count: 0, average: null, distribution: Array(11).fill(0) }, mine: null, reviews: [], friendScores: [] }));
     return () => {
       alive = false;

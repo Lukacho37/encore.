@@ -57,6 +57,7 @@ body {
   font: 400 15px/1.5 var(--font-body);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+  overflow-x: clip; /* clip : empêche aussi le défilement horizontal provoqué par le focus */
 }
 
 body.no-scroll {
@@ -2443,7 +2444,7 @@ button.card:hover {
 .album-page::before {
   content: '';
   position: absolute;
-  inset: -40px -50vw auto;
+  inset: -40px 0 auto;
   height: 420px;
   background: radial-gradient(ellipse 50% 100% at 30% 0%, color-mix(in oklab, var(--album-c1) 26%, transparent), transparent 70%);
   pointer-events: none;

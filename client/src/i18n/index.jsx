@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import fr from './fr.js';
 import en from './en.js';
 import { storage } from '../storage.js';
@@ -27,16 +27,21 @@ export function I18nProvider({ children }) {
   const setLang = useCallback((next) => {
     if (!DICTS[next]) return;
     storage.set('albummania.lang', next);
-    document.documentElement.lang = next;
     setLangState(next);
   }, []);
+
+  // Langue de la page dès le premier rendu (lecteurs d'écran), puis à chaque changement.
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
 
   const value = useMemo(() => {
     const dict = DICTS[lang];
     const plural = new Intl.PluralRules(lang);
     const numberFmt = new Intl.NumberFormat(lang);
     const dateFmt = new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'long', year: 'numeric' });
-    const regions = new Intl.DisplayNames([lang], { type: 'region' });
+    // Intl.DisplayNames manque dans les moteurs anciens : on garde alors le code pays.
+    const regions = typeof Intl.DisplayNames === 'function' ? new Intl.DisplayNames([lang], { type: 'region' }) : { of: (code) => code };
 
     /** t('a.b', { n: 3 }) — gère les pluriels ({ one, other }) et l'interpolation {var}. */
     function t(key, vars = {}) {

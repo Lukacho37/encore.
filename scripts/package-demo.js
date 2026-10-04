@@ -14,6 +14,10 @@ const pick = (re) => [...src.matchAll(re)].map((m) => m[0]);
 
 const title = pick(/<title>[\s\S]*?<\/title>/g)[0] || '<title>AlbumMania</title>';
 const links = pick(/<link[^>]+(?:fonts\.googleapis|fonts\.gstatic|rel="icon")[^>]*>/g);
+// La feuille Google Fonts est placée après les scripts : la page étant dans <body>, une feuille de style en attente
+// bloquerait l'analyse du HTML, donc l'écran de chargement, le garde-fou et l'application.
+const fontSheets = links.filter((l) => /rel="stylesheet"/.test(l));
+const headLinks = links.filter((l) => !fontSheets.includes(l));
 const styles = pick(/<style[\s\S]*?<\/style>/g).map((s) => s.replace(/^<style[^>]*>/, '<style>'));
 const bodies = pick(/<script[^>]*>[\s\S]*?<\/script>/g).map((s) => s.replace(/^<script[^>]*>/, '').replace(/<\/script>$/, ''));
 
@@ -96,13 +100,14 @@ const guard = `<script>
 const out = [
   '<meta charset="utf-8">',
   title,
-  ...links,
+  ...headLinks,
   bootStyle,
   ...styles,
   `<div id="root">${bootScreen}</div>`,
   fallback,
   guard,
   `<script>${app}</script>`,
+  ...fontSheets,
 ].join('\n');
 
 fs.writeFileSync('dist-demo/albummania-demo.html', out);

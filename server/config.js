@@ -43,8 +43,9 @@ export const config = {
     : null,
   mailFrom: env.MAIL_FROM || 'AlbumMania <no-reply@albummania.local>',
 
-  // Extraits audio du blind test : "itunes" (aperçus de 30 s de l'API iTunes Search) ou "off" (mode indices).
-  blindtestAudio: env.BLINDTEST_AUDIO || 'itunes',
+  // Extraits audio du blind test : "off" (mode indices, par défaut) ou "itunes" (aperçus de 30 s de l'API iTunes Search).
+  // Les conditions d'Apple interdisent ces aperçus dans un jeu : ne pas activer "itunes" sans autorisation écrite.
+  blindtestAudio: env.BLINDTEST_AUDIO || 'off',
   previewCountry: env.PREVIEW_COUNTRY || 'FR',
 };
 

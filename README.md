@@ -95,7 +95,8 @@ Fichiers fournis : `render.yaml` (blueprint Render) et `Dockerfile` (Railway, Fl
 - **Critiques** : les textes sont écrits par les joueurs ; l'admin peut supprimer une critique depuis l'espace admin.
 - **Métadonnées** : seuls les titres, artistes, années et ordres de pistes sont utilisés, à titre d'information. Les titres comportant une insulte sont censurés comme sur les plateformes (`B**** Please II`).
 - **Écoute** : chaque carte propose des liens de recherche vers Spotify, Deezer, Apple Music et YouTube ; aucun fichier audio n'est hébergé.
-- **Blind test** : avec `BLINDTEST_AUDIO=itunes`, le serveur récupère les extraits de 30 s fournis par l'API iTunes Search (ils restent hébergés par Apple). Ces extraits sont soumis aux conditions d'Apple : à faire valider avant une mise en ligne publique. Avec `BLINDTEST_AUDIO=off`, le blind test fonctionne en mode indices.
+- **Blind test** : par défaut (`BLINDTEST_AUDIO=off`), il fonctionne en mode indices, sans audio. Le mode `itunes` récupère les extraits de 30 s de l'API iTunes Search, mais les conditions d'Apple les réservent à la promotion de l'iTunes Store (« not used for independent entertainment value ») : ne l'active pas sans autorisation écrite d'Apple.
+- **Pochettes** : les cartes utilisent des visuels générés, jamais les vraies pochettes. Spotify (« Do not create a game, including trivia quizzes »), Deezer (usage « strictement privé », inscriptions fermées) et Apple (pochettes réservées à la promotion de l'iTunes Store) n'autorisent pas leur usage dans un jeu de cartes ; Cover Art Archive, Discogs, Last.fm et Wikipédia ne donnent aucune licence.
 
 Avant un lancement public ou commercial, fais relire le projet par un juriste spécialisé en propriété intellectuelle, en particulier si tu veux afficher les vraies pochettes, utiliser des extraits audio ou ajouter de l'argent réel (achat de boosters, revente de cartes).
 

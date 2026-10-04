@@ -7,14 +7,14 @@ if (config.smtp) transport = nodemailer.createTransport(config.smtp);
 const COPY = {
   fr: {
     verify: {
-      subject: 'Confirme ton adresse e-mail · encore.',
+      subject: 'Confirme ton adresse e-mail · AlbumMania',
       title: 'Plus qu’une étape',
       body: (u) => `Salut ${u}, confirme ton adresse e-mail pour activer ton compte. Tes 5 boosters de bienvenue t’attendent.`,
       cta: 'Confirmer mon adresse',
       expiry: 'Ce lien expire dans 24 heures.',
     },
     reset: {
-      subject: 'Réinitialise ton mot de passe · encore.',
+      subject: 'Réinitialise ton mot de passe · AlbumMania',
       title: 'Nouveau mot de passe',
       body: (u) => `Salut ${u}, tu as demandé à réinitialiser ton mot de passe. Clique sur le bouton pour en choisir un nouveau.`,
       cta: 'Choisir un mot de passe',
@@ -25,14 +25,14 @@ const COPY = {
   },
   en: {
     verify: {
-      subject: 'Confirm your email address · encore.',
+      subject: 'Confirm your email address · AlbumMania',
       title: 'One more step',
       body: (u) => `Hi ${u}, confirm your email address to activate your account. Your 5 welcome packs are waiting.`,
       cta: 'Confirm my email',
       expiry: 'This link expires in 24 hours.',
     },
     reset: {
-      subject: 'Reset your password · encore.',
+      subject: 'Reset your password · AlbumMania',
       title: 'New password',
       body: (u) => `Hi ${u}, you asked to reset your password. Click the button to choose a new one.`,
       cta: 'Choose a password',
@@ -52,7 +52,7 @@ function render(kind, lang, username, link) {
   const html = `<!doctype html><html><body style="margin:0;background:#100d16;font-family:Helvetica,Arial,sans-serif;color:#f4eee3">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#100d16;padding:32px 16px"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#1b1624;border:1px solid #352d42;border-radius:16px">
-<tr><td style="padding:28px 28px 8px;font-size:26px;font-weight:900;letter-spacing:-0.5px">encore<span style="color:#ff4f7e">.</span></td></tr>
+<tr><td style="padding:28px 28px 8px;font-size:26px;font-weight:900;letter-spacing:-0.5px">Album<span style="color:#ffd35a">Mania</span></td></tr>
 <tr><td style="padding:8px 28px 0;font-size:20px;font-weight:700">${esc(c.title)}</td></tr>
 <tr><td style="padding:12px 28px 0;font-size:15px;line-height:1.55;color:#cfc7da">${esc(c.body(username))}</td></tr>
 <tr><td style="padding:24px 28px"><a href="${esc(link)}" style="display:inline-block;background:#f4eee3;color:#100d16;text-decoration:none;font-weight:700;padding:13px 22px;border-radius:999px">${esc(c.cta)}</a></td></tr>

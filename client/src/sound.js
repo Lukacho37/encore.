@@ -3,7 +3,7 @@ import { storage } from './storage.js';
 
 let ctx = null;
 let master = null;
-let muted = storage.get('encore.muted') === '1';
+let muted = storage.get('albummania.muted') === '1';
 const listeners = new Set();
 
 function audio() {
@@ -78,7 +78,7 @@ export const sound = {
   isMuted: () => muted,
   setMuted(value) {
     muted = value;
-    storage.set('encore.muted', value ? '1' : '0');
+    storage.set('albummania.muted', value ? '1' : '0');
     if (muted && ctx) ctx.suspend();
     listeners.forEach((fn) => fn(muted));
   },
@@ -179,6 +179,49 @@ export const sound = {
     if (!c) return;
     tone(c, { freq: midi(55), type: 'sawtooth', dur: 0.35, gain: 0.07, glideTo: midi(50) });
   },
+  /** Craquements de vinyle en boucle pendant la lecture sur la platine. */
+  crackle: (() => {
+    let nodes = null;
+    let timer = null;
+    return {
+      start() {
+        const c = audio();
+        if (!c || nodes) return;
+        const src = c.createBufferSource();
+        src.buffer = noiseBuffer(c, 2);
+        src.loop = true;
+        const hp = c.createBiquadFilter();
+        hp.type = 'highpass';
+        hp.frequency.value = 2500;
+        const g = c.createGain();
+        g.gain.value = 0.018;
+        src.connect(hp).connect(g).connect(master);
+        src.start();
+        const hum = c.createOscillator();
+        const hg = c.createGain();
+        hum.frequency.value = 55;
+        hg.gain.value = 0.012;
+        hum.connect(hg).connect(master);
+        hum.start();
+        nodes = [src, hum];
+        timer = setInterval(() => {
+          if (Math.random() < 0.7) noise(c, { dur: 0.012 + Math.random() * 0.02, gain: 0.05 + Math.random() * 0.12, from: 6000, to: 2000, q: 1, type: 'highpass' });
+        }, 140);
+      },
+      stop() {
+        clearInterval(timer);
+        timer = null;
+        nodes?.forEach((n) => {
+          try {
+            n.stop();
+          } catch {
+            // déjà arrêté
+          }
+        });
+        nodes = null;
+      },
+    };
+  })(),
   tick() {
     const c = audio();
     if (!c) return;

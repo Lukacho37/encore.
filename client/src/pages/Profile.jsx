@@ -9,27 +9,12 @@ import { useCardModal } from '../components/CardModal.jsx';
 import { Avatar, ConfirmButton, Icon, Modal, Progress, Spinner, useToast } from '../components/ui.jsx';
 import { ALBUMS, ALBUM_BY_ID, ARTIST_BY_ID, TRACK_BY_ID } from '@shared/catalog.js';
 import { AVATAR_COLORS, SHOWCASE_SLOTS, RARITY } from '@shared/rules.js';
-
-function GoldRecord({ albumId }) {
-  const album = ALBUM_BY_ID[albumId];
-  return (
-    <Link to={`/album/${albumId}`} className="gold-record" title={album.title}>
-      <span className="gold-record__frame">
-        <span className="gold-record__disc">
-          <span className="gold-record__label"><CoverArt art={{ ...album.art, seed: album.id }} /></span>
-        </span>
-      </span>
-      <span className="gold-record__plate">
-        <span className="gold-record__title">{album.title}</span>
-        <span className="gold-record__artist">{ARTIST_BY_ID[album.artist].name}</span>
-      </span>
-    </Link>
-  );
-}
+import { VinylShelf, isHoloComplete } from '../components/Vinyl.jsx';
+import { RatingHistogram, RatingValue, ReviewList } from '../components/Rating.jsx';
 
 function AvatarPicker({ open, onClose }) {
   const { t, error } = useI18n();
-  const { user, stats, achievements, applyState } = useGame();
+  const { user, stats, achievements, applyState, isAdmin } = useGame();
   const toast = useToast();
   const [avatar, setAvatar] = useState(user.avatar);
   const [color, setColor] = useState(user.avatarColor);
@@ -78,7 +63,7 @@ function AvatarPicker({ open, onClose }) {
           <p className="small muted">{t('avatar.coversHint')}</p>
           <div className="cover-picks">
             {albums.map((a) => {
-              const unlocked = achievements.has(`album:${a.id}`);
+              const unlocked = isAdmin || achievements.has(`album:${a.id}`);
               const p = stats.albums[a.id];
               const value = `album:${a.id}`;
               return (
@@ -190,10 +175,93 @@ function FriendAction({ profile, onChange }) {
   }
 }
 
+function RatingsSection({ username, isSelf, refreshKey }) {
+  const { t } = useI18n();
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    get(`/users/${encodeURIComponent(username)}/ratings`).then((d) => alive && setData(d)).catch(() => alive && setData(null));
+    return () => {
+      alive = false;
+    };
+  }, [username, refreshKey]);
+  if (!data) return null;
+  const s = data.stats;
+  const itemLink = (r) => (r.type === 'album' ? `/album/${r.id}` : `/album/${TRACK_BY_ID[r.id]?.albumId || ''}`);
+  const itemTitle = (r) => (r.type === 'album' ? ALBUM_BY_ID[r.id].title : TRACK_BY_ID[r.id].title);
+  const itemArt = (r) => {
+    const album = r.type === 'album' ? ALBUM_BY_ID[r.id] : TRACK_BY_ID[r.id].albumId ? ALBUM_BY_ID[TRACK_BY_ID[r.id].albumId] : null;
+    return album ? { ...album.art, seed: album.id } : { ...TRACK_BY_ID[r.id].art, seed: r.id };
+  };
+  return (
+    <section className="ratings-profile">
+      <header className="studio__head"><h2>{t('ratingsProfile.title')}</h2></header>
+      {s.count === 0 ? (
+        <p className="empty">{isSelf ? t('ratingsProfile.emptySelf') : t('ratingsProfile.emptyOther', { name: username })}</p>
+      ) : (
+        <div className="ratings-profile__grid">
+          <div className="panel ratings-profile__stats">
+            <dl className="mini-stats">
+              <div><dt>{t('ratingsProfile.statRatings')}</dt><dd className="mono">{s.count}</dd></div>
+              <div><dt>{t('ratingsProfile.statAlbums')}</dt><dd className="mono">{s.albums}</dd></div>
+              <div><dt>{t('ratingsProfile.statReviews')}</dt><dd className="mono">{s.reviews}</dd></div>
+              <div><dt>{t('ratingsProfile.statAverage')}</dt><dd><RatingValue value={s.average} average size={13} /></dd></div>
+            </dl>
+            <RatingHistogram distribution={s.distribution} />
+          </div>
+          {data.topAlbums.length > 0 && (
+            <div className="ratings-profile__top">
+              <h3 className="studio__label">{t('ratingsProfile.favAlbums')}</h3>
+              <div className="top-albums">
+                {data.topAlbums.map((r) => (
+                  <Link key={r.id} to={`/album/${r.id}`} className="top-album">
+                    <span className="top-album__cover"><CoverArt art={itemArt(r)} /></span>
+                    <span className="top-album__title">{itemTitle(r)}</span>
+                    <RatingValue value={r.score} size={12} />
+                  </Link>
+                ))}
+              </div>
+              {data.topTracks.length > 0 && (
+                <>
+                  <h3 className="studio__label">{t('ratingsProfile.favTracks')}</h3>
+                  <ol className="top-tracks">
+                    {data.topTracks.map((r) => (
+                      <li key={r.id}>
+                        <Link to={itemLink(r)} className="top-tracks__item">
+                          <span className="top-tracks__cover"><CoverArt art={itemArt(r)} /></span>
+                          <span className="top-tracks__title">{itemTitle(r)}</span>
+                          <RatingValue value={r.score} size={11} />
+                        </Link>
+                      </li>
+                    ))}
+                  </ol>
+                </>
+              )}
+            </div>
+          )}
+          {data.reviews.length > 0 && (
+            <div className="ratings-profile__reviews">
+              <h3 className="studio__label">{t('ratingsProfile.recent')}</h3>
+              <ReviewList reviews={data.reviews} renderItem={(r) => (
+                <Link to={itemLink(r)} className="review__author">
+                  <span className="review__cover"><CoverArt art={itemArt(r)} /></span>
+                  <span className="review__name">{itemTitle(r)}</span>
+                </Link>
+              )} />
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 /** Profil du joueur connecté, construit à partir de l'état local. */
 function useOwnProfile() {
   const { user, stats, achievements, owned } = useGame();
   return useMemo(() => {
+    const vinyls = [...achievements.entries()].filter(([k]) => k.startsWith('album:')).sort((a, b) => a[1] - b[1])
+      .map(([k, at]) => ({ albumId: k.slice(6), at, edition: isHoloComplete(k.slice(6), owned) ? 'holo' : 'black' }));
     const keys = [...achievements.keys()];
     return {
       self: true,
@@ -215,6 +283,7 @@ function useOwnProfile() {
       completedAlbums: keys.filter((k) => k.startsWith('album:')).sort((a, b) => achievements.get(a) - achievements.get(b)).map((k) => k.slice(6)),
       masteredArtists: keys.filter((k) => k.startsWith('artist:')).map((k) => k.slice(7)),
       albumProgress: stats.albums,
+      vinyls,
     };
   }, [user, stats, achievements, owned]);
 }
@@ -267,9 +336,10 @@ export default function Profile() {
 
   const lvl = profile.level;
   const s = profile.stats;
-  const inProgress = ALBUMS.filter((a) => !profile.completedAlbums.includes(a.id) && profile.albumProgress[a.id].owned > 0)
+  const upcoming = ALBUMS.filter((a) => !profile.completedAlbums.includes(a.id) && profile.albumProgress[a.id].owned > 0)
     .sort((a, b) => profile.albumProgress[b.id].pct - profile.albumProgress[a.id].pct)
-    .slice(0, Math.max(0, 6 - profile.completedAlbums.length));
+    .slice(0, profile.vinyls.length ? 2 : 3)
+    .map((a) => ({ albumId: a.id, progress: profile.albumProgress[a.id] }));
 
   return (
     <div className="profile">
@@ -310,34 +380,18 @@ export default function Profile() {
         </dl>
       </section>
 
+      <VinylShelf
+        vinyls={profile.vinyls}
+        upcoming={upcoming}
+        mine={isSelf}
+        title={isSelf ? t('vinyl.shelf') : t('vinyl.shelfOther', { name: profile.username })}
+        emptyText={isSelf ? t('vinyl.emptySelf') : t('vinyl.emptyOther')}
+      />
+
       <section className="studio">
         <header className="studio__head">
           <h2>{isSelf ? t('studio.title') : t('studio.titleOther', { name: profile.username })}</h2>
         </header>
-
-        <div className="studio__wall">
-          <h3 className="studio__label">{t('studio.wall')}</h3>
-          <div className="gold-records">
-            {profile.completedAlbums.map((id) => <GoldRecord key={id} albumId={id} />)}
-            {inProgress.map((a) => {
-              const p = profile.albumProgress[a.id];
-              return (
-                <Link key={a.id} to={`/album/${a.id}`} className="gold-record gold-record--empty" title={a.title}>
-                  <span className="gold-record__frame">
-                    <span className="gold-record__ghost"><span className="mono">{p.owned}/{p.total}</span></span>
-                  </span>
-                  <span className="gold-record__plate">
-                    <span className="gold-record__title">{a.title}</span>
-                    <span className="gold-record__artist">{Math.round(p.pct * 100)} %</span>
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
-          {profile.completedAlbums.length === 0 && (
-            <p className="studio__empty">{isSelf ? t('studio.wallEmpty') : t('studio.wallEmptyOther')}</p>
-          )}
-        </div>
 
         <div className="studio__desk">
           <div className="studio__desk-head">
@@ -363,6 +417,8 @@ export default function Profile() {
           </div>
         </div>
       </section>
+
+      <RatingsSection username={profile.username} isSelf={isSelf} refreshKey={isSelf ? user.id : profile.id} />
 
       {isSelf && (
         <>

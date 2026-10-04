@@ -133,7 +133,7 @@ function Header() {
     <>
       <header className="topbar">
         <div className="topbar__inner">
-          <Link to="/" className="topbar__logo" aria-label="encore."><Logo /></Link>
+          <Link to="/" className="topbar__logo" aria-label="AlbumMania"><Logo /></Link>
           <nav className="topnav" aria-label="Navigation">
             {links.map((l) => (
               <NavLink key={l.to} to={l.to} end={l.end} className="topnav__link">

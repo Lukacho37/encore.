@@ -28,7 +28,9 @@ export function createServices(db) {
   // ----- utilisateurs -------------------------------------------------------
 
   const getUser = (id) => q('SELECT * FROM users WHERE id = ?').get(id);
-  const isAdmin = (u) => u.role === 'admin';
+  /** Seules les adresses de ADMIN_EMAILS (vérifiées) sont admin. La colonne `role` n'est plus utilisée. */
+  const isAdmin = (u) => !!u?.email_verified_at && config.adminEmails.includes(String(u.email).toLowerCase());
+  const roleOf = (u) => (isAdmin(u) ? 'admin' : 'player');
 
   function ownedSet(userId) {
     return new Set(q('SELECT DISTINCT track_id FROM cards WHERE user_id = ?').all(userId).map((r) => r.track_id));
@@ -76,8 +78,9 @@ export function createServices(db) {
       id: user.id,
       username: user.username,
       email: user.email,
-      role: user.role,
+      role: roleOf(user),
       lang: user.lang,
+      ratingScale: user.rating_scale || 'stars',
       avatar: user.avatar,
       avatarColor: user.avatar_color,
       royalties: user.royalties,
@@ -96,7 +99,9 @@ export function createServices(db) {
     const achievements = q('SELECT key, created_at FROM achievements WHERE user_id = ?').all(userId)
       .map((r) => ({ key: r.key, at: r.created_at }));
     const pendingFriends = q("SELECT COUNT(*) AS n FROM friendships WHERE addressee_id = ? AND status = 'pending'").get(userId).n;
-    return { user: selfPayload(user), packs: packInfo(user), cards, achievements, pendingFriends, serverTime: Date.now() };
+    const ratings = q('SELECT item_type, item_id, score FROM ratings WHERE user_id = ?').all(userId)
+      .map((r) => ({ t: r.item_type, i: r.item_id, s: r.score }));
+    return { user: selfPayload(user), packs: packInfo(user), cards, achievements, ratings, pendingFriends, serverTime: Date.now() };
   }
 
   // ----- cartes ---------------------------------------------------------------
@@ -205,9 +210,12 @@ export function createServices(db) {
     return tx(db, () => {
       const track = TRACK_BY_ID[trackId];
       if (!track) throw new HttpError(404, 'unknown_track');
-      const cost = pressCost(trackId);
-      if (cost == null) throw new HttpError(400, 'not_pressable');
       const user = getUser(userId);
+      const admin = isAdmin(user);
+      const base = pressCost(trackId);
+      // L'admin presse gratuitement, promos comprises, pour tester.
+      if (base == null && !admin) throw new HttpError(400, 'not_pressable');
+      const cost = admin ? 0 : base;
       if (ownedSet(userId).has(trackId)) throw new HttpError(409, 'already_owned');
       if (user.royalties < cost) throw new HttpError(409, 'not_enough_royalties');
       q('UPDATE users SET royalties = royalties - ? WHERE id = ?').run(cost, userId);
@@ -224,7 +232,7 @@ export function createServices(db) {
       if (avatar !== 'initials') {
         const m = /^album:(.+)$/.exec(String(avatar));
         if (!m || !ALBUM_BY_ID[m[1]]) throw new HttpError(400, 'invalid_avatar');
-        if (!achievementSet(userId).has(`album:${m[1]}`)) throw new HttpError(403, 'avatar_locked');
+        if (!isAdmin(user) && !achievementSet(userId).has(`album:${m[1]}`)) throw new HttpError(403, 'avatar_locked');
       }
     }
     q('UPDATE users SET avatar = ?, avatar_color = ? WHERE id = ?').run(avatar ?? user.avatar, color ?? user.avatar_color, userId);
@@ -286,7 +294,7 @@ export function createServices(db) {
       avatarColor: target.avatar_color,
       level: levelFromXp(target.xp),
       createdAt: target.created_at,
-      role: target.role,
+      role: roleOf(target),
       stats: {
         unique: stats.total.owned,
         total: stats.total.total,
@@ -297,6 +305,11 @@ export function createServices(db) {
       },
       showcase: JSON.parse(target.showcase).map((id) => (id && owned.has(id) ? { trackId: id, variant: holo.has(id) ? 'holo' : 'std' } : null)),
       completedAlbums: ach.filter((k) => k.startsWith('album:')).map((k) => k.slice(6)),
+      // Vinyles : albums complétés, dans l'ordre d'obtention ; édition holo si toutes les cartes sont holo.
+      vinyls: q("SELECT key, created_at FROM achievements WHERE user_id = ? AND key LIKE 'album:%' ORDER BY created_at, key").all(target.id)
+        .map((r) => ({ albumId: r.key.slice(6), at: r.created_at }))
+        .filter((v) => ALBUM_BY_ID[v.albumId])
+        .map((v) => ({ ...v, edition: TRACKS_BY_ALBUM[v.albumId].every((t) => holo.has(t.id)) ? 'holo' : 'black' })),
       masteredArtists: ach.filter((k) => k.startsWith('artist:')).map((k) => k.slice(7)),
       albumProgress: stats.albums,
       friendship,
@@ -423,10 +436,12 @@ export function createServices(db) {
     return url;
   }
 
-  async function roundPayload(game, questions, index) {
+  async function roundPayload(questions, index, admin) {
     const qn = questions[index];
     const audio = await previewFor(qn.answer);
     return {
+      // L'admin reçoit la bonne réponse pour pouvoir tester le jeu rapidement.
+      answer: admin ? qn.answer : undefined,
       index,
       rounds: questions.length,
       choices: qn.choices.map((id) => ({ id, title: TRACK_BY_ID[id].title, artist: ARTIST_BY_ID[TRACK_BY_ID[id].artistId].name })),
@@ -445,7 +460,7 @@ export function createServices(db) {
     q('INSERT INTO blindtest_games (id, user_id, genre, questions, rewarded, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
       id, userId, genre, JSON.stringify(questions), rewarded ? 1 : 0, Date.now(),
     );
-    const round = await roundPayload(null, questions, 0);
+    const round = await roundPayload(questions, 0, isAdmin(user));
     questions[0].startedAt = Date.now();
     q('UPDATE blindtest_games SET questions = ? WHERE id = ?').run(JSON.stringify(questions), id);
     return { gameId: id, rewarded, round };
@@ -491,10 +506,133 @@ export function createServices(db) {
     if (current.picked === undefined) throw new HttpError(409, 'round_not_answered');
     const index = game.current + 1;
     if (index >= questions.length) throw new HttpError(409, 'game_finished');
-    const round = await roundPayload(game, questions, index);
+    const round = await roundPayload(questions, index, isAdmin(getUser(userId)));
     questions[index].startedAt = Date.now();
     q('UPDATE blindtest_games SET questions = ?, current = ? WHERE id = ?').run(JSON.stringify(questions), index, gameId);
     return { round };
+  }
+
+  // ----- notes & critiques ----------------------------------------------------
+
+  const REVIEW_MAX = 2000;
+
+  function checkItem(type, id) {
+    const ok = type === 'album' ? !!ALBUM_BY_ID[id] : type === 'track' ? !!TRACK_BY_ID[id] : false;
+    if (!ok) throw new HttpError(404, 'unknown_item');
+  }
+
+  function friendIds(userId) {
+    return new Set(q(`SELECT CASE WHEN requester_id = ? THEN addressee_id ELSE requester_id END AS id
+      FROM friendships WHERE status = 'accepted' AND (requester_id = ? OR addressee_id = ?)`).all(userId, userId, userId).map((r) => r.id));
+  }
+
+  function author(row) {
+    return { id: row.user_id, username: row.username, avatar: row.avatar, avatarColor: row.avatar_color, level: levelFromXp(row.xp).level };
+  }
+
+  function summarize(scores) {
+    const distribution = Array(11).fill(0);
+    let sum = 0;
+    for (const s of scores) {
+      distribution[s] += 1;
+      sum += s;
+    }
+    return { count: scores.length, average: scores.length ? sum / scores.length : null, distribution };
+  }
+
+  const WITH_AUTHOR = `SELECT r.*, u.username, u.avatar, u.avatar_color, u.xp FROM ratings r JOIN users u ON u.id = r.user_id`;
+
+  /** Notes d'un album ou d'un morceau : moyenne, répartition, ta note, critiques (amis d'abord). */
+  function itemRatings(viewerId, type, id) {
+    checkItem(type, id);
+    const all = q('SELECT user_id, score FROM ratings WHERE item_type = ? AND item_id = ?').all(type, id);
+    const mine = q('SELECT score, review, updated_at FROM ratings WHERE user_id = ? AND item_type = ? AND item_id = ?').get(viewerId, type, id);
+    const friends = friendIds(viewerId);
+    const rows = q(`${WITH_AUTHOR} WHERE r.item_type = ? AND r.item_id = ? AND r.user_id != ? ORDER BY r.updated_at DESC LIMIT 200`).all(type, id, viewerId);
+    const reviews = rows.filter((r) => r.review)
+      .sort((a, b) => Number(friends.has(b.user_id)) - Number(friends.has(a.user_id)) || b.updated_at - a.updated_at)
+      .slice(0, 30)
+      .map((r) => ({ user: author(r), score: r.score, review: r.review, updatedAt: r.updated_at, friend: friends.has(r.user_id) }));
+    const friendScores = rows.filter((r) => friends.has(r.user_id)).slice(0, 12).map((r) => ({ user: author(r), score: r.score }));
+    const result = {
+      summary: summarize(all.map((r) => r.score)),
+      mine: mine ? { score: mine.score, review: mine.review, updatedAt: mine.updated_at } : null,
+      reviews,
+      friendScores,
+    };
+    if (type === 'album') {
+      const prefix = `${id}:%`;
+      const tracks = {};
+      for (const r of q("SELECT item_id, COUNT(*) AS n, AVG(score) AS a FROM ratings WHERE item_type = 'track' AND item_id LIKE ? GROUP BY item_id").all(prefix)) {
+        tracks[r.item_id] = { count: r.n, average: r.a };
+      }
+      for (const r of q("SELECT item_id, score FROM ratings WHERE user_id = ? AND item_type = 'track' AND item_id LIKE ?").all(viewerId, prefix)) {
+        tracks[r.item_id] = { ...(tracks[r.item_id] || { count: 0, average: null }), mine: r.score };
+      }
+      result.tracks = tracks;
+    }
+    return result;
+  }
+
+  function rate(userId, type, id, score, review) {
+    checkItem(type, id);
+    if (!Number.isInteger(score) || score < 0 || score > 10) throw new HttpError(400, 'invalid_score');
+    // Sans champ `review`, on garde la critique déjà écrite (changement de note depuis la tracklist).
+    if (review === undefined) {
+      review = q('SELECT review FROM ratings WHERE user_id = ? AND item_type = ? AND item_id = ?').get(userId, type, id)?.review ?? '';
+    }
+    let text = typeof review === 'string' ? review.trim() : '';
+    if (text.length > REVIEW_MAX) throw new HttpError(400, 'review_too_long');
+    if (!text) text = null;
+    const now = Date.now();
+    q(`INSERT INTO ratings (user_id, item_type, item_id, score, review, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (user_id, item_type, item_id) DO UPDATE SET score = excluded.score, review = excluded.review, updated_at = excluded.updated_at`)
+      .run(userId, type, id, score, text, now, now);
+  }
+
+  function unrate(userId, type, id) {
+    checkItem(type, id);
+    q('DELETE FROM ratings WHERE user_id = ? AND item_type = ? AND item_id = ?').run(userId, type, id);
+  }
+
+  /** Journal de notes d'un joueur, affiché sur son profil. */
+  function userRatings(username) {
+    const target = q('SELECT * FROM users WHERE username = ? AND email_verified_at IS NOT NULL').get(username);
+    if (!target) throw new HttpError(404, 'user_not_found');
+    const rows = q('SELECT item_type, item_id, score, review, updated_at FROM ratings WHERE user_id = ? ORDER BY updated_at DESC').all(target.id)
+      .filter((r) => (r.item_type === 'album' ? ALBUM_BY_ID[r.item_id] : TRACK_BY_ID[r.item_id]));
+    const entry = (r) => ({ type: r.item_type, id: r.item_id, score: r.score, review: r.review, updatedAt: r.updated_at });
+    const albums = rows.filter((r) => r.item_type === 'album');
+    return {
+      stats: { ...summarize(rows.map((r) => r.score)), albums: albums.length, tracks: rows.length - albums.length, reviews: rows.filter((r) => r.review).length },
+      topAlbums: [...albums].sort((a, b) => b.score - a.score || b.updated_at - a.updated_at).slice(0, 4).map(entry),
+      topTracks: rows.filter((r) => r.item_type === 'track').sort((a, b) => b.score - a.score || b.updated_at - a.updated_at).slice(0, 5).map(entry),
+      recent: rows.slice(0, 12).map(entry),
+      reviews: rows.filter((r) => r.review).slice(0, 10).map(entry),
+    };
+  }
+
+  /** Dernières notes des amis. */
+  function friendsFeed(userId) {
+    const ids = [...friendIds(userId)];
+    if (!ids.length) return [];
+    return q(`${WITH_AUTHOR} WHERE r.user_id IN (${ids.map(() => '?').join(',')}) ORDER BY r.updated_at DESC LIMIT 20`).all(...ids)
+      .map((r) => ({ user: author(r), type: r.item_type, id: r.item_id, score: r.score, review: r.review, updatedAt: r.updated_at }));
+  }
+
+  function setRatingScale(userId, scale) {
+    if (!['stars', 'points'].includes(scale)) throw new HttpError(400, 'invalid_scale');
+    q('UPDATE users SET rating_scale = ? WHERE id = ?').run(scale, userId);
+  }
+
+  function adminReviews() {
+    return q(`${WITH_AUTHOR} WHERE r.review IS NOT NULL ORDER BY r.updated_at DESC LIMIT 60`).all()
+      .map((r) => ({ user: author(r), type: r.item_type, id: r.item_id, score: r.score, review: r.review, updatedAt: r.updated_at }));
+  }
+
+  function adminDeleteReview(userId, type, id) {
+    const res = q('DELETE FROM ratings WHERE user_id = ? AND item_type = ? AND item_id = ?').run(Number(userId), type, id);
+    if (!res.changes) throw new HttpError(404, 'review_not_found');
   }
 
   // ----- admin ----------------------------------------------------------------
@@ -505,7 +643,7 @@ export function createServices(db) {
       FROM users u ORDER BY u.created_at DESC LIMIT 500`).all();
     return {
       users: users.map((u) => ({
-        id: u.id, username: u.username, email: u.email, role: u.role, verified: !!u.email_verified_at,
+        id: u.id, username: u.username, email: u.email, role: roleOf(u), verified: !!u.email_verified_at,
         unique: u.uniq, openings: u.openings, royalties: u.royalties, packs: u.packs + u.bonus_packs,
         level: levelFromXp(u.xp).level, createdAt: u.created_at, lastSeenAt: u.last_seen_at,
       })),
@@ -514,7 +652,9 @@ export function createServices(db) {
         verified: users.filter((u) => u.email_verified_at).length,
         openings: q('SELECT COUNT(*) AS n FROM pack_openings').get().n,
         cards: q('SELECT COALESCE(SUM(count), 0) AS n FROM cards').get().n,
+        ratings: q('SELECT COUNT(*) AS n FROM ratings').get().n,
       },
+      adminCount: config.adminEmails.length,
       odds: packOdds(),
       slots: PACK_SLOTS,
       config: { packRegenMinutes: config.packRegenMinutes, packMaxStock: config.packMaxStock, blindtestAudio: config.blindtestAudio },
@@ -527,13 +667,6 @@ export function createServices(db) {
     const res = q('UPDATE users SET bonus_packs = bonus_packs + ?, royalties = royalties + ? WHERE id = ?').run(p, r, Number(targetId));
     if (!res.changes) throw new HttpError(404, 'user_not_found');
     return { packs: p, royalties: r };
-  }
-
-  function adminSetRole(actorId, targetId, role) {
-    if (!['admin', 'player'].includes(role)) throw new HttpError(400, 'invalid_role');
-    if (Number(targetId) === actorId && role !== 'admin') throw new HttpError(400, 'cannot_demote_self');
-    const res = q('UPDATE users SET role = ? WHERE id = ?').run(role, Number(targetId));
-    if (!res.changes) throw new HttpError(404, 'user_not_found');
   }
 
   function adminResetCollection(userId) {
@@ -571,11 +704,12 @@ export function createServices(db) {
   }
 
   return {
-    getUser, syncPacks, state, openPacks, buyPack, recycleDuplicates, pressCard,
+    getUser, isAdmin, syncPacks, state, openPacks, buyPack, recycleDuplicates, pressCard,
     setAvatar, setShowcase, setLang, publicProfile,
     listFriends, requestFriend, respondFriend, removeFriend,
     blindtestInfo, startBlindtest, answerBlindtest, nextBlindtestRound,
-    adminOverview, adminGrant, adminSetRole, adminResetCollection, adminCompleteCollection, adminAlmostAlbum,
+    itemRatings, rate, unrate, userRatings, friendsFeed, setRatingScale,
+    adminOverview, adminGrant, adminResetCollection, adminCompleteCollection, adminAlmostAlbum, adminReviews, adminDeleteReview,
     welcome: { packs: ECONOMY.welcomePacks, royalties: ECONOMY.welcomeRoyalties },
   };
 }

@@ -12,7 +12,7 @@ export const LANGS = [
 const I18nContext = createContext(null);
 
 function detect() {
-  const saved = storage.get('encore.lang');
+  const saved = storage.get('albummania.lang');
   if (saved && DICTS[saved]) return saved;
   return (navigator.language || 'fr').toLowerCase().startsWith('fr') ? 'fr' : 'en';
 }
@@ -26,7 +26,7 @@ export function I18nProvider({ children }) {
 
   const setLang = useCallback((next) => {
     if (!DICTS[next]) return;
-    storage.set('encore.lang', next);
+    storage.set('albummania.lang', next);
     document.documentElement.lang = next;
     setLangState(next);
   }, []);

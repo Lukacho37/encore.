@@ -15,15 +15,15 @@ export const config = {
   isTest: env.NODE_ENV === 'test',
   port,
   appUrl: (env.APP_URL || (isProd ? `http://localhost:${port}` : 'http://localhost:5173')).replace(/\/$/, ''),
-  dbFile: env.DATABASE_FILE || 'data/encore.db',
+  dbFile: env.DATABASE_FILE || 'data/albummania.db',
   trustProxy: env.TRUST_PROXY === 'true',
 
   packRegenMinutes: Number(env.PACK_REGEN_MINUTES) || 30,
   packMaxStock: Number(env.PACK_MAX_STOCK) || 5,
 
+  // L'accès admin est réservé aux adresses listées ici (en pratique : la tienne).
+  // Il est recalculé à chaque requête : il ne peut être ni stocké en base ni donné à quelqu'un d'autre.
   adminEmails: list(env.ADMIN_EMAILS),
-  // En développement, le tout premier compte créé devient admin pour faciliter les tests.
-  firstUserIsAdmin: env.FIRST_USER_ADMIN ? env.FIRST_USER_ADMIN === 'true' : !isProd,
 
   smtp: env.SMTP_HOST
     ? {
@@ -33,7 +33,7 @@ export const config = {
         auth: env.SMTP_USER ? { user: env.SMTP_USER, pass: env.SMTP_PASS } : undefined,
       }
     : null,
-  mailFrom: env.MAIL_FROM || 'encore. <no-reply@encore.local>',
+  mailFrom: env.MAIL_FROM || 'AlbumMania <no-reply@albummania.local>',
 
   // Extraits audio du blind test : "itunes" (aperçus de 30 s de l'API iTunes Search) ou "off" (mode indices).
   blindtestAudio: env.BLINDTEST_AUDIO || 'itunes',

@@ -1,8 +1,8 @@
 {
-  "name": "encore",
+  "name": "albummania",
   "version": "0.1.0",
   "private": true,
-  "description": "encore. — le jeu de collection de morceaux de musique : ouvre des boosters, complète des albums, deviens maître d'une discographie.",
+  "description": "AlbumMania — le jeu de collection de morceaux de musique : ouvre des boosters, complète des albums, deviens maître d'une discographie.",
   "type": "module",
   "engines": {
     "node": ">=22.13"
@@ -14,7 +14,6 @@
     "build": "vite build",
     "build:demo": "vite build --mode demo && node scripts/package-demo.js",
     "start": "NODE_ENV=production node --disable-warning=ExperimentalWarning server/index.js",
-    "admin": "node --disable-warning=ExperimentalWarning server/scripts/make-admin.js",
     "test": "node --disable-warning=ExperimentalWarning --test server/test/*.test.js"
   },
   "dependencies": {

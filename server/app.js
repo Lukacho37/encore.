@@ -31,10 +31,10 @@ export function createApp({ dbFile } = {}) {
   });
   app.use(express.json({ limit: '32kb' }));
 
-  // Protection CSRF : toute requête qui modifie des données doit porter l'en-tête X-Encore,
+  // Protection CSRF : toute requête qui modifie des données doit porter l'en-tête X-AlbumMania,
   // qu'un site tiers ne peut pas ajouter sans autorisation CORS.
   app.use('/api', (req, res, next) => {
-    if (req.method !== 'GET' && req.get('X-Encore') !== '1') return res.status(403).json({ error: 'csrf' });
+    if (req.method !== 'GET' && req.get('X-AlbumMania') !== '1') return res.status(403).json({ error: 'csrf' });
     next();
   });
 
@@ -43,7 +43,7 @@ export function createApp({ dbFile } = {}) {
 
   const api = express.Router();
   const requireUser = (req, _res, next) => (req.user ? next() : next(new HttpError(401, 'unauthenticated')));
-  const requireAdmin = (req, _res, next) => (req.user?.role === 'admin' ? next() : next(new HttpError(403, 'forbidden')));
+  const requireAdmin = (req, _res, next) => (services.isAdmin(req.user) ? next() : next(new HttpError(403, 'forbidden')));
   const actionLimit = rateLimit({ windowMs: 60_000, max: config.isTest ? 10_000 : 240, key: (req) => `u${req.user?.id}` });
 
   api.use(requireUser, actionLimit);
@@ -79,7 +79,24 @@ export function createApp({ dbFile } = {}) {
     services.setLang(req.user.id, req.body.lang);
     res.json({ ok: true });
   });
+  api.post('/profile/settings', (req, res) => {
+    if (req.body.ratingScale !== undefined) services.setRatingScale(req.user.id, req.body.ratingScale);
+    res.json({ state: services.state(req.user.id) });
+  });
   api.get('/users/:username', (req, res) => res.json(services.publicProfile(req.user.id, req.params.username)));
+  api.get('/users/:username/ratings', (req, res) => res.json(services.userRatings(req.params.username)));
+
+  // Notes & critiques : :type = album | track ; l'identifiant d'un morceau contient « : » (ex. discovery:01).
+  api.get('/ratings/feed', (req, res) => res.json(services.friendsFeed(req.user.id)));
+  api.get('/ratings/:type/:id', (req, res) => res.json(services.itemRatings(req.user.id, req.params.type, req.params.id)));
+  api.put('/ratings/:type/:id', (req, res) => {
+    services.rate(req.user.id, req.params.type, req.params.id, req.body.score, req.body.review);
+    res.json({ ...services.itemRatings(req.user.id, req.params.type, req.params.id), state: services.state(req.user.id) });
+  });
+  api.delete('/ratings/:type/:id', (req, res) => {
+    services.unrate(req.user.id, req.params.type, req.params.id);
+    res.json({ ...services.itemRatings(req.user.id, req.params.type, req.params.id), state: services.state(req.user.id) });
+  });
 
   api.get('/friends', (req, res) => res.json(services.listFriends(req.user.id)));
   api.post('/friends/request', (req, res) => res.json(services.requestFriend(req.user.id, req.body.username)));
@@ -106,9 +123,10 @@ export function createApp({ dbFile } = {}) {
 
   api.get('/admin/overview', requireAdmin, (req, res) => res.json(services.adminOverview()));
   api.post('/admin/users/:id/grant', requireAdmin, (req, res) => res.json(services.adminGrant(req.params.id, req.body)));
-  api.post('/admin/users/:id/role', requireAdmin, (req, res) => {
-    services.adminSetRole(req.user.id, req.params.id, req.body.role);
-    res.json({ ok: true });
+  api.get('/admin/reviews', requireAdmin, (req, res) => res.json(services.adminReviews()));
+  api.delete('/admin/reviews/:userId/:type/:id', requireAdmin, (req, res) => {
+    services.adminDeleteReview(req.params.userId, req.params.type, req.params.id);
+    res.json(services.adminReviews());
   });
   api.post('/admin/me/reset', requireAdmin, (req, res) => {
     services.adminResetCollection(req.user.id);

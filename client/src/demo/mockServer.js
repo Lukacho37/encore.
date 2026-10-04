@@ -12,7 +12,7 @@ import {
   validateEmail, validatePassword, validateUsername,
 } from '@shared/rules.js';
 
-const KEY = 'encore.demo.v1';
+const KEY = 'albummania.demo.v1';
 const REGEN_MS = 30 * 60_000;
 const MAX_STOCK = 5;
 
@@ -52,7 +52,7 @@ function fresh() {
   for (const [i, b] of bots.entries()) {
     const id = data.nextId++;
     data.users.push({
-      id, email: `${b.username}@demo.encore`, username: b.username, password: hash('demo-bot'), verified: now - 86_400_000 * (30 + i * 9),
+      id, email: `${b.username}@demo.albummania`, username: b.username, password: hash('demo-bot'), verified: now - 86_400_000 * (30 + i * 9),
       role: 'player', lang: 'fr', avatar: 'initials', avatarColor: b.color, royalties: 500, xp: 0, packs: 0, packsAt: now, bonusPacks: 0,
       showcase: [], createdAt: now - 86_400_000 * (30 + i * 9), bot: true,
     });
@@ -209,7 +209,7 @@ function demoEmail(kind, u, tok) {
   const fr = u.lang !== 'en';
   if (kind === 'verify') {
     return {
-      subject: fr ? 'Confirme ton adresse e-mail · encore.' : 'Confirm your email address · encore.',
+      subject: fr ? 'Confirme ton adresse e-mail · AlbumMania' : 'Confirm your email address · AlbumMania',
       text: fr ? `Salut ${u.username}, confirme ton adresse e-mail pour activer ton compte. Tes 5 boosters de bienvenue t’attendent.`
         : `Hi ${u.username}, confirm your email address to activate your account. Your 5 welcome packs are waiting.`,
       cta: fr ? 'Confirmer mon adresse' : 'Confirm my email',
@@ -217,7 +217,7 @@ function demoEmail(kind, u, tok) {
     };
   }
   return {
-    subject: fr ? 'Réinitialise ton mot de passe · encore.' : 'Reset your password · encore.',
+    subject: fr ? 'Réinitialise ton mot de passe · AlbumMania' : 'Reset your password · AlbumMania',
     text: fr ? `Salut ${u.username}, clique sur le bouton pour choisir un nouveau mot de passe.` : `Hi ${u.username}, click the button to choose a new password.`,
     cta: fr ? 'Choisir un mot de passe' : 'Choose a password',
     path: `/reset?token=${tok}`,

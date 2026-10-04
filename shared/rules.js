@@ -8,14 +8,15 @@ import {
 export const RARITIES = ['common', 'uncommon', 'rare', 'super', 'ultra', 'legendary', 'promo'];
 
 export const RARITY = {
-  common: { rank: 0, pips: 1, color: '#a29cb0', xp: 5, recycle: 5, press: 40 },
+  // Couleurs calquées sur ⚪ 🟢 🔵 🟣 🟠 ⭐ 🟥
+  common: { rank: 0, pips: 1, color: '#e6e1ec', xp: 5, recycle: 5, press: 40 },
   uncommon: { rank: 1, pips: 2, color: '#7fd36b', xp: 10, recycle: 10, press: 80 },
   rare: { rank: 2, pips: 3, color: '#4f9dff', xp: 20, recycle: 25, press: 200 },
   super: { rank: 3, pips: 4, color: '#b17dff', xp: 40, recycle: 50, press: 400 },
   ultra: { rank: 4, pips: 5, color: '#ff8b3d', xp: 80, recycle: 100, press: 800 },
   legendary: { rank: 5, pips: 6, color: '#ffd35a', xp: 150, recycle: 250, press: 1600 },
   // Les promos ne peuvent pas être pressées : on ne les obtient qu'en booster.
-  promo: { rank: 6, pips: 0, color: '#ff4f7e', xp: 100, recycle: 150, press: null },
+  promo: { rank: 6, pips: 0, color: '#ef3b3b', xp: 100, recycle: 150, press: null },
 };
 
 export const PACK_SIZE = 5;
@@ -245,7 +246,7 @@ export function blindtestReward(correctCount) {
 // --- Comptes ---------------------------------------------------------------
 
 export const USERNAME_RE = /^[a-zA-Z0-9_.]{3,20}$/;
-export const RESERVED_USERNAMES = new Set(['admin', 'administrator', 'encore', 'support', 'moderator', 'modo', 'system', 'root', 'staff']);
+export const RESERVED_USERNAMES = new Set(['admin', 'administrator', 'albummania', 'support', 'moderator', 'modo', 'system', 'root', 'staff']);
 export const PASSWORD_MIN = 8;
 
 export function validateUsername(u) {

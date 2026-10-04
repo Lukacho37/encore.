@@ -76,7 +76,9 @@ export function GameProvider({ children }) {
     const ownedSet = new Set(owned.keys());
     const achievements = new Map(data.achievements.map((a) => [a.key, a.at]));
     const duplicates = data.cards.reduce((n, c) => n + Math.max(0, c.c - 1), 0);
-    return { owned, ownedSet, achievements, stats: collectionStats(ownedSet), duplicates };
+    // Mes notes : « album:discovery » ou « track:discovery:01 » -> score sur 10
+    const ratings = new Map((data.ratings || []).map((r) => [`${r.t}:${r.i}`, r.s]));
+    return { owned, ownedSet, achievements, stats: collectionStats(ownedSet), duplicates, ratings };
   }, [data]);
 
   const value = useMemo(
@@ -87,6 +89,7 @@ export function GameProvider({ children }) {
       cards: data?.cards ?? [],
       pendingFriends: data?.pendingFriends ?? 0,
       isAdmin: data?.user?.role === 'admin',
+      ratingScale: data?.user?.ratingScale || 'stars',
       now: () => Date.now() + offset.current,
       ...derived,
       applyState,

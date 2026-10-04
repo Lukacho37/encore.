@@ -20,7 +20,7 @@ export async function api(method, path, body) {
     res = await fetch(`/api${path}`, {
       method,
       credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', 'X-Encore': '1' },
+      headers: { 'Content-Type': 'application/json', 'X-AlbumMania': '1' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {

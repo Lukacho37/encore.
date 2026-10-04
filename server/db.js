@@ -88,6 +88,17 @@ CREATE TABLE IF NOT EXISTS blindtest_games (
   finished_at INTEGER
 );
 
+CREATE TABLE IF NOT EXISTS ratings (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  item_type TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  score INTEGER NOT NULL,
+  review TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, item_type, item_id)
+);
+
 CREATE TABLE IF NOT EXISTS previews (
   track_id TEXT PRIMARY KEY,
   url TEXT,
@@ -108,13 +119,24 @@ CREATE INDEX IF NOT EXISTS idx_tokens_user ON email_tokens(user_id, purpose);
 CREATE INDEX IF NOT EXISTS idx_friend_addressee ON friendships(addressee_id, status);
 CREATE INDEX IF NOT EXISTS idx_openings_user ON pack_openings(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_blindtest_user ON blindtest_games(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_ratings_item ON ratings(item_type, item_id);
+CREATE INDEX IF NOT EXISTS idx_ratings_recent ON ratings(updated_at);
 `;
+
+// Colonnes ajoutées après la première version : ajoutées à la volée sur une base existante.
+const MIGRATIONS = [
+  ['users', 'rating_scale', "ALTER TABLE users ADD COLUMN rating_scale TEXT NOT NULL DEFAULT 'stars'"],
+];
 
 export function openDb(file = config.dbFile) {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
   const db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
   db.exec(SCHEMA);
+  for (const [table, column, sql] of MIGRATIONS) {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+    if (!cols.includes(column)) db.exec(sql);
+  }
   return db;
 }
 

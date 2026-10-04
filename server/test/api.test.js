@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 process.env.NODE_ENV = 'test';
-process.env.FIRST_USER_ADMIN = 'true';
+process.env.ADMIN_EMAILS = 'alice@example.com';
 process.env.BLINDTEST_AUDIO = 'off';
 const { createApp } = await import('../app.js');
 const { TRACKS_BY_ALBUM } = await import('../../shared/catalog.js');
@@ -17,7 +17,7 @@ function client() {
   return async function call(method, path, body) {
     const res = await fetch(base + path, {
       method,
-      headers: { 'Content-Type': 'application/json', 'X-Encore': '1', ...(cookie ? { Cookie: cookie } : {}) },
+      headers: { 'Content-Type': 'application/json', 'X-AlbumMania': '1', ...(cookie ? { Cookie: cookie } : {}) },
       body: body ? JSON.stringify(body) : undefined,
     });
     const set = res.headers.get('set-cookie');
@@ -54,7 +54,7 @@ test('inscription, vérification e-mail et connexion', async () => {
   const v = await call('POST', '/api/auth/verify', { token: tokenFrom(lastLink('alice@example.com')) });
   assert.equal(v.status, 200);
   assert.equal(v.body.user.username, 'alice');
-  assert.equal(v.body.user.role, 'admin', 'premier compte = admin en test');
+  assert.equal(v.body.user.role, 'admin', 'adresse listée dans ADMIN_EMAILS = admin');
   assert.equal(v.body.packs.bonus, 5);
 
   assert.equal((await call('GET', '/api/state')).status, 200);
@@ -184,4 +184,96 @@ test('outils admin', async () => {
   const player = client();
   await player('POST', '/api/auth/login', { identifier: 'bob', password: 'motdepasse123' });
   assert.equal((await player('GET', '/api/admin/overview')).status, 403);
+});
+
+test('admin réservé à ADMIN_EMAILS : personne d’autre ne peut le devenir', async () => {
+  const call = client();
+  await register(call, 'mallory@example.com', 'mallory');
+  // Même en forçant la colonne role en base, le serveur ne donne pas l'accès.
+  db.prepare("UPDATE users SET role = 'admin' WHERE username = 'mallory'").run();
+  const st = (await call('GET', '/api/state')).body;
+  assert.equal(st.user.role, 'player');
+  assert.equal(st.packs.unlimited, false);
+  assert.equal((await call('GET', '/api/admin/overview')).status, 403);
+  assert.equal((await call('POST', '/api/admin/me/complete')).status, 403);
+  assert.equal((await call('POST', '/api/admin/users/1/role', { role: 'admin' })).status, 404, 'plus de changement de rôle');
+  const profile = (await call('GET', '/api/users/alice')).body;
+  assert.equal(profile.role, 'admin');
+});
+
+test('pouvoirs admin : pressage gratuit, promos, toutes les pochettes, réponse du blind test', async () => {
+  const call = client();
+  await call('POST', '/api/auth/login', { identifier: 'alice', password: 'motdepasse123' });
+  await call('POST', '/api/admin/me/reset');
+  const before = (await call('GET', '/api/state')).body.user.royalties;
+  const press = await call('POST', '/api/collection/press', { trackId: 'promo:hey-jude' });
+  assert.equal(press.status, 200, JSON.stringify(press.body));
+  assert.equal(press.body.spent, 0);
+  assert.equal(press.body.state.user.royalties, before);
+  assert.equal((await call('POST', '/api/profile/avatar', { avatar: 'album:abbey-road' })).status, 200);
+  const bt = await call('POST', '/api/blindtest/start', { genre: 'rock' });
+  assert.ok(bt.body.round.answer, 'l’admin voit la réponse');
+  assert.ok(bt.body.round.choices.some((c) => c.id === bt.body.round.answer));
+  const player = client();
+  await player('POST', '/api/auth/login', { identifier: 'bob', password: 'motdepasse123' });
+  const pbt = await player('POST', '/api/blindtest/start', { genre: 'rock' });
+  assert.equal(pbt.body.round.answer, undefined, 'un joueur ne voit pas la réponse');
+});
+
+test('notes et critiques', async () => {
+  const a = client();
+  const b = client();
+  await a('POST', '/api/auth/login', { identifier: 'carla', password: 'motdepasse123' });
+  await b('POST', '/api/auth/login', { identifier: 'dan', password: 'motdepasse123' });
+  assert.equal((await a('PUT', '/api/ratings/album/nope', { score: 5 })).body.error, 'unknown_item');
+  assert.equal((await a('PUT', '/api/ratings/album/discovery', { score: 11 })).body.error, 'invalid_score');
+  assert.equal((await a('PUT', '/api/ratings/album/discovery', { score: 4.5 })).body.error, 'invalid_score');
+  assert.equal((await a('PUT', '/api/ratings/album/discovery', { score: 8, review: 'x'.repeat(2001) })).body.error, 'review_too_long');
+  const r1 = await a('PUT', '/api/ratings/album/discovery', { score: 9, review: '  Un classique.  ' });
+  assert.equal(r1.status, 200, JSON.stringify(r1.body));
+  assert.equal(r1.body.mine.score, 9);
+  assert.equal(r1.body.mine.review, 'Un classique.');
+  assert.ok(r1.body.state.ratings.some((x) => x.t === 'album' && x.i === 'discovery' && x.s === 9));
+  // Mise à jour plutôt que doublon
+  await a('PUT', '/api/ratings/album/discovery', { score: 10, review: 'Chef-d’œuvre.' });
+  await b('PUT', '/api/ratings/album/discovery', { score: 6 });
+  const track = await a('PUT', `/api/ratings/track/${encodeURIComponent('discovery:01')}`, { score: 0 });
+  assert.equal(track.status, 200, JSON.stringify(track.body));
+  assert.equal(track.body.mine.score, 0);
+  const view = (await b('GET', '/api/ratings/album/discovery')).body;
+  assert.equal(view.summary.count, 2);
+  assert.equal(view.summary.average, 8);
+  assert.equal(view.summary.distribution[10], 1);
+  assert.equal(view.summary.distribution[6], 1);
+  assert.equal(view.reviews.length, 1, 'une critique écrite par une autre personne');
+  assert.equal(view.reviews[0].user.username, 'carla');
+  assert.equal(view.reviews[0].friend, false, 'carla et dan ne sont plus amis');
+  assert.equal(view.tracks['discovery:01'].count, 1);
+  const journal = (await b('GET', '/api/users/carla/ratings')).body;
+  assert.equal(journal.stats.count, 2);
+  assert.equal(journal.topAlbums[0].id, 'discovery');
+  assert.equal(journal.reviews.length, 1);
+  // Fil d'activité des amis
+  await a('POST', '/api/friends/request', { username: 'dan' });
+  const inbox = (await b('GET', '/api/friends')).body;
+  await b('POST', `/api/friends/${inbox.incoming[0].requestId}/accept`);
+  const feed = (await b('GET', '/api/ratings/feed')).body;
+  assert.ok(feed.length >= 2 && feed.every((f) => f.user.username === 'carla'));
+  // Échelle de notation
+  const scale = await b('POST', '/api/profile/settings', { ratingScale: 'points' });
+  assert.equal(scale.body.state.user.ratingScale, 'points');
+  assert.equal((await b('POST', '/api/profile/settings', { ratingScale: 'emoji' })).body.error, 'invalid_scale');
+  // Suppression de sa note
+  const del = await b('DELETE', '/api/ratings/album/discovery');
+  assert.equal(del.body.mine, null);
+  // Modération admin
+  const admin = client();
+  await admin('POST', '/api/auth/login', { identifier: 'alice', password: 'motdepasse123' });
+  const mod = (await admin('GET', '/api/admin/reviews')).body;
+  const target = mod.find((x) => x.user.username === 'carla' && x.id === 'discovery');
+  assert.ok(target);
+  const after = await admin('DELETE', `/api/admin/reviews/${target.user.id}/album/discovery`);
+  assert.equal(after.status, 200);
+  assert.ok(!after.body.some((x) => x.user.username === 'carla' && x.id === 'discovery'));
+  assert.equal((await b('GET', '/api/admin/reviews')).status, 403);
 });

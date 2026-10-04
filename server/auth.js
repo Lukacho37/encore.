@@ -7,7 +7,7 @@ import { tx } from './db.js';
 import { HttpError } from './services.js';
 import { validateEmail, validatePassword, validateUsername } from '../shared/rules.js';
 
-export const COOKIE = 'encore_sid';
+export const COOKIE = 'albummania_sid';
 
 export function createAuth(db, mailer, services) {
   const q = (sql) => db.prepare(sql);
@@ -83,10 +83,8 @@ export function createAuth(db, mailer, services) {
     const hash = await hashPassword(password);
     const now = Date.now();
     const user = tx(db, () => {
-      const noAdmin = !q("SELECT 1 FROM users WHERE role = 'admin'").get();
-      const role = config.adminEmails.includes(email) || (config.firstUserIsAdmin && noAdmin) ? 'admin' : 'player';
       const { lastInsertRowid } = q(`INSERT INTO users (email, username, password_hash, role, lang, royalties, bonus_packs, packs, packs_at, created_at, last_mail_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`).run(email, username, hash, role, lang, services.welcome.royalties, services.welcome.packs, now, now, now);
+        VALUES (?, ?, ?, 'player', ?, ?, ?, 0, ?, ?, ?)`).run(email, username, hash, lang, services.welcome.royalties, services.welcome.packs, now, now, now);
       return services.getUser(Number(lastInsertRowid));
     });
     const token = issueToken(user.id, 'verify', VERIFY_TOKEN_HOURS * 3_600_000);

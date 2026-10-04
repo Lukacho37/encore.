@@ -221,7 +221,8 @@ export function useNow(intervalMs = 1000) {
 export function Logo({ className = '' }) {
   return (
     <span className={`logo ${className}`}>
-      encore<span className="logo__dot" aria-hidden="true" />
+      <span className="logo__mark" aria-hidden="true" />
+      <span className="logo__word">Album<span className="logo__mania">Mania</span></span>
     </span>
   );
 }

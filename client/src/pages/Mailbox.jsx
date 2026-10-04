@@ -27,7 +27,7 @@ export default function Mailbox() {
   return (
     <div className="mailbox">
       <header className="mailbox__head">
-        <Link to="/" aria-label="encore."><Logo /></Link>
+        <Link to="/" aria-label="AlbumMania"><Logo /></Link>
         <div>
           <h1>{t('mailbox.title')}</h1>
           <p className="muted small">{t('mailbox.note')}</p>

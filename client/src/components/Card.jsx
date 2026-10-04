@@ -6,10 +6,49 @@ import { useI18n } from '../i18n/index.jsx';
 
 const pad = (n) => String(n).padStart(2, '0');
 
+/** Petites barres de signal : indice de popularité du morceau. */
+export function PopIcon() {
+  return (
+    <svg className="pop-icon" viewBox="0 0 12 10" aria-hidden="true">
+      <rect x="0" y="6" width="2.4" height="4" rx="0.6" />
+      <rect x="3.2" y="4" width="2.4" height="6" rx="0.6" />
+      <rect x="6.4" y="2" width="2.4" height="8" rx="0.6" />
+      <rect x="9.6" y="0" width="2.4" height="10" rx="0.6" />
+    </svg>
+  );
+}
+
+/** Pastille de rareté : rond de couleur, étoile pour les légendaires, carré rouge pour les promos. */
+export function RarityGem({ rarity, size = 12 }) {
+  const color = RARITY[rarity].color;
+  if (rarity === 'legendary') {
+    return (
+      <svg className="gem" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 1.8l3.1 6.4 7 .9-5.1 4.8 1.3 7-6.3-3.4-6.3 3.4 1.3-7L1.9 9.1l7-.9z" fill={color} stroke="#7a5a12" strokeWidth="1" />
+      </svg>
+    );
+  }
+  if (rarity === 'promo') {
+    return (
+      <svg className="gem" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3" y="3" width="18" height="18" rx="4" fill={color} />
+      </svg>
+    );
+  }
+  return (
+    <svg className="gem" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="9.5" fill={color} stroke="rgba(0,0,0,.35)" strokeWidth="1" />
+      <circle cx="9" cy="8.5" r="3" fill="#fff" opacity="0.35" />
+    </svg>
+  );
+}
+
 export function Pips({ rarity }) {
-  if (rarity === 'promo') return <span className="pips pips--promo">P</span>;
-  if (rarity === 'legendary') return <span className="pips pips--legend">★</span>;
-  return <span className="pips">{'◆'.repeat(RARITY[rarity].pips)}</span>;
+  return (
+    <span className="pips" style={{ '--rc': RARITY[rarity].color }}>
+      <RarityGem rarity={rarity} size={10} />
+    </span>
+  );
 }
 
 /** Inclinaison 3D + reflet holo qui suit le pointeur. */
@@ -72,7 +111,9 @@ function Card({ trackId, variant = 'std', count = 0, ghost = false, badge, badge
         </span>
         <span className="card__foot">
           <span className="card__rarity">{t(`rarity.${track.rarity}`)}</span>
-          <span className="card__code">{catalogCode(track)}</span>
+          {track.pop != null
+            ? <span className="card__pop" title={`${t('card.popularity')} ${track.pop}/100`}><PopIcon />{track.pop}</span>
+            : <span className="card__code">{catalogCode(track)}</span>}
         </span>
       </span>
       {holo && <span className="card__holo" aria-hidden="true" />}
@@ -91,8 +132,9 @@ export function CardBack({ rarity, className = '' }) {
     <span className={`card card-back card-back--${rarity} ${className}`} style={{ '--rc': RARITY[rarity]?.color }} aria-hidden="true">
       <span className="card-back__face">
         <span className="card-back__grooves" />
+        <span className="card-back__label" />
         <span className="card-back__logo">
-          encore<span>.</span>
+          Album<span>Mania</span>
         </span>
       </span>
     </span>

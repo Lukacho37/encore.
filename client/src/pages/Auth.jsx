@@ -12,7 +12,7 @@ function AuthLayout({ children }) {
   return (
     <div className="auth">
       <aside className="auth__stage">
-        <Link to="/login" className="auth__logo" aria-label="encore."><Logo className="logo--lg" /></Link>
+        <Link to="/login" className="auth__logo" aria-label="AlbumMania"><Logo className="logo--lg" /></Link>
         <div className="auth__fan" aria-hidden="true">
           <Card trackId="the-college-dropout:07" className="auth__fan-card auth__fan-card--1" />
           <Card trackId="promo:hey-jude" variant="holo" className="auth__fan-card auth__fan-card--2" />

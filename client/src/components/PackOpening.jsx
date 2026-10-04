@@ -221,10 +221,11 @@ export default function PackOpening({ promise, count = 1, onClose, onAgain }) {
   // Clavier : Espace / Entrée pour avancer, Échap pour fermer à la fin.
   useEffect(() => {
     const onKey = (e) => {
-      // Un bouton focalisé gère déjà Espace/Entrée lui-même ; une modale ouverte (guide) gère Échap.
-      if (e.target instanceof HTMLButtonElement) return;
-      if (document.querySelector('.modal-backdrop')) return;
+      // Une modale ouverte par-dessus (guide des raretés) garde ses touches.
+      if (e.defaultPrevented || document.querySelector('.modal-backdrop')) return;
       if (e.key === ' ' || e.key === 'Enter') {
+        // Un bouton focalisé gère déjà Espace/Entrée lui-même.
+        if (e.target instanceof HTMLButtonElement) return;
         if (phase === 'pack') { e.preventDefault(); tapPack(); }
         else if (phase === 'reveal') { e.preventDefault(); onStageTap(); }
       } else if (e.key === 'Escape' && phase === 'summary') onClose();

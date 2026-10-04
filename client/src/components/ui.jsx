@@ -114,7 +114,12 @@ export function Modal({ open, onClose, title, children, className = '', labelled
     if (!open) return undefined;
     const prev = document.activeElement;
     const onKey = (e) => {
-      if (e.key === 'Escape') onClose?.();
+      if (e.key === 'Escape') {
+        // La modale garde Échap pour elle : l'écran d'ouverture de booster en dessous ne se ferme pas.
+        e.preventDefault();
+        e.stopPropagation();
+        onClose?.();
+      }
     };
     document.addEventListener('keydown', onKey);
     document.body.classList.add('no-scroll');

@@ -213,9 +213,9 @@ function RatingsSection({ username, isSelf, refreshKey }) {
             </dl>
             <RatingHistogram distribution={s.distribution} />
           </div>
-          {data.topAlbums.length > 0 && (
+          {(data.topAlbums.length > 0 || data.topTracks.length > 0) && (
             <div className="ratings-profile__top">
-              <h3 className="studio__label">{t('ratingsProfile.favAlbums')}</h3>
+              {data.topAlbums.length > 0 && <h3 className="studio__label">{t('ratingsProfile.favAlbums')}</h3>}
               <div className="top-albums">
                 {data.topAlbums.map((r) => (
                   <Link key={r.id} to={`/album/${r.id}`} className="top-album">

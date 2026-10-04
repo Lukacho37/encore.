@@ -92,19 +92,33 @@ function Tracklist({ tracks, trackRatings, onPress }) {
   const { owned, ratings, isAdmin, applyState } = useGame();
   const openCard = useCardModal();
   const toast = useToast();
-  const timers = useRef({});
-  useEffect(() => () => Object.values(timers.current).forEach(clearTimeout), []);
+  const pending = useRef({});
+  const [resetKey, setResetKey] = useState(0);
+  const send = async (trackId, score) => {
+    try {
+      const res = await api('PUT', `/ratings/track/${encodeURIComponent(trackId)}`, { score });
+      applyState(res.state);
+    } catch (err) {
+      toast(error(err.code), 'error');
+      setResetKey((k) => k + 1); // la note affichée revient à celle du serveur
+    }
+  };
+  // En quittant la tracklist, les notes en attente partent tout de suite au lieu d'être perdues.
+  useEffect(() => () => {
+    for (const [trackId, { timer, score }] of Object.entries(pending.current)) {
+      clearTimeout(timer);
+      send(trackId, score);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Petite attente avant l'envoi : plusieurs appuis rapides ne font qu'une seule requête.
   const rateTrack = (trackId, score) => {
-    clearTimeout(timers.current[trackId]);
-    timers.current[trackId] = setTimeout(async () => {
-      try {
-        const res = await api('PUT', `/ratings/track/${encodeURIComponent(trackId)}`, { score });
-        applyState(res.state);
-      } catch (err) {
-        toast(error(err.code), 'error');
-      }
+    clearTimeout(pending.current[trackId]?.timer);
+    const timer = setTimeout(() => {
+      delete pending.current[trackId];
+      send(trackId, score);
     }, 350);
+    pending.current[trackId] = { timer, score };
   };
   return (
     <div className="table-wrap tracklist-wrap">
@@ -144,7 +158,7 @@ function Tracklist({ tracks, trackRatings, onPress }) {
                   ) : null}
                 </td>
                 <td>{community?.count ? <span className="tracklist__avg"><RatingValue value={community.average} average size={11} /> <span className="muted small mono">({community.count})</span></span> : <span className="muted">·</span>}</td>
-                <td><RatingInput value={ratings.get(`track:${tr.id}`) ?? null} onChange={(v) => rateTrack(tr.id, v)} size={15} compact label={`${t('rating.yours')} · ${tr.title}`} /></td>
+                <td><RatingInput key={`${tr.id}-${resetKey}`} value={ratings.get(`track:${tr.id}`) ?? null} onChange={(v) => rateTrack(tr.id, v)} size={15} compact label={`${t('rating.yours')} · ${tr.title}`} /></td>
               </tr>
             );
           })}

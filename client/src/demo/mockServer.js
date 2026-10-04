@@ -355,8 +355,15 @@ const routes = [
     const username = String(body.username || '').trim();
     const error = validateEmail(email) || validateUsername(username) || validatePassword(body.password);
     if (error) fail(400, error);
-    if (db.users.some((u) => u.email === email)) fail(409, 'email_taken');
-    if (userByName(username)) fail(409, 'username_taken');
+    // Comme le vrai serveur : un compte jamais vérifié ne bloque ni l'adresse ni le pseudo.
+    const existing = db.users.find((u) => u.email === email);
+    if (existing?.verified) fail(409, 'email_taken');
+    const owner = userByName(username);
+    if (owner && owner !== existing) fail(409, 'username_taken');
+    if (existing) {
+      db.users = db.users.filter((u) => u !== existing);
+      db.tokens = db.tokens.filter((x) => x.userId !== existing.id);
+    }
     const now = Date.now();
     const u = {
       id: db.nextId++, email, username, password: hash(body.password), verified: null, role: 'player',
@@ -581,9 +588,10 @@ const routes = [
   ['DELETE', /^\/admin\/reviews\/(\d+)\/(album|track)\/([^/]+)$/, ({ params }) => {
     requireAdmin();
     const [userId, type, id] = [Number(params[0]), params[1], decodeURIComponent(params[2])];
-    const before = db.ratings.length;
-    db.ratings = db.ratings.filter((r) => !(r.userId === userId && r.type === type && r.id === id));
-    if (db.ratings.length === before) fail(404, 'review_not_found');
+    // Comme le vrai serveur : on efface le texte, la note reste.
+    const row = db.ratings.find((r) => r.userId === userId && r.type === type && r.id === id && r.review);
+    if (!row) fail(404, 'review_not_found');
+    row.review = null;
     return adminReviews();
   }],
   // Démo : l'accès admin se déverrouille avec le code du propriétaire (seule son empreinte SHA-256 est ici).

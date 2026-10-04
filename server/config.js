@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+
 // Configuration lue depuis les variables d'environnement (voir .env.example).
 try {
   process.loadEnvFile();
@@ -6,6 +8,12 @@ try {
 }
 
 const env = process.env;
+
+// Avant le renommage, la base s'appelait data/encore.db : on continue de l'utiliser si elle existe.
+function defaultDbFile() {
+  if (!fs.existsSync('data/albummania.db') && fs.existsSync('data/encore.db')) return 'data/encore.db';
+  return 'data/albummania.db';
+}
 const isProd = env.NODE_ENV === 'production';
 const port = Number(env.PORT) || 3000;
 const list = (v) => (v || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
@@ -15,7 +23,7 @@ export const config = {
   isTest: env.NODE_ENV === 'test',
   port,
   appUrl: (env.APP_URL || (isProd ? `http://localhost:${port}` : 'http://localhost:5173')).replace(/\/$/, ''),
-  dbFile: env.DATABASE_FILE || 'data/albummania.db',
+  dbFile: env.DATABASE_FILE || defaultDbFile(),
   trustProxy: env.TRUST_PROXY === 'true',
 
   packRegenMinutes: Number(env.PACK_REGEN_MINUTES) || 30,

@@ -109,6 +109,7 @@ export function Progress({ value, max, color, label, size = 'md' }) {
 
 export function Modal({ open, onClose, title, children, className = '', labelledBy }) {
   const ref = useRef(null);
+  const { t } = useI18n();
   useEffect(() => {
     if (!open) return undefined;
     const prev = document.activeElement;
@@ -131,7 +132,7 @@ export function Modal({ open, onClose, title, children, className = '', labelled
         {title && (
           <header className="modal__head">
             <h2 id={labelledBy}>{title}</h2>
-            <button type="button" className="icon-btn" onClick={onClose} aria-label="Fermer">
+            <button type="button" className="icon-btn" onClick={onClose} aria-label={t('common.close')}>
               <Icon name="close" />
             </button>
           </header>

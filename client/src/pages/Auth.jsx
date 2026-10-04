@@ -296,7 +296,7 @@ export function Verify() {
   const [busy, setBusy] = useState(false);
   const state = withPassword || first;
   // Lien ouvert sur un autre appareil que celui de l'inscription : le serveur demande le mot de passe.
-  const needsPassword = first.status === 'error' && first.err?.code === 'password_required' && state.status !== 'ok';
+  const needsPassword = first.status === 'error' && first.err?.code === 'password_required' && !withPassword;
 
   useEffect(() => {
     if (state.status !== 'ok') return;

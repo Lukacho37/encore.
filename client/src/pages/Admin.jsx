@@ -106,7 +106,7 @@ export default function Admin() {
                       <td><Link to={`/u/${u.username}`} className="table__user"><Avatar user={{ username: u.username }} size={26} /> {u.username}</Link></td>
                       <td className="muted">{u.email}</td>
                       <td>{u.verified ? <span className="ok-text">{t('admin.yes')}</span> : <span className="muted">{t('admin.no')}</span>}</td>
-                      <td>{u.role === 'admin' ? <span className="role-tag">admin</span> : 'player'}</td>
+                      <td>{u.role === 'admin' ? <span className="role-tag">{t('admin.roleAdmin')}</span> : t('admin.rolePlayer')}</td>
                       <td className="num mono">{u.unique}</td>
                       <td className="num mono">{u.packs}</td>
                       <td className="num mono">{u.level}</td>
@@ -183,7 +183,7 @@ export default function Admin() {
             <p className="mono small">{t('admin.regen', { n: data.config.packRegenMinutes, m: data.config.packMaxStock })}</p>
             <p className="mono small">{t('admin.audio', { v: data.config.blindtestAudio })}</p>
             {__DEMO__ ? <p className="small muted">{t('admin.demoNote')}</p> : <Link to="/dev/mailbox" className="btn btn--ghost btn--sm"><Icon name="mail" /> {t('admin.mailbox')}</Link>}
-            <p className="small muted">{num(Object.keys(TRACK_BY_ID).length)} cartes · {ALBUMS.length} albums</p>
+            <p className="small muted">{t('admin.catalogSize', { n: num(Object.keys(TRACK_BY_ID).length), m: ALBUMS.length })}</p>
           </section>
         </>
       )}

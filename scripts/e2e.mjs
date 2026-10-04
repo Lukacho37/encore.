@@ -1,6 +1,6 @@
 // Parcours de bout en bout avec un vrai navigateur + captures d'écran.
 // Usage : BASE=http://localhost:3100 OUT=./shots node scripts/e2e.mjs
-// (le serveur doit tourner sans SMTP pour que la boîte e-mail de test soit disponible)
+// Le serveur doit tourner sans SMTP (boîte e-mail de test) et avec ADMIN_EMAILS=luka@example.com.
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -121,6 +121,34 @@ await run('desktop', { width: 1280, height: 820 }, async (page) => {
   await page.waitForSelector('.card-detail');
   await page.waitForTimeout(300);
   await shot(page, '13-card-modal');
+  // Note du morceau depuis la fiche (4 étoiles = 8/10)
+  const stars = await page.locator('.track-rating .star-input__stars').boundingBox();
+  await page.mouse.click(stars.x + stars.width * 0.78, stars.y + stars.height / 2);
+  await page.waitForTimeout(500);
+  await shot(page, '13b-card-rated');
+  await page.keyboard.press('Escape');
+
+  // Note + critique de l'album
+  await page.locator('#critiques').scrollIntoViewIfNeeded();
+  const albumStars = await page.locator('.album-ratings .star-input__stars').boundingBox();
+  await page.mouse.click(albumStars.x + albumStars.width * 0.95, albumStars.y + albumStars.height / 2);
+  await page.fill('#review-f', 'Le premier Kanye reste le plus attachant : des boucles soul, de l’humour et Jesus Walks.');
+  await page.click('.album-ratings .review-editor__actions .btn--primary');
+  await page.waitForTimeout(600);
+  await shot(page, '12b-album-review');
+  // Vue tracklist
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.click('.toolbar .seg__btn:nth-child(2)');
+  await page.waitForSelector('.tracklist');
+  await page.waitForTimeout(300);
+  await shot(page, '12c-tracklist');
+
+  // Guide des raretés
+  await page.goto(`${BASE}/collection`);
+  await page.click('.rarity-help .link-btn');
+  await page.waitForSelector('.rarity-guide');
+  await page.waitForTimeout(300);
+  await shot(page, '11b-rarity-guide');
   await page.keyboard.press('Escape');
 
   // Admin : album presque complet puis pressage de la dernière carte
@@ -130,7 +158,7 @@ await run('desktop', { width: 1280, height: 820 }, async (page) => {
   await page.selectOption('#admin-album', 'discovery');
   await page.click('.admin-tools--row .btn--ghost');
   await page.waitForTimeout(400);
-  await page.request.post(`${BASE}/api/admin/users/1/grant`, { headers: { 'X-Encore': '1', 'Content-Type': 'application/json' }, data: { royalties: 5000 } });
+  await page.request.post(`${BASE}/api/admin/users/1/grant`, { headers: { 'X-AlbumMania': '1', 'Content-Type': 'application/json' }, data: { royalties: 5000 } });
   await page.goto(`${BASE}/album/discovery`);
   await page.waitForSelector('.press-btn');
   await page.click('.press-btn');
@@ -140,6 +168,8 @@ await run('desktop', { width: 1280, height: 820 }, async (page) => {
   await page.waitForTimeout(600);
   await shot(page, '15-album-complete');
   await page.click('.celebrate .btn');
+  await page.waitForTimeout(300);
+  await shot(page, '15b-album-vinyl-header');
 
   // Profil : photo de profil + studio
   await page.goto(`${BASE}/profile`);
@@ -150,6 +180,14 @@ await run('desktop', { width: 1280, height: 820 }, async (page) => {
   await shot(page, '16-avatar-picker');
   await page.click('.avatar-picker .modal__actions .btn--primary');
   await page.waitForTimeout(400);
+  await page.waitForSelector('.vinyl-shelf .vinyl');
+  await shot(page, '16b-vinyl-shelf');
+  await page.click('.vinyl-shelf button.vinyl');
+  await page.waitForSelector('.turntable');
+  await page.click('.turntable__start');
+  await page.waitForTimeout(1400);
+  await shot(page, '16c-turntable');
+  await page.keyboard.press('Escape');
   await page.click('.showcase__empty');
   await page.waitForSelector('.card-grid--picker');
   await page.click('.card-grid--picker .card');
@@ -188,6 +226,14 @@ await run('friend', { width: 1280, height: 820 }, async (page) => {
   await page.click('.add-friend .btn');
   await page.waitForSelector('.form-ok');
   await shot(page, '23-friends-sent');
+  // nino note un album avec une critique : elle apparaîtra dans l'activité de luka
+  await page.request.put(`${BASE}/api/ratings/album/discovery`, {
+    headers: { 'X-AlbumMania': '1', 'Content-Type': 'application/json' },
+    data: { score: 9, review: 'Toujours aussi lumineux, vingt-cinq ans après.' },
+  });
+  // un joueur ordinaire n'a pas accès à l'admin
+  const adminRes = await page.request.get(`${BASE}/api/admin/overview`);
+  if (adminRes.status() !== 403) errors.push(`[friend] admin accessible (${adminRes.status()})`);
 });
 
 await run('mobile', { width: 390, height: 844 }, async (page) => {
@@ -207,6 +253,10 @@ await run('mobile', { width: 390, height: 844 }, async (page) => {
   await shot(page, '33-m-friends');
   await page.click('.friend-list .btn--primary');
   await page.waitForTimeout(400);
+  await page.goto(`${BASE}/`);
+  await page.waitForSelector('.feed');
+  await page.locator('.feed').scrollIntoViewIfNeeded();
+  await shot(page, '33b-m-feed');
 
   await page.goto(`${BASE}/`);
   await page.click('.hero__actions .btn--primary');

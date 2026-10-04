@@ -429,9 +429,19 @@ export default {
     audio: 'Blind test audio : {v}',
     mailbox: 'Ouvrir la boîte e-mail de test',
     totals: '{users} joueurs · {verified} vérifiés · {openings} ouvertures · {cards} cartes tirées · {ratings} notes',
+    covers: 'Pochettes',
+    coversStatus: '{found}/{total} pochettes trouvées · source : {p}',
+    coversOff: 'Pochettes désactivées (COVERS=off) : le site affiche les visuels générés.',
+    coversSpotifyHint: 'Sans clés Spotify, les pochettes et les liens d’écoute viennent de Deezer. Renseigne SPOTIFY_CLIENT_ID et SPOTIFY_CLIENT_SECRET pour passer à Spotify (voir DEPLOIEMENT.md).',
+    coversMissing: '{n} introuvables',
+    coversRefresh: 'Actualiser les pochettes',
+    coversRunning: 'Recherche en cours…',
+    coversError: 'Dernière erreur : {e}',
+    coversDemo: 'Dans la démo, les vraies pochettes ne peuvent pas s’afficher : la page est coupée d’Internet. Elles apparaissent sur le site en ligne.',
   },
   footer: {
-    legal: 'Les pochettes affichées sont des visuels originaux générés par AlbumMania : aucune pochette officielle n’est reproduite. Titres et noms d’artistes sont cités à titre d’information.',
+    legal: 'Les pochettes affichées sont des visuels originaux générés par AlbumMania. Titres et noms d’artistes sont cités à titre d’information.',
+    legalCovers: 'Pochettes et liens d’écoute fournis par {p}. Les images restent hébergées par la plateforme et appartiennent à leurs ayants droit ; sans pochette disponible, AlbumMania affiche un visuel généré. Titres et noms d’artistes sont cités à titre d’information.',
   },
   rating: {
     scaleStars: '★ /5',
@@ -521,6 +531,11 @@ export default {
     holoBody: 'Chaque carte peut aussi sortir en version holo (5 %, 12 % pour les légendaires et les promos). C’est la même carte avec une finition brillante : elle compte pour l’album, et toutes les holos d’un album donnent son vinyle en édition holo.',
     promoTitle: 'Les promos',
     promoBody: 'Les promos n’apparaissent que dans la 5e carte d’un booster et ne se pressent pas. Elles comptent pour devenir Maître d’un artiste.',
+  },
+  covers: {
+    listenOn: 'Écouter sur {p}',
+    listenAlbumOn: 'Écouter l’album sur {p}',
+    credit: 'Pochette fournie par {p}',
   },
   demo: {
     unlock: 'Accès admin (démo)',

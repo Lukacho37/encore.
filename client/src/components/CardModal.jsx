@@ -1,9 +1,10 @@
 import { createContext, useCallback, useContext, useState } from 'react';
 import { Link } from 'react-router';
 import Card, { RarityGem } from './Card.jsx';
-import { Modal, Icon, Progress, useToast } from './ui.jsx';
+import { Modal, Icon, Progress, ProviderMark, useToast } from './ui.jsx';
 import { RatingValue, ReviewEditor, useItemRatings } from './Rating.jsx';
-import { TRACK_BY_ID, ARTIST_BY_ID, ALBUM_BY_ID } from '@shared/catalog.js';
+import { TRACK_BY_ID, ARTIST_BY_ID, ALBUM_BY_ID, artFor } from '@shared/catalog.js';
+import { PROVIDER_NAMES, useCovers } from '../state/CoversContext.jsx';
 import { RARITY, SHOWCASE_SLOTS } from '@shared/rules.js';
 import { useI18n } from '../i18n/index.jsx';
 import { useGame } from '../state/GameContext.jsx';
@@ -19,6 +20,33 @@ export function listenLinks(track) {
     { name: 'Apple Music', href: `https://music.apple.com/search?term=${q}` },
     { name: 'YouTube', href: `https://www.youtube.com/results?search_query=${q}` },
   ];
+}
+
+/** Lien direct vers le morceau sur la plateforme qui fournit la pochette, puis les autres plateformes. */
+function ListenBlock({ track }) {
+  const { t } = useI18n();
+  const covers = useCovers();
+  const direct = covers.tracks[track.id];
+  const cover = covers.items[artFor(track).seed];
+  const name = direct && PROVIDER_NAMES[direct.provider];
+  return (
+    <div className="listen">
+      <span className="eyebrow">{t('card.listen')}</span>
+      {direct && (
+        <a href={direct.url} target="_blank" rel="noreferrer noopener" className="btn btn--primary btn--sm listen__direct">
+          <ProviderMark provider={direct.provider} /> {t('covers.listenOn', { p: name })}
+        </a>
+      )}
+      <div className="listen__links">
+        {listenLinks(track).filter((l) => l.name !== name).map((l) => (
+          <a key={l.name} href={l.href} target="_blank" rel="noreferrer noopener" className="btn btn--ghost btn--sm">
+            {l.name} <Icon name="external" size={14} />
+          </a>
+        ))}
+      </div>
+      {cover && <p className="cover-credit small muted">{t('covers.credit', { p: PROVIDER_NAMES[cover.provider] })}</p>}
+    </div>
+  );
 }
 
 function TrackRating({ trackId }) {
@@ -74,7 +102,7 @@ function CardDetail({ trackId, onClose }) {
   return (
     <div className="card-detail">
       <div className="card-detail__card">
-        <Card trackId={trackId} variant={mine?.holo ? 'holo' : 'std'} ghost={!mine} tilt />
+        <Card trackId={trackId} variant={mine?.holo ? 'holo' : 'std'} ghost={!mine} tilt artSizes="300px" />
       </div>
       <div className="card-detail__info">
         <span className="eyebrow card-detail__rarity" style={{ color: RARITY[track.rarity].color }}><RarityGem rarity={track.rarity} size={13} /> {t(`rarity.${track.rarity}`)}</span>
@@ -121,16 +149,7 @@ function CardDetail({ trackId, onClose }) {
           )}
         </dl>
         <TrackRating trackId={trackId} />
-        <div className="listen">
-          <span className="eyebrow">{t('card.listen')}</span>
-          <div className="listen__links">
-            {listenLinks(track).map((l) => (
-              <a key={l.name} href={l.href} target="_blank" rel="noreferrer noopener" className="btn btn--ghost btn--sm">
-                {l.name} <Icon name="external" size={14} />
-              </a>
-            ))}
-          </div>
-        </div>
+        <ListenBlock track={track} />
         {mine && (
           <button type="button" className={`btn ${pinned ? 'btn--ghost' : 'btn--primary'}`} onClick={togglePin} disabled={busy}>
             {pinned ? t('card.unpin') : t('card.pin')}

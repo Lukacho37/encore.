@@ -47,6 +47,18 @@ export const config = {
   // Les conditions d'Apple interdisent ces aperçus dans un jeu : ne pas activer "itunes" sans autorisation écrite.
   blindtestAudio: env.BLINDTEST_AUDIO || 'off',
   previewCountry: env.PREVIEW_COUNTRY || 'FR',
+
+  // Vraies pochettes : "auto" (Spotify si les clés sont renseignées, sinon Deezer), "spotify", "deezer" ou "off".
+  // Les images ne sont jamais copiées : le site affiche celle hébergée par la plateforme, avec un lien vers elle.
+  covers: ['auto', 'spotify', 'deezer', 'off'].includes(env.COVERS) ? env.COVERS : 'auto',
+  coversMarket: (env.COVERS_MARKET || 'FR').toUpperCase(),
+  spotify: env.SPOTIFY_CLIENT_ID && env.SPOTIFY_CLIENT_SECRET
+    ? { clientId: env.SPOTIFY_CLIENT_ID, clientSecret: env.SPOTIFY_CLIENT_SECRET }
+    : null,
+  // Adresses des API : à ne changer que pour les tests.
+  spotifyApiUrl: (env.SPOTIFY_API_URL || 'https://api.spotify.com').replace(/\/$/, ''),
+  spotifyAccountsUrl: (env.SPOTIFY_ACCOUNTS_URL || 'https://accounts.spotify.com').replace(/\/$/, ''),
+  deezerApiUrl: (env.DEEZER_API_URL || 'https://api.deezer.com').replace(/\/$/, ''),
 };
 
 export const SESSION_DAYS = 30;

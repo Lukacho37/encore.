@@ -91,14 +91,13 @@ Fichiers fournis : `render.yaml` (blueprint Render) et `Dockerfile` (Railway, Fl
 
 ## Droits d'auteur : ce que fait le jeu
 
-- **Pochettes** : les visuels affichés sont **générés par le jeu** (palette + motif propres à chaque album). Aucune pochette officielle n'est reproduite : la photo de profil « pochette » et les vinyles utilisent ces visuels originaux.
+- **Pochettes** : le serveur récupère les vraies pochettes et les liens d'écoute auprès de Spotify (si `SPOTIFY_CLIENT_ID` et `SPOTIFY_CLIENT_SECRET` sont renseignés) ou de Deezer (sans clé). Seules les adresses sont gardées en base : les images restent hébergées par la plateforme, affichées sans modification, avec la source et un lien direct vers l'album ou le morceau. Une carte non obtenue garde le visuel généré. Attention : les conditions de Spotify (« Do not create a game, including trivia quizzes ») et de Deezer (usage privé) ne prévoient pas ce type de jeu ; `COVERS=off` coupe tout en cas de demande de retrait.
 - **Critiques** : les textes sont écrits par les joueurs ; l'admin peut supprimer une critique depuis l'espace admin.
 - **Métadonnées** : seuls les titres, artistes, années et ordres de pistes sont utilisés, à titre d'information. Les titres comportant une insulte sont censurés comme sur les plateformes (`B**** Please II`).
-- **Écoute** : chaque carte propose des liens de recherche vers Spotify, Deezer, Apple Music et YouTube ; aucun fichier audio n'est hébergé.
+- **Écoute** : chaque carte propose un lien direct vers le morceau sur la plateforme qui fournit la pochette, puis des liens de recherche vers les autres (Spotify, Deezer, Apple Music, YouTube) ; aucun fichier audio n'est hébergé.
 - **Blind test** : par défaut (`BLINDTEST_AUDIO=off`), il fonctionne en mode indices, sans audio. Le mode `itunes` récupère les extraits de 30 s de l'API iTunes Search, mais les conditions d'Apple les réservent à la promotion de l'iTunes Store (« not used for independent entertainment value ») : ne l'active pas sans autorisation écrite d'Apple.
-- **Pochettes** : les cartes utilisent des visuels générés, jamais les vraies pochettes. Spotify (« Do not create a game, including trivia quizzes »), Deezer (usage « strictement privé », inscriptions fermées) et Apple (pochettes réservées à la promotion de l'iTunes Store) n'autorisent pas leur usage dans un jeu de cartes ; Cover Art Archive, Discogs, Last.fm et Wikipédia ne donnent aucune licence.
 
-Avant un lancement public ou commercial, fais relire le projet par un juriste spécialisé en propriété intellectuelle, en particulier si tu veux afficher les vraies pochettes, utiliser des extraits audio ou ajouter de l'argent réel (achat de boosters, revente de cartes).
+Avant un lancement public ou commercial, fais relire le projet par un juriste spécialisé en propriété intellectuelle, en particulier pour les vraies pochettes, les extraits audio ou ajouter de l'argent réel (achat de boosters, revente de cartes).
 
 ## Structure
 
@@ -121,4 +120,4 @@ BASE=http://localhost:3000 node scripts/e2e.mjs   # parcours complet dans Chromi
 - Échanges de cartes entre amis, puis marché entre joueurs
 - Tournois de blind test en multijoueur
 - Boosters thématiques (par genre ou par décennie) et événements limités
-- Pochettes et extraits officiels, si une licence le permet
+- Extraits audio officiels, si une licence le permet

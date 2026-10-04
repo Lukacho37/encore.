@@ -99,6 +99,19 @@ CREATE TABLE IF NOT EXISTS ratings (
   PRIMARY KEY (user_id, item_type, item_id)
 );
 
+-- Pochettes officielles : seulement l'adresse des images et des pages, jamais les fichiers.
+CREATE TABLE IF NOT EXISTS covers (
+  item_key TEXT PRIMARY KEY,
+  provider TEXT,
+  cover TEXT,
+  cover_w INTEGER,
+  thumb TEXT,
+  thumb_w INTEGER,
+  url TEXT,
+  tracks TEXT,
+  fetched_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS previews (
   track_id TEXT PRIMARY KEY,
   url TEXT,

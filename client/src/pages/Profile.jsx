@@ -70,7 +70,7 @@ function AvatarPicker({ open, onClose }) {
                 <button key={a.id} type="button" className={`cover-pick${avatar === value ? ' is-on' : ''}${unlocked ? '' : ' is-locked'}`}
                   disabled={!unlocked} onClick={() => setAvatar(value)} aria-pressed={avatar === value}
                   title={unlocked ? a.title : `${a.title} · ${t('avatar.locked', { owned: p.owned, total: p.total })}`}>
-                  <CoverArt art={{ ...a.art, seed: a.id }} />
+                  <CoverArt art={{ ...a.art, seed: a.id }} generated={!unlocked} />
                   {!unlocked && <span className="cover-pick__lock"><Icon name="lock" size={16} /><span className="mono">{p.owned}/{p.total}</span></span>}
                 </button>
               );

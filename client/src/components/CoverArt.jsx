@@ -1,7 +1,10 @@
-import { memo, useId } from 'react';
+import { memo, useId, useState } from 'react';
+import { useCovers } from '../state/CoversContext.jsx';
 
-// Pochettes originales générées à partir d'une palette et d'un motif propres à chaque album.
-// Elles évoquent l'ambiance d'un disque sans reproduire sa pochette officielle (protégée par le droit d'auteur).
+// Pochette d'un album ou d'un single.
+// - Vraie pochette quand le serveur en a trouvé une (Spotify ou Deezer) : l'image reste hébergée par la
+//   plateforme, affichée telle quelle, sans recadrage ni filtre.
+// - Sinon, visuel original généré à partir d'une palette et d'un motif propres à chaque album.
 
 function seededRandom(seed) {
   let h = 1779033703 ^ seed.length;
@@ -194,8 +197,20 @@ function motif(kind, [c0, c1, c2], rand, id) {
   return els;
 }
 
-function CoverArt({ art, className = '', title }) {
+function CoverArt({ art, className = '', title, generated = false, sizes = '160px' }) {
   const id = useId().replace(/:/g, '');
+  const covers = useCovers();
+  const [broken, setBroken] = useState(null);
+  const real = generated ? null : covers.items[art.seed];
+  if (real && broken !== real.cover) {
+    const srcSet = real.thumb && real.thumb !== real.cover && real.thumbW && real.coverW
+      ? `${real.thumb} ${real.thumbW}w, ${real.cover} ${real.coverW}w`
+      : undefined;
+    return (
+      <img className={`cover cover--real ${className}`} src={real.thumb || real.cover} srcSet={srcSet} sizes={srcSet ? sizes : undefined}
+        alt={title || ''} loading="lazy" decoding="async" draggable="false" onError={() => setBroken(real.cover)} />
+    );
+  }
   const rand = seededRandom(art.seed || art.motif);
   const [c0, c1, c2] = art.palette;
   return (
@@ -223,4 +238,5 @@ function CoverArt({ art, className = '', title }) {
   );
 }
 
-export default memo(CoverArt, (a, b) => a.art.seed === b.art.seed && a.className === b.className);
+export default memo(CoverArt, (a, b) => a.art.seed === b.art.seed && a.className === b.className
+  && a.generated === b.generated && a.title === b.title && a.sizes === b.sizes);

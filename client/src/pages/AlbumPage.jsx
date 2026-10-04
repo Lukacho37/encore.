@@ -6,7 +6,8 @@ import Card, { RarityGem } from '../components/Card.jsx';
 import CoverArt from '../components/CoverArt.jsx';
 import { useCardModal } from '../components/CardModal.jsx';
 import { Celebration } from '../components/Achievements.jsx';
-import { Icon, Modal, Progress, RoyaltyIcon, useToast } from '../components/ui.jsx';
+import { Icon, Modal, Progress, ProviderMark, RoyaltyIcon, useToast } from '../components/ui.jsx';
+import { PROVIDER_NAMES, useCovers } from '../state/CoversContext.jsx';
 import { Vinyl, TurntableModal, isHoloComplete } from '../components/Vinyl.jsx';
 import {
   RatingHistogram, RatingInput, RatingValue, ReviewEditor, ReviewList, useItemRatings,
@@ -223,6 +224,7 @@ export default function AlbumPage() {
   const [celebrate, setCelebrate] = useState([]);
   const [view, setView] = useState(() => storage.get('albummania.albumView') || 'cards');
   const [turntable, setTurntable] = useState(null);
+  const covers = useCovers();
   const album = ALBUM_BY_ID[id];
   const ratingsApi = useItemRatings('album', album ? id : 'discovery');
   // Quand une de mes notes de morceau change (tracklist ou fiche carte), on recharge les moyennes.
@@ -246,6 +248,7 @@ export default function AlbumPage() {
   const reward = albumReward(id);
   const edition = doneAt && isHoloComplete(id, owned) ? 'holo' : 'black';
   const summary = ratingsApi.data?.summary;
+  const albumCover = covers.items[id];
   const chooseView = (v) => {
     setView(v);
     storage.set('albummania.albumView', v);
@@ -261,13 +264,21 @@ export default function AlbumPage() {
           </div>
         ) : (
           <div className="album-head__cover">
-            <CoverArt art={{ ...album.art, seed: album.id }} title={album.title} />
+            <CoverArt art={{ ...album.art, seed: album.id }} title={album.title} sizes="(max-width: 700px) 45vw, 280px" />
           </div>
         )}
         <div className="album-head__info">
           <span className="eyebrow mono">{catalogCode(tracks[0])} · {t(`genre.${album.genre}`)} · {album.year}</span>
           <h1>{album.title}</h1>
           <Link to={`/artist/${artist.id}`} className="album-head__artist">{artist.name}</Link>
+          {albumCover && (
+            <div className="cover-credit">
+              <a href={albumCover.url} target="_blank" rel="noreferrer noopener" className="btn btn--ghost btn--sm">
+                <ProviderMark provider={albumCover.provider} /> {t('covers.listenAlbumOn', { p: PROVIDER_NAMES[albumCover.provider] })}
+              </a>
+              <span className="small muted">{t('covers.credit', { p: PROVIDER_NAMES[albumCover.provider] })}</span>
+            </div>
+          )}
           {summary?.count > 0 && (
             <a href="#critiques" className="album-head__score">
               <RatingValue value={summary.average} average size={16} />

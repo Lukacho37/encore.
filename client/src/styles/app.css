@@ -5739,3 +5739,50 @@ button.vinyl:hover .disc__body {
     display: none;
   }
 }
+
+/* ---------- vraies pochettes ---------- */
+
+.cover--real {
+  object-fit: cover;
+  background: #000;
+}
+
+/* Rien ne recouvre une vraie pochette : numéro et pastille passent sous l'image, le reflet holo reste sur le cadre. */
+.card--cover .card__top {
+  display: none;
+}
+
+.card--cover .card__art {
+  z-index: 5;
+}
+
+.card--cover .card__badge,
+.card--cover .card__count {
+  top: 97cqi;
+}
+
+.card--cover .card__rarity .gem {
+  margin-right: 1.4cqi;
+  vertical-align: -0.12em;
+}
+
+.provider-mark {
+  flex: none;
+}
+
+.listen__direct {
+  align-self: flex-start;
+}
+
+.cover-credit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+
+.covers-missing {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--paper-dim);
+}

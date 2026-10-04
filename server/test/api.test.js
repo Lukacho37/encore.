@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 process.env.NODE_ENV = 'test';
 process.env.ADMIN_EMAILS = 'alice@example.com';
 process.env.BLINDTEST_AUDIO = 'off';
+process.env.COVERS = 'off';
 const { createApp } = await import('../app.js');
 const { TRACKS_BY_ALBUM } = await import('../../shared/catalog.js');
 
@@ -117,6 +118,8 @@ test('boosters, doublons, pressage et succès', async () => {
   const av = await call('POST', '/api/profile/avatar', { avatar: 'album:kind-of-blue', color: '#4f9dff' });
   assert.equal(av.body.state.user.avatar, 'album:kind-of-blue');
 
+  // Les boosters sont aléatoires : on s'assure que la carte refusée n'a pas été tirée.
+  db.prepare('DELETE FROM cards WHERE user_id = ? AND track_id = ?').run(uid, 'discovery:01');
   const sc = await call('POST', '/api/profile/showcase', { slots: [album[0].id, 'discovery:01', null] });
   assert.equal(sc.body.state.user.showcase[0], album[0].id);
   assert.equal(sc.body.state.user.showcase[1], null, 'carte non possédée refusée');
@@ -190,6 +193,19 @@ test('outils admin', async () => {
   const player = client();
   await player('POST', '/api/auth/login', { identifier: 'bob', password: 'motdepasse123' });
   assert.equal((await player('GET', '/api/admin/overview')).status, 403);
+
+  // Pochettes : liste publique (même sans compte), état et actualisation réservés à l'admin.
+  const guest = client();
+  const covers = await guest('GET', '/api/covers');
+  assert.equal(covers.status, 200);
+  assert.deepEqual(covers.body, { providers: [], items: {}, tracks: {} });
+  const st = await call('GET', '/api/admin/covers');
+  assert.equal(st.status, 200);
+  assert.equal(st.body.mode, 'off');
+  assert.equal(st.body.total, 34);
+  assert.equal((await call('POST', '/api/admin/covers/refresh')).status, 200);
+  assert.equal((await player('GET', '/api/admin/covers')).status, 403);
+  assert.equal((await player('POST', '/api/admin/covers/refresh')).status, 403);
 });
 
 test('admin réservé à ADMIN_EMAILS : personne d’autre ne peut le devenir', async () => {

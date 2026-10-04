@@ -7,6 +7,7 @@ import { openDb } from './db.js';
 import { createMailer } from './mailer.js';
 import { createServices, HttpError } from './services.js';
 import { createAuth } from './auth.js';
+import { createCovers } from './covers.js';
 import { rateLimit } from './security.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -16,6 +17,7 @@ export function createApp({ dbFile } = {}) {
   const mailer = createMailer(db);
   const services = createServices(db);
   const auth = createAuth(db, mailer, services);
+  const covers = createCovers(db);
 
   const app = express();
   app.disable('x-powered-by');
@@ -40,6 +42,12 @@ export function createApp({ dbFile } = {}) {
 
   app.use('/api', auth.loadUser);
   app.use('/api/auth', auth.router);
+
+  // Pochettes et liens d'écoute : publics, l'écran de connexion en affiche aussi.
+  app.get('/api/covers', (req, res) => {
+    res.set('Cache-Control', 'public, max-age=300');
+    res.json(covers.snapshot());
+  });
 
   const api = express.Router();
   const requireUser = (req, _res, next) => (req.user ? next() : next(new HttpError(401, 'unauthenticated')));
@@ -123,6 +131,11 @@ export function createApp({ dbFile } = {}) {
 
   api.get('/admin/overview', requireAdmin, (req, res) => res.json(services.adminOverview()));
   api.post('/admin/users/:id/grant', requireAdmin, (req, res) => res.json(services.adminGrant(req.params.id, req.body)));
+  api.get('/admin/covers', requireAdmin, (req, res) => res.json(covers.status()));
+  api.post('/admin/covers/refresh', requireAdmin, (req, res) => {
+    covers.refresh();
+    res.json(covers.status());
+  });
   api.get('/admin/reviews', requireAdmin, (req, res) => res.json(services.adminReviews()));
   api.delete('/admin/reviews/:userId/:type/:id', requireAdmin, (req, res) => {
     services.adminDeleteReview(req.params.userId, req.params.type, req.params.id);
@@ -166,5 +179,5 @@ export function createApp({ dbFile } = {}) {
     res.status(500).json({ error: 'server_error' });
   });
 
-  return { app, db, services };
+  return { app, db, services, covers };
 }

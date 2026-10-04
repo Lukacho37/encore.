@@ -283,7 +283,7 @@ export default function PackOpening({ promise, count = 1, onClose, onAgain }) {
             {leaving !== null && leaving !== index && cards[leaving] && (
               <span className="reveal-card reveal-card--leaving" key={`l${leaving}`}>
                 <span className="flip flip--done">
-                  <span className="flip__front"><Card trackId={cards[leaving].trackId} variant={cards[leaving].variant} /></span>
+                  <span className="flip__front"><Card trackId={cards[leaving].trackId} variant={cards[leaving].variant} artSizes="300px" /></span>
                 </span>
               </span>
             )}
@@ -292,7 +292,7 @@ export default function PackOpening({ promise, count = 1, onClose, onAgain }) {
               <span className={`flip${flipped ? ' flip--done' : ''}`}>
                 <span className="flip__back"><CardBack rarity={current.rarity} /></span>
                 <span className="flip__front">
-                  <Card trackId={current.trackId} variant={current.variant} tilt />
+                  <Card trackId={current.trackId} variant={current.variant} tilt artSizes="300px" />
                 </span>
               </span>
               {flipped && (

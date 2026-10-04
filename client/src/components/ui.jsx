@@ -233,6 +233,19 @@ export function Logo({ className = '' }) {
   );
 }
 
+/** Logo de la plateforme qui fournit la pochette et le lien d'écoute. */
+export function ProviderMark({ provider, size = 16 }) {
+  if (provider === 'spotify') {
+    return (
+      <svg className="provider-mark" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="12" fill="#1ED760" />
+        <path d="M6 9.4c3.9-1.2 8.4-.9 11.8 1.1M6.9 12.7c3.2-.9 6.8-.6 9.5.9M7.7 15.8c2.5-.6 5.1-.4 7.2.7" fill="none" stroke="#000" strokeWidth="1.7" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  return <Icon name="disc" size={size} />;
+}
+
 export function Spinner() {
   return <span className="spinner" aria-hidden="true" />;
 }

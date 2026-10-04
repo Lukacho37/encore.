@@ -3,6 +3,7 @@ import CoverArt from './CoverArt.jsx';
 import { TRACK_BY_ID, ARTIST_BY_ID, artFor, catalogCode } from '@shared/catalog.js';
 import { RARITY } from '@shared/rules.js';
 import { useI18n } from '../i18n/index.jsx';
+import { useCovers } from '../state/CoversContext.jsx';
 
 const pad = (n) => String(n).padStart(2, '0');
 
@@ -74,20 +75,24 @@ export function useTilt(strength = 14) {
   return { ref, onPointerMove, onPointerLeave };
 }
 
-function Card({ trackId, variant = 'std', count = 0, ghost = false, badge, badgeTone, onClick, className = '', tilt = false, children }) {
+function Card({ trackId, variant = 'std', count = 0, ghost = false, badge, badgeTone, onClick, className = '', tilt = false, artSizes, children }) {
   const { t } = useI18n();
+  const covers = useCovers();
   const track = TRACK_BY_ID[trackId];
   const tiltProps = useTilt();
   if (!track) return null;
   const artist = ARTIST_BY_ID[track.artistId];
   const holo = variant === 'holo' && !ghost;
+  const art = artFor(track);
+  // Une carte non obtenue garde le visuel généré : la vraie pochette se révèle quand on l'obtient.
+  const realCover = !ghost && !!covers.items[art.seed];
   const Tag = onClick ? 'button' : 'div';
   const number = track.kind === 'promo' ? `P${pad(track.n)}` : `${pad(track.n)}/${pad(track.total)}`;
 
   return (
     <Tag
       type={onClick ? 'button' : undefined}
-      className={`card card--${track.rarity}${holo ? ' card--holo' : ''}${ghost ? ' card--ghost' : ''}${tilt ? ' card--tilt' : ''} ${className}`}
+      className={`card card--${track.rarity}${holo ? ' card--holo' : ''}${ghost ? ' card--ghost' : ''}${realCover ? ' card--cover' : ''}${tilt ? ' card--tilt' : ''} ${className}`}
       style={{ '--rc': RARITY[track.rarity].color }}
       onClick={onClick}
       aria-label={`${track.title} · ${artist.name} · ${t(`rarity.${track.rarity}`)}${holo ? ` · ${t('card.holo')}` : ''}`}
@@ -99,7 +104,7 @@ function Card({ trackId, variant = 'std', count = 0, ghost = false, badge, badge
           <Pips rarity={track.rarity} />
         </span>
         <span className="card__art">
-          <CoverArt art={artFor(track)} />
+          <CoverArt art={art} generated={ghost} sizes={artSizes} />
           {ghost && <span className="card__ghost-mark">?</span>}
         </span>
         <span className="card__body">
@@ -110,14 +115,14 @@ function Card({ trackId, variant = 'std', count = 0, ghost = false, badge, badge
           </span>
         </span>
         <span className="card__foot">
-          <span className="card__rarity">{t(`rarity.${track.rarity}`)}</span>
+          <span className="card__rarity">{realCover && <RarityGem rarity={track.rarity} size={9} />}{t(`rarity.${track.rarity}`)}</span>
           {track.pop != null
             ? <span className="card__pop" title={`${t('card.popularity')} ${track.pop}/100`}><PopIcon />{track.pop}</span>
             : <span className="card__code">{catalogCode(track)}</span>}
         </span>
       </span>
       {holo && <span className="card__holo" aria-hidden="true" />}
-      {track.kind === 'promo' && !ghost && <span className="card__ribbon" aria-hidden="true">PROMO</span>}
+      {track.kind === 'promo' && !ghost && !realCover && <span className="card__ribbon" aria-hidden="true">PROMO</span>}
       {badge && <span className={`card__badge${badgeTone ? ` card__badge--${badgeTone}` : ''}`}>{badge}</span>}
       {count > 1 && <span className="card__count">×{count}</span>}
       {children}

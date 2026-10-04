@@ -398,7 +398,11 @@ function requireAdmin() {
 
 // ---------- routes ----------
 
+// La démo est coupée d'Internet : pas de vraies pochettes, les visuels générés restent affichés.
+const coverStatus = () => ({ mode: 'off', providers: [], spotifyKeys: false, total: 34, found: 0, missing: [], running: false, lastRun: null, lastError: null, demo: true });
+
 const routes = [
+  ['GET', /^\/covers$/, () => ({ providers: [], items: {}, tracks: {} })],
   ['GET', /^\/auth\/username-available$/, ({ query }) => {
     const u = query.get('u') || '';
     const error = validateUsername(u);
@@ -793,6 +797,14 @@ const routes = [
     for (const a of Object.keys(ALBUM_BY_ID)) ach[`album:${a}`] ||= now;
     for (const a of Object.keys(ARTIST_BY_ID)) ach[`artist:${a}`] ||= now;
     return { state: state() };
+  }],
+  ['GET', /^\/admin\/covers$/, () => {
+    requireAdmin();
+    return coverStatus();
+  }],
+  ['POST', /^\/admin\/covers\/refresh$/, () => {
+    requireAdmin();
+    return coverStatus();
   }],
   ['POST', /^\/admin\/me\/almost$/, ({ body }) => {
     const u = requireAdmin();

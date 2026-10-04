@@ -36,3 +36,9 @@ services:
         sync: false
       - key: BLINDTEST_AUDIO # "off" : les conditions d'Apple interdisent les extraits iTunes dans un jeu
         value: "off"
+      - key: COVERS # "auto" : Spotify si les clés ci-dessous sont renseignées, sinon Deezer ; "off" pour tout couper
+        value: auto
+      - key: SPOTIFY_CLIENT_ID # facultatif, voir DEPLOIEMENT.md
+        sync: false
+      - key: SPOTIFY_CLIENT_SECRET
+        sync: false

@@ -6,6 +6,7 @@ import { Avatar, Icon, Logo, Modal, Royalties, formatDuration, useNow, Spinner, 
 import { ScaleSwitch } from './components/Rating.jsx';
 import { post } from './api.js';
 import { sound } from './sound.js';
+import { PROVIDER_NAMES, useCovers } from './state/CoversContext.jsx';
 import Home from './pages/Home.jsx';
 import Collection from './pages/Collection.jsx';
 import AlbumPage from './pages/AlbumPage.jsx';
@@ -223,10 +224,12 @@ function ScrollToTop() {
 
 function Footer() {
   const { t } = useI18n();
+  const covers = useCovers();
+  const sources = [...new Set(Object.values(covers.items).map((c) => PROVIDER_NAMES[c.provider]).filter(Boolean))];
   return (
     <footer className="footer">
       <Logo className="logo--sm" />
-      <p>{t('footer.legal')}</p>
+      <p>{sources.length ? t('footer.legalCovers', { p: sources.join(' / ') }) : t('footer.legal')}</p>
       {__DEMO__ && <p className="footer__demo">{t('common.demoNote')}</p>}
     </footer>
   );

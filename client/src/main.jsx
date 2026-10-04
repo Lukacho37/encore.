@@ -7,6 +7,7 @@ import { GameProvider } from './state/GameContext.jsx';
 import { ToastProvider } from './components/ui.jsx';
 import { CardModalProvider } from './components/CardModal.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
+import { CoversProvider } from './state/CoversContext.jsx';
 import './styles/app.css';
 
 // La démo tourne dans un cadre isolé : on garde la navigation en mémoire.
@@ -17,13 +18,15 @@ createRoot(document.getElementById('root')).render(
     <ErrorBoundary>
       <Router>
         <I18nProvider>
-          <GameProvider>
-            <ToastProvider>
-              <CardModalProvider>
-                <App />
-              </CardModalProvider>
-            </ToastProvider>
-          </GameProvider>
+          <CoversProvider>
+            <GameProvider>
+              <ToastProvider>
+                <CardModalProvider>
+                  <App />
+                </CardModalProvider>
+              </ToastProvider>
+            </GameProvider>
+          </CoversProvider>
         </I18nProvider>
       </Router>
     </ErrorBoundary>

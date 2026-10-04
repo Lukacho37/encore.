@@ -10,18 +10,49 @@ import { RARITIES, RARITY } from '@shared/rules.js';
 
 const pct = (x) => `${(x * 100).toFixed(x < 0.1 ? 1 : 0)} %`;
 
+const PROVIDERS = { spotify: 'Spotify', deezer: 'Deezer' };
+
+/** État des vraies pochettes : source, nombre trouvé, albums introuvables, actualisation. */
+function CoversPanel({ status, onRefresh }) {
+  const { t, date } = useI18n();
+  const source = status.providers.map((p) => PROVIDERS[p]).join(' → ');
+  return (
+    <section className="panel">
+      <h2 className="panel__title">{t('admin.covers')}</h2>
+      {status.demo ? <p className="small muted">{t('admin.coversDemo')}</p>
+        : !status.providers.length ? <p className="small">{t('admin.coversOff')}</p>
+          : <p className="mono small">{t('admin.coversStatus', { found: status.found, total: status.total, p: source })}{status.lastRun ? ` · ${date(status.lastRun)}` : ''}</p>}
+      {!status.demo && status.providers.length > 0 && !status.spotifyKeys && <p className="small muted">{t('admin.coversSpotifyHint')}</p>}
+      {status.missing.length > 0 && status.providers.length > 0 && (
+        <details className="small">
+          <summary>{t('admin.coversMissing', { n: status.missing.length })}</summary>
+          <ul className="covers-missing">{status.missing.map((m) => <li key={m.key}>{m.artist} · {m.title}</li>)}</ul>
+        </details>
+      )}
+      {status.lastError && <p className="small muted mono">{t('admin.coversError', { e: status.lastError })}</p>}
+      {!status.demo && status.providers.length > 0 && (
+        <button type="button" className="btn btn--ghost btn--sm" onClick={onRefresh} disabled={status.running}>
+          {status.running ? t('admin.coversRunning') : t('admin.coversRefresh')}
+        </button>
+      )}
+    </section>
+  );
+}
+
 export default function Admin() {
   const { t, error, date, num } = useI18n();
   const { isAdmin, applyState } = useGame();
   const toast = useToast();
   const [data, setData] = useState(null);
   const [reviews, setReviews] = useState(null);
+  const [coverStatus, setCoverStatus] = useState(null);
   const [opening, setOpening] = useState(null);
   const [albumId, setAlbumId] = useState(ALBUMS[0].id);
 
   const load = useCallback(() => {
     get('/admin/overview').then(setData).catch((err) => toast(error(err.code), 'error'));
     get('/admin/reviews').then(setReviews).catch(() => setReviews([]));
+    get('/admin/covers').then(setCoverStatus).catch(() => setCoverStatus(null));
   }, [toast, error]);
   useEffect(() => {
     if (isAdmin) load();
@@ -177,6 +208,15 @@ export default function Admin() {
               </table>
             </div>
           </section>
+
+          {coverStatus && <CoversPanel status={coverStatus} onRefresh={async () => {
+            try {
+              setCoverStatus(await post('/admin/covers/refresh'));
+              toast(t('admin.coversRunning'), 'success');
+            } catch (err) {
+              toast(error(err.code), 'error');
+            }
+          }} />}
 
           <section className="panel">
             <h2 className="panel__title">{t('admin.settings')}</h2>

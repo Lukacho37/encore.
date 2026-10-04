@@ -80,6 +80,7 @@ export const sound = {
     muted = value;
     storage.set('albummania.muted', value ? '1' : '0');
     if (muted && ctx) ctx.suspend();
+    if (!muted && ctx?.state === 'suspended') ctx.resume();
     listeners.forEach((fn) => fn(muted));
   },
   subscribe(fn) {
@@ -205,6 +206,8 @@ export const sound = {
         hum.start();
         nodes = [src, hum];
         timer = setInterval(() => {
+          // Son coupé : on ne programme rien (sinon tout se rejouerait d'un coup à la reprise).
+          if (muted || c.state !== 'running') return;
           if (Math.random() < 0.7) noise(c, { dur: 0.012 + Math.random() * 0.02, gain: 0.05 + Math.random() * 0.12, from: 6000, to: 2000, q: 1, type: 'highpass' });
         }, 140);
       },

@@ -439,8 +439,11 @@ export function rarityFromPop(pop) {
   return POP_TIERS.find((tier) => pop >= tier.min).rarity;
 }
 
-export const ARTIST_BY_ID = Object.fromEntries(ARTISTS.map((a) => [a.id, a]));
-export const ALBUM_BY_ID = Object.fromEntries(ALBUMS.map((a, i) => [a.id, { ...a, catalog: i + 1 }]));
+// Dictionnaires sans prototype : un identifiant comme « constructor » ou « __proto__ » n'y existe jamais.
+const dict = (entries = []) => Object.assign(Object.create(null), Object.fromEntries(entries));
+
+export const ARTIST_BY_ID = dict(ARTISTS.map((a) => [a.id, a]));
+export const ALBUM_BY_ID = dict(ALBUMS.map((a, i) => [a.id, { ...a, catalog: i + 1 }]));
 
 const pad = (n) => String(n).padStart(2, '0');
 
@@ -485,18 +488,18 @@ PROMOS.forEach((p, i) => {
   });
 });
 
-export const TRACK_BY_ID = Object.fromEntries(TRACKS.map((t) => [t.id, t]));
+export const TRACK_BY_ID = dict(TRACKS.map((t) => [t.id, t]));
 
-export const TRACKS_BY_ALBUM = {};
+export const TRACKS_BY_ALBUM = dict();
 for (const t of TRACKS) if (t.albumId) (TRACKS_BY_ALBUM[t.albumId] ||= []).push(t);
 
 export const PROMO_TRACKS = TRACKS.filter((t) => t.kind === 'promo');
 
-export const ALBUMS_BY_ARTIST = {};
+export const ALBUMS_BY_ARTIST = dict();
 for (const a of ALBUMS) (ALBUMS_BY_ARTIST[a.artist] ||= []).push(a);
 
 /** Cartes nécessaires pour maîtriser un artiste : tous ses albums + ses promos. */
-export const TRACKS_BY_ARTIST = {};
+export const TRACKS_BY_ARTIST = dict();
 for (const t of TRACKS) (TRACKS_BY_ARTIST[t.artistId] ||= []).push(t);
 
 export function decadeOf(year) {

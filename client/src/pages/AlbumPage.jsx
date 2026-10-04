@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router';
 import { useGame } from '../state/GameContext.jsx';
 import { useI18n } from '../i18n/index.jsx';
@@ -87,19 +87,24 @@ export function TrackGrid({ tracks, onPress }) {
 }
 
 /** Tracklist façon fiche d'album : rareté, carte possédée, moyenne et ta note pour chaque morceau. */
-function Tracklist({ tracks, trackRatings, onRated, onPress }) {
+function Tracklist({ tracks, trackRatings, onPress }) {
   const { t, error } = useI18n();
   const { owned, ratings, isAdmin, applyState } = useGame();
   const openCard = useCardModal();
   const toast = useToast();
-  const rateTrack = async (trackId, score) => {
-    try {
-      const res = await api('PUT', `/ratings/track/${encodeURIComponent(trackId)}`, { score });
-      applyState(res.state);
-      onRated();
-    } catch (err) {
-      toast(error(err.code), 'error');
-    }
+  const timers = useRef({});
+  useEffect(() => () => Object.values(timers.current).forEach(clearTimeout), []);
+  // Petite attente avant l'envoi : plusieurs appuis rapides ne font qu'une seule requête.
+  const rateTrack = (trackId, score) => {
+    clearTimeout(timers.current[trackId]);
+    timers.current[trackId] = setTimeout(async () => {
+      try {
+        const res = await api('PUT', `/ratings/track/${encodeURIComponent(trackId)}`, { score });
+        applyState(res.state);
+      } catch (err) {
+        toast(error(err.code), 'error');
+      }
+    }, 350);
   };
   return (
     <div className="table-wrap tracklist-wrap">
@@ -139,7 +144,7 @@ function Tracklist({ tracks, trackRatings, onRated, onPress }) {
                   ) : null}
                 </td>
                 <td>{community?.count ? <span className="tracklist__avg"><RatingValue value={community.average} average size={11} /> <span className="muted small mono">({community.count})</span></span> : <span className="muted">·</span>}</td>
-                <td><RatingInput value={ratings.get(`track:${tr.id}`) ?? null} onChange={(v) => rateTrack(tr.id, v)} size={15} compact /></td>
+                <td><RatingInput value={ratings.get(`track:${tr.id}`) ?? null} onChange={(v) => rateTrack(tr.id, v)} size={15} compact label={`${t('rating.yours')} · ${tr.title}`} /></td>
               </tr>
             );
           })}
@@ -199,13 +204,26 @@ function AlbumRatings({ albumId, ratingsApi }) {
 export default function AlbumPage() {
   const { id } = useParams();
   const { t, date } = useI18n();
-  const { stats, achievements, owned } = useGame();
+  const { stats, achievements, owned, ratings } = useGame();
   const [pressing, setPressing] = useState(null);
   const [celebrate, setCelebrate] = useState([]);
   const [view, setView] = useState(() => storage.get('albummania.albumView') || 'cards');
   const [turntable, setTurntable] = useState(null);
   const album = ALBUM_BY_ID[id];
   const ratingsApi = useItemRatings('album', album ? id : 'discovery');
+  // Quand une de mes notes de morceau change (tracklist ou fiche carte), on recharge les moyennes.
+  const trackSignature = useMemo(
+    () => (album ? TRACKS_BY_ALBUM[id].map((tr) => ratings.get(`track:${tr.id}`) ?? '-').join(',') : ''),
+    [ratings, album, id],
+  );
+  const firstSignature = useRef(trackSignature);
+  const { reload } = ratingsApi;
+  useEffect(() => {
+    if (trackSignature !== firstSignature.current) {
+      firstSignature.current = trackSignature;
+      reload();
+    }
+  }, [trackSignature, reload]);
   if (!album) return <Navigate to="/collection" replace />;
   const artist = ARTIST_BY_ID[album.artist];
   const tracks = TRACKS_BY_ALBUM[id];
@@ -218,8 +236,6 @@ export default function AlbumPage() {
     setView(v);
     storage.set('albummania.albumView', v);
   };
-  // Après une note de morceau, on recharge les moyennes de la tracklist.
-  const reloadRatings = ratingsApi.reload;
 
   return (
     <div className="album-page" style={{ '--album-c0': album.art.palette[0], '--album-c1': album.art.palette[1] }}>
@@ -273,7 +289,7 @@ export default function AlbumPage() {
 
       {view === 'cards'
         ? <TrackGrid tracks={tracks} onPress={setPressing} />
-        : <Tracklist tracks={tracks} trackRatings={ratingsApi.data?.tracks} onRated={reloadRatings} onPress={setPressing} />}
+        : <Tracklist tracks={tracks} trackRatings={ratingsApi.data?.tracks} onPress={setPressing} />}
 
       <AlbumRatings albumId={id} ratingsApi={ratingsApi} />
 

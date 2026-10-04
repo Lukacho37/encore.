@@ -3,6 +3,8 @@ import { Link, NavLink, useParams } from 'react-router';
 import { useGame } from '../state/GameContext.jsx';
 import { useI18n } from '../i18n/index.jsx';
 import { AlbumTile } from './Home.jsx';
+import { PressDialog, TrackGrid } from './AlbumPage.jsx';
+import { Celebration } from '../components/Achievements.jsx';
 import Card from '../components/Card.jsx';
 import CoverArt from '../components/CoverArt.jsx';
 import { useCardModal } from '../components/CardModal.jsx';
@@ -61,6 +63,8 @@ export default function Collection() {
   const { stats, owned, achievements } = useGame();
   const openCard = useCardModal();
   const [genre, setGenre] = useState('all');
+  const [pressing, setPressing] = useState(null);
+  const [celebrate, setCelebrate] = useState([]);
   const [sort, setSort] = useState('progress');
 
   const albums = useMemo(() => {
@@ -152,15 +156,9 @@ export default function Collection() {
       {tab === 'promos' && (
         <>
           <p className="intro">{t('collection.promoIntro')}</p>
-          <div className="card-grid">
-            {PROMO_TRACKS.map((tr) => {
-              const mine = owned.get(tr.id);
-              return (
-                <Card key={tr.id} trackId={tr.id} variant={mine?.holo ? 'holo' : 'std'} ghost={!mine}
-                  count={mine ? mine.std + mine.holo : 0} onClick={() => openCard(tr.id)} />
-              );
-            })}
-          </div>
+          <TrackGrid tracks={PROMO_TRACKS} onPress={setPressing} />
+          <PressDialog trackId={pressing} onClose={() => setPressing(null)} onDone={(res) => setCelebrate(res.achievements || [])} />
+          <Celebration achievements={celebrate} onClose={() => setCelebrate([])} />
         </>
       )}
 

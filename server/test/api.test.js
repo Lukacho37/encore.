@@ -12,16 +12,22 @@ const server = app.listen(0);
 const base = `http://localhost:${server.address().port}`;
 test.after(() => server.close());
 
+/** Petit navigateur de test : garde tous les cookies reçus (session, inscription). */
 function client() {
-  let cookie = '';
+  const jar = new Map();
   return async function call(method, path, body) {
+    const cookie = [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
     const res = await fetch(base + path, {
       method,
       headers: { 'Content-Type': 'application/json', 'X-AlbumMania': '1', ...(cookie ? { Cookie: cookie } : {}) },
       body: body ? JSON.stringify(body) : undefined,
     });
-    const set = res.headers.get('set-cookie');
-    if (set) cookie = set.split(';')[0];
+    for (const line of res.headers.getSetCookie()) {
+      const [pair, ...attrs] = line.split(';');
+      const [k, v] = pair.split('=');
+      if (attrs.some((a) => a.trim() === 'Max-Age=0')) jar.delete(k.trim());
+      else jar.set(k.trim(), v);
+    }
     return { status: res.status, body: await res.json() };
   };
 }
@@ -41,7 +47,6 @@ test('inscription, vérification e-mail et connexion', async () => {
   const call = client();
   const r = await call('POST', '/api/auth/signup', { email: 'Alice@Example.com', username: 'alice', password: 'motdepasse123' });
   assert.equal(r.status, 201);
-  assert.equal((await call('POST', '/api/auth/signup', { email: 'alice@example.com', username: 'alice2', password: 'motdepasse123' })).body.error, 'email_taken');
   assert.equal((await call('POST', '/api/auth/signup', { email: 'x@example.com', username: 'ALICE', password: 'motdepasse123' })).body.error, 'username_taken');
   assert.equal((await call('POST', '/api/auth/signup', { email: 'y@example.com', username: 'a b', password: 'motdepasse123' })).body.error, 'username_format');
   assert.equal((await call('POST', '/api/auth/signup', { email: 'z@example.com', username: 'zed', password: 'court' })).body.error, 'password_short');
@@ -56,6 +61,7 @@ test('inscription, vérification e-mail et connexion', async () => {
   assert.equal(v.body.user.username, 'alice');
   assert.equal(v.body.user.role, 'admin', 'adresse listée dans ADMIN_EMAILS = admin');
   assert.equal(v.body.packs.bonus, 5);
+  assert.equal((await call('POST', '/api/auth/signup', { email: 'alice@example.com', username: 'alice2', password: 'motdepasse123' })).body.error, 'email_taken');
 
   assert.equal((await call('GET', '/api/state')).status, 200);
   await call('POST', '/api/auth/logout');
@@ -276,4 +282,62 @@ test('notes et critiques', async () => {
   assert.equal(after.status, 200);
   assert.ok(!after.body.some((x) => x.user.username === 'carla' && x.id === 'discovery'));
   assert.equal((await b('GET', '/api/admin/reviews')).status, 403);
+});
+
+test('adresse réservée par quelqu’un d’autre : le vrai propriétaire la récupère, l’imposteur ne devient jamais admin', async () => {
+  const attacker = client();
+  const owner = client();
+  // L'imposteur crée un compte avec l'adresse admin et son propre mot de passe.
+  assert.equal((await attacker('POST', '/api/auth/signup', { email: 'alice2@example.com', username: 'imposteur', password: 'piratepirate' })).status, 201);
+  const attackerToken = tokenFrom(lastLink('alice2@example.com'));
+  // Le propriétaire clique sur ce lien depuis son propre navigateur : sans le mot de passe, rien ne se passe.
+  const noPw = await owner('POST', '/api/auth/verify', { token: attackerToken });
+  assert.equal(noPw.status, 401);
+  assert.equal(noPw.body.error, 'password_required');
+  assert.equal((await owner('POST', '/api/auth/verify', { token: attackerToken, password: 'motdepasse123' })).body.error, 'invalid_credentials');
+  // Le propriétaire peut quand même s'inscrire avec son adresse : le compte inachevé est remplacé.
+  const reg = await owner('POST', '/api/auth/signup', { email: 'alice2@example.com', username: 'alice2', password: 'motdepasse123' });
+  assert.equal(reg.status, 201, JSON.stringify(reg.body));
+  assert.equal((await attacker('POST', '/api/auth/verify', { token: attackerToken, password: 'piratepirate' })).body.error, 'invalid_token');
+  assert.equal((await attacker('POST', '/api/auth/login', { identifier: 'imposteur', password: 'piratepirate' })).status, 401);
+  const ok = await owner('POST', '/api/auth/verify', { token: tokenFrom(lastLink('alice2@example.com')) });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.body.user.username, 'alice2');
+  // Une adresse vérifiée, elle, ne peut plus être reprise.
+  assert.equal((await attacker('POST', '/api/auth/signup', { email: 'alice2@example.com', username: 'encoreuntest', password: 'piratepirate' })).body.error, 'email_taken');
+});
+
+test('vérifier depuis un autre appareil demande le mot de passe', async () => {
+  const laptop = client();
+  const phone = client();
+  await laptop('POST', '/api/auth/signup', { email: 'zoe@example.com', username: 'zoe', password: 'motdepasse123' });
+  const token = tokenFrom(lastLink('zoe@example.com'));
+  assert.equal((await phone('POST', '/api/auth/verify', { token })).body.error, 'password_required');
+  const ok = await phone('POST', '/api/auth/verify', { token, password: 'motdepasse123' });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.body.user.username, 'zoe');
+});
+
+test('identifiants piégés (constructor, __proto__) refusés partout', async () => {
+  const call = client();
+  await call('POST', '/api/auth/login', { identifier: 'carla', password: 'motdepasse123' });
+  for (const path of ['/api/ratings/album/constructor', '/api/ratings/album/__proto__', '/api/ratings/track/toString', '/api/ratings/track/hasOwnProperty']) {
+    assert.equal((await call('PUT', path, { score: 3, review: 'x' })).body.error, 'unknown_item', path);
+  }
+  assert.equal((await call('POST', '/api/collection/press', { trackId: 'constructor' })).body.error, 'unknown_track');
+  assert.equal((await call('POST', '/api/profile/avatar', { avatar: 'album:constructor' })).body.error, 'invalid_avatar');
+  assert.equal((await call('GET', '/api/users/carla/ratings')).status, 200);
+});
+
+test('modération : supprimer une critique garde la note', async () => {
+  const author = client();
+  const admin = client();
+  await author('POST', '/api/auth/login', { identifier: 'dan', password: 'motdepasse123' });
+  await author('PUT', '/api/ratings/album/thriller', { score: 7, review: 'Texte à modérer' });
+  await admin('POST', '/api/auth/login', { identifier: 'alice', password: 'motdepasse123' });
+  const target = (await admin('GET', '/api/admin/reviews')).body.find((r) => r.id === 'thriller' && r.user.username === 'dan');
+  assert.equal((await admin('DELETE', `/api/admin/reviews/${target.user.id}/album/thriller`)).status, 200);
+  const mine = (await author('GET', '/api/ratings/album/thriller')).body.mine;
+  assert.equal(mine.score, 7);
+  assert.equal(mine.review, null);
 });

@@ -289,7 +289,14 @@ export function Verify() {
   const navigate = useNavigate();
   const toast = useToast();
   const token = params.get('token');
-  const state = useTokenAction('/auth/verify', token);
+  const first = useTokenAction('/auth/verify', token);
+  const [withPassword, setWithPassword] = useState(null);
+  const [password, setPassword] = useState('');
+  const [pwError, setPwError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const state = withPassword || first;
+  // Lien ouvert sur un autre appareil que celui de l'inscription : le serveur demande le mot de passe.
+  const needsPassword = first.status === 'error' && first.err?.code === 'password_required' && state.status !== 'ok';
 
   useEffect(() => {
     if (state.status !== 'ok') return;
@@ -301,10 +308,36 @@ export function Verify() {
     navigate('/', { replace: true });
   }, [state, token, applyState, navigate, toast, t]);
 
+  const submitPassword = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setPwError(null);
+    try {
+      setWithPassword({ status: 'ok', res: await post('/auth/verify', { token, password }) });
+    } catch (err) {
+      if (err.code === 'invalid_token') setWithPassword({ status: 'error', err });
+      else setPwError(err.code);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <AuthLayout>
       <div className="auth__form">
-        {state.status === 'loading' || state.status === 'ok' ? (
+        {needsPassword ? (
+          <form className="auth__form" onSubmit={submitPassword}>
+            <h2>{t('auth.verify.passwordTitle')}</h2>
+            <p className="muted">{t('auth.verify.passwordBody')}</p>
+            <FormError code={pwError} />
+            <Field id="verify-pw" label={t('auth.login.password')}>
+              <input id="verify-pw" className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus />
+            </Field>
+            <button type="submit" className="btn btn--primary btn--lg btn--block" disabled={busy || !password}>
+              {busy ? <Spinner /> : t('auth.verify.passwordSubmit')}
+            </button>
+          </form>
+        ) : state.status === 'loading' || state.status === 'ok' ? (
           <p className="auth__loading"><Spinner /> {t('auth.verify.loading')}</p>
         ) : (
           <>

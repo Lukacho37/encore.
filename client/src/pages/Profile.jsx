@@ -187,7 +187,11 @@ function RatingsSection({ username, isSelf, refreshKey }) {
   }, [username, refreshKey]);
   if (!data) return null;
   const s = data.stats;
-  const itemLink = (r) => (r.type === 'album' ? `/album/${r.id}` : `/album/${TRACK_BY_ID[r.id]?.albumId || ''}`);
+  const itemLink = (r) => {
+    if (r.type === 'album') return `/album/${r.id}`;
+    const albumId = TRACK_BY_ID[r.id]?.albumId;
+    return albumId ? `/album/${albumId}` : '/collection/promos';
+  };
   const itemTitle = (r) => (r.type === 'album' ? ALBUM_BY_ID[r.id].title : TRACK_BY_ID[r.id].title);
   const itemArt = (r) => {
     const album = r.type === 'album' ? ALBUM_BY_ID[r.id] : TRACK_BY_ID[r.id].albumId ? ALBUM_BY_ID[TRACK_BY_ID[r.id].albumId] : null;
@@ -296,6 +300,9 @@ export default function Profile() {
   const openCard = useCardModal();
   const toast = useToast();
   const own = useOwnProfile();
+  const { ratings } = useGame();
+  // Change dès qu'une de mes notes change : la section « Notes & critiques » se recharge alors.
+  const ratingsSignature = useMemo(() => [...ratings].map(([k, v]) => `${k}=${v}`).join('|'), [ratings]);
   const isSelf = !username || username.toLowerCase() === user.username.toLowerCase();
   const [other, setOther] = useState(null);
   const [notFound, setNotFound] = useState(false);
@@ -418,7 +425,7 @@ export default function Profile() {
         </div>
       </section>
 
-      <RatingsSection username={profile.username} isSelf={isSelf} refreshKey={isSelf ? user.id : profile.id} />
+      <RatingsSection username={profile.username} isSelf={isSelf} refreshKey={isSelf ? ratingsSignature : profile.id} />
 
       {isSelf && (
         <>

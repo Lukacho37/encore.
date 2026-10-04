@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router';
 import { useGame } from '../state/GameContext.jsx';
 import { useI18n } from '../i18n/index.jsx';
 import { AlbumTile } from './Home.jsx';
 import { ArtistBadge } from './Collection.jsx';
-import { TrackGrid } from './AlbumPage.jsx';
+import { PressDialog, TrackGrid } from './AlbumPage.jsx';
+import { Celebration } from '../components/Achievements.jsx';
 import { Icon, Progress } from '../components/ui.jsx';
 import { ARTIST_BY_ID, ALBUMS_BY_ARTIST, PROMO_TRACKS } from '@shared/catalog.js';
 import { ECONOMY } from '@shared/rules.js';
@@ -12,6 +14,8 @@ export default function ArtistPage() {
   const { id } = useParams();
   const { t, country } = useI18n();
   const { stats, achievements } = useGame();
+  const [pressing, setPressing] = useState(null);
+  const [celebrate, setCelebrate] = useState([]);
   const artist = ARTIST_BY_ID[id];
   if (!artist) return <Navigate to="/collection/artists" replace />;
   const albums = ALBUMS_BY_ARTIST[id] || [];
@@ -50,9 +54,12 @@ export default function ArtistPage() {
       {promos.length > 0 && (
         <section className="section">
           <header className="section__head"><h2>{t('artist.promos')}</h2></header>
-          <TrackGrid tracks={promos} />
+          <TrackGrid tracks={promos} onPress={setPressing} />
         </section>
       )}
+
+      <PressDialog trackId={pressing} onClose={() => setPressing(null)} onDone={(res) => setCelebrate(res.achievements || [])} />
+      <Celebration achievements={celebrate} onClose={() => setCelebrate([])} />
     </div>
   );
 }

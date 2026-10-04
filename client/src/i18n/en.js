@@ -95,6 +95,7 @@ export default {
     invalid_scale: 'Unknown rating scale.',
     review_not_found: 'This review no longer exists.',
     invalid_code: 'Wrong code.',
+    password_required: 'Enter the password you chose at sign-up to confirm this address.',
   },
   auth: {
     demoHint: 'Sign up with any address: the confirmation email shows up right on screen.',
@@ -146,6 +147,9 @@ export default {
       fail: 'This link is no longer valid. It may have expired or already been used.',
       welcome: 'Email confirmed. Welcome to AlbumMania!',
       resendHint: 'Log in to get a new link.',
+      passwordTitle: 'Confirm it’s you',
+      passwordBody: 'This link was opened on a different device from the one you signed up on. Enter the password you chose at sign-up to activate your account.',
+      passwordSubmit: 'Activate my account',
     },
     forgot: {
       title: 'Forgot password',

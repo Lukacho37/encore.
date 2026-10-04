@@ -95,6 +95,7 @@ export default {
     invalid_scale: 'Échelle de notation inconnue.',
     review_not_found: 'Cette critique n’existe plus.',
     invalid_code: 'Code incorrect.',
+    password_required: 'Entre le mot de passe choisi à l’inscription pour confirmer cette adresse.',
   },
   auth: {
     demoHint: 'Crée un compte avec n’importe quelle adresse : l’e-mail de confirmation s’affiche directement à l’écran.',
@@ -146,6 +147,9 @@ export default {
       fail: 'Ce lien n’est plus valide. Il a peut-être expiré ou déjà servi.',
       welcome: 'Adresse confirmée. Bienvenue sur AlbumMania !',
       resendHint: 'Connecte-toi pour recevoir un nouveau lien.',
+      passwordTitle: 'Confirme que c’est bien toi',
+      passwordBody: 'Ce lien a été ouvert sur un autre appareil que celui de ton inscription. Entre le mot de passe choisi à l’inscription pour activer ton compte.',
+      passwordSubmit: 'Activer mon compte',
     },
     forgot: {
       title: 'Mot de passe oublié',

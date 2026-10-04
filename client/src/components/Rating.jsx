@@ -57,13 +57,13 @@ export function RatingValue({ value, average = false, size = 15, className = '' 
   const label = ratingScale === 'points' ? t('rating.pointsAria', { v: fmt.format(value) }) : t('rating.starsAria', { v: fmt.format(value / 2), n: value / 2 });
   if (ratingScale === 'points') {
     return (
-      <span className={`rating-value rating-value--points ${className}`} aria-label={label} title={label}>
+      <span className={`rating-value rating-value--points ${className}`} role="img" aria-label={label} title={label}>
         <b className="mono">{fmt.format(value)}</b><span>/10</span>
       </span>
     );
   }
   return (
-    <span className={`rating-value ${className}`} aria-label={label} title={label}>
+    <span className={`rating-value ${className}`} role="img" aria-label={label} title={label}>
       <Stars value={value} size={size} />
       {average && <b className="mono">{fmt.format(value / 2)}</b>}
     </span>
@@ -71,20 +71,29 @@ export function RatingValue({ value, average = false, size = 15, className = '' 
 }
 
 /** Saisie d'une note : étoiles (demi-étoiles) ou boutons 0 à 10. `value` null = pas encore noté. */
-export function RatingInput({ value, onChange, size = 30, disabled = false, compact = false }) {
+export function RatingInput({ value, onChange, size = 30, disabled = false, compact = false, label }) {
   const { ratingScale } = useGame();
   const { t, lang } = useI18n();
   const [hover, setHover] = useState(null);
+  // Valeur locale : plusieurs flèches d'affilée partent de la dernière valeur choisie, pas de celle du serveur.
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
   const half = (v) => new Intl.NumberFormat(lang).format(v / 2);
   const ref = useRef(null);
+  const name = label || t('rating.yours');
+  const change = (v) => {
+    if (disabled) return;
+    setDraft(v);
+    onChange(v);
+  };
 
   if (ratingScale === 'points') {
     return (
-      <div className={`points-input${compact ? ' points-input--compact' : ''}`} role="radiogroup" aria-label={t('rating.yours')}>
+      <div className={`points-input${compact ? ' points-input--compact' : ''}`} role="radiogroup" aria-label={name}>
         {Array.from({ length: 11 }, (_, v) => (
-          <button key={v} type="button" role="radio" aria-checked={value === v} disabled={disabled}
-            className={`points-input__btn${value === v ? ' is-on' : ''}${value != null && v < value ? ' is-below' : ''}`}
-            onClick={() => onChange(v)}>{v}</button>
+          <button key={v} type="button" role="radio" aria-checked={draft === v} disabled={disabled}
+            className={`points-input__btn${draft === v ? ' is-on' : ''}${draft != null && v < draft ? ' is-below' : ''}`}
+            onClick={() => change(v)}>{v}</button>
         ))}
       </div>
     );
@@ -96,32 +105,33 @@ export function RatingInput({ value, onChange, size = 30, disabled = false, comp
     return Math.max(1, Math.ceil((x / r.width) * 10));
   };
   const onKeyDown = (e) => {
-    const cur = value ?? 0;
+    if (disabled) return;
+    const cur = draft ?? 0;
     const map = { ArrowRight: cur + 1, ArrowUp: cur + 1, ArrowLeft: cur - 1, ArrowDown: cur - 1, Home: 0, End: 10 };
     if (e.key in map) {
       e.preventDefault();
-      onChange(Math.min(10, Math.max(0, map[e.key])));
+      change(Math.min(10, Math.max(0, map[e.key])));
     }
   };
-  const shown = hover ?? value ?? 0;
+  const shown = hover ?? draft ?? 0;
   return (
     <div className={`star-input${compact ? ' star-input--compact' : ''}`}>
       <div
         ref={ref}
-        className={`star-input__stars${value == null && hover == null ? ' is-empty' : ''}`}
+        className={`star-input__stars${draft == null && hover == null ? ' is-empty' : ''}`}
         role="slider" tabIndex={disabled ? -1 : 0}
-        aria-label={t('rating.yours')} aria-valuemin={0} aria-valuemax={10} aria-valuenow={value ?? undefined}
-        aria-valuetext={value == null ? t('rating.none') : t('rating.starsAria', { v: half(value), n: value / 2 })}
+        aria-label={name} aria-valuemin={0} aria-valuemax={10} aria-valuenow={draft ?? undefined}
+        aria-valuetext={draft == null ? t('rating.none') : t('rating.starsAria', { v: half(draft), n: draft / 2 })}
         aria-disabled={disabled}
         onPointerMove={(e) => !disabled && e.pointerType === 'mouse' && setHover(fromPointer(e))}
         onPointerLeave={() => setHover(null)}
-        onClick={(e) => !disabled && onChange(fromPointer(e))}
+        onClick={(e) => change(fromPointer(e))}
         onKeyDown={onKeyDown}
       >
         <Stars value={shown} size={size} />
       </div>
       {!compact && (
-        <button type="button" className={`star-input__zero${value === 0 ? ' is-on' : ''}`} onClick={() => onChange(0)} disabled={disabled} title={t('rating.setZero')}>0</button>
+        <button type="button" className={`star-input__zero${draft === 0 ? ' is-on' : ''}`} onClick={() => change(0)} disabled={disabled} title={t('rating.setZero')}>0</button>
       )}
     </div>
   );
@@ -201,7 +211,7 @@ export function ReviewEditor({ data, save, remove, compact = false }) {
     if (mine?.review) setOpen(true);
   }, [mine?.score, mine?.review]);
 
-  const submit = async (nextScore = score, nextText = text) => {
+  const submit = async (nextScore = score, nextText = text, instant = false) => {
     if (nextScore == null) return toast(t('reviews.pickScore'), 'error');
     setBusy(true);
     try {
@@ -209,6 +219,7 @@ export function ReviewEditor({ data, save, remove, compact = false }) {
       toast(t('rating.saved'), 'success');
     } catch (err) {
       toast(error(err.code), 'error');
+      if (instant) setScore(mine?.score ?? null);
     } finally {
       setBusy(false);
     }
@@ -229,7 +240,7 @@ export function ReviewEditor({ data, save, remove, compact = false }) {
   // En mode compact (modale de carte), une note seule est enregistrée immédiatement.
   const onScore = (v) => {
     setScore(v);
-    if (compact && !open) submit(v, text);
+    if (compact && !open) submit(v, text, true);
   };
 
   const dirty = score !== (mine?.score ?? null) || text.trim() !== (mine?.review || '');

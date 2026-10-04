@@ -120,7 +120,7 @@ export function Modal({ open, onClose, title, children, className = '', labelled
     requestAnimationFrame(() => ref.current?.querySelector('[data-autofocus], button, input')?.focus());
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.classList.remove('no-scroll');
+      if (!document.querySelector('.opening')) document.body.classList.remove('no-scroll');
       prev?.focus?.();
     };
   }, [open, onClose]);

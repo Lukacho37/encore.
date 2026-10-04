@@ -548,12 +548,17 @@ export function createServices(db) {
     const all = q('SELECT user_id, score FROM ratings WHERE item_type = ? AND item_id = ?').all(type, id);
     const mine = q('SELECT score, review, updated_at FROM ratings WHERE user_id = ? AND item_type = ? AND item_id = ?').get(viewerId, type, id);
     const friends = friendIds(viewerId);
-    const rows = q(`${WITH_AUTHOR} WHERE r.item_type = ? AND r.item_id = ? AND r.user_id != ? ORDER BY r.updated_at DESC LIMIT 200`).all(type, id, viewerId);
-    const reviews = rows.filter((r) => r.review)
-      .sort((a, b) => Number(friends.has(b.user_id)) - Number(friends.has(a.user_id)) || b.updated_at - a.updated_at)
-      .slice(0, 30)
+    const ids = [...friends];
+    const inFriends = `r.user_id IN (${ids.map(() => '?').join(',')})`;
+    // Critiques écrites : celles des amis d'abord, puis les plus récentes.
+    const friendsFirst = ids.length ? `CASE WHEN ${inFriends} THEN 1 ELSE 0 END DESC, ` : '';
+    const reviews = q(`${WITH_AUTHOR} WHERE r.item_type = ? AND r.item_id = ? AND r.user_id != ? AND r.review IS NOT NULL
+      ORDER BY ${friendsFirst}r.updated_at DESC LIMIT 30`).all(type, id, viewerId, ...ids)
       .map((r) => ({ user: author(r), score: r.score, review: r.review, updatedAt: r.updated_at, friend: friends.has(r.user_id) }));
-    const friendScores = rows.filter((r) => friends.has(r.user_id)).slice(0, 12).map((r) => ({ user: author(r), score: r.score }));
+    const friendScores = ids.length
+      ? q(`${WITH_AUTHOR} WHERE r.item_type = ? AND r.item_id = ? AND ${inFriends} ORDER BY r.updated_at DESC LIMIT 12`).all(type, id, ...ids)
+        .map((r) => ({ user: author(r), score: r.score }))
+      : [];
     const result = {
       summary: summarize(all.map((r) => r.score)),
       mine: mine ? { score: mine.score, review: mine.review, updatedAt: mine.updated_at } : null,
@@ -630,8 +635,9 @@ export function createServices(db) {
       .map((r) => ({ user: author(r), type: r.item_type, id: r.item_id, score: r.score, review: r.review, updatedAt: r.updated_at }));
   }
 
+  /** Supprime le texte d'une critique ; la note du joueur est conservée. */
   function adminDeleteReview(userId, type, id) {
-    const res = q('DELETE FROM ratings WHERE user_id = ? AND item_type = ? AND item_id = ?').run(Number(userId), type, id);
+    const res = q('UPDATE ratings SET review = NULL WHERE user_id = ? AND item_type = ? AND item_id = ? AND review IS NOT NULL').run(Number(userId), type, id);
     if (!res.changes) throw new HttpError(404, 'review_not_found');
   }
 

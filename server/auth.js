@@ -8,15 +8,18 @@ import { HttpError } from './services.js';
 import { validateEmail, validatePassword, validateUsername } from '../shared/rules.js';
 
 export const COOKIE = 'albummania_sid';
+// Posé à l'inscription : le navigateur qui a créé le compte peut le vérifier sans retaper le mot de passe.
+const SIGNUP_COOKIE = 'albummania_signup';
 
 export function createAuth(db, mailer, services) {
   const q = (sql) => db.prepare(sql);
 
-  function setSessionCookie(res, token, maxAgeMs) {
-    const parts = [`${COOKIE}=${token}`, 'Path=/', 'HttpOnly', 'SameSite=Lax', `Max-Age=${Math.floor(maxAgeMs / 1000)}`];
+  function setCookie(res, name, value, maxAgeMs) {
+    const parts = [`${name}=${value}`, 'Path=/', 'HttpOnly', 'SameSite=Lax', `Max-Age=${Math.floor(maxAgeMs / 1000)}`];
     if (config.isProd) parts.push('Secure');
     res.append('Set-Cookie', parts.join('; '));
   }
+  const setSessionCookie = (res, token, maxAgeMs) => setCookie(res, COOKIE, token, maxAgeMs);
 
   function startSession(res, userId) {
     const token = newToken();
@@ -77,18 +80,25 @@ export function createAuth(db, mailer, services) {
     const lang = req.body.lang === 'en' ? 'en' : 'fr';
     const error = validateEmail(email) || validateUsername(username) || validatePassword(password);
     if (error) throw new HttpError(400, error);
-    if (q('SELECT 1 FROM users WHERE email = ?').get(email)) throw new HttpError(409, 'email_taken');
-    if (q('SELECT 1 FROM users WHERE username = ?').get(username)) throw new HttpError(409, 'username_taken');
+    const existing = q('SELECT id, email_verified_at FROM users WHERE email = ?').get(email);
+    if (existing?.email_verified_at) throw new HttpError(409, 'email_taken');
+    const nameOwner = q('SELECT id FROM users WHERE username = ?').get(username);
+    if (nameOwner && nameOwner.id !== existing?.id) throw new HttpError(409, 'username_taken');
 
     const hash = await hashPassword(password);
     const now = Date.now();
+    const secret = newToken();
     const user = tx(db, () => {
-      const { lastInsertRowid } = q(`INSERT INTO users (email, username, password_hash, role, lang, royalties, bonus_packs, packs, packs_at, created_at, last_mail_at)
-        VALUES (?, ?, ?, 'player', ?, ?, ?, 0, ?, ?, ?)`).run(email, username, hash, lang, services.welcome.royalties, services.welcome.packs, now, now, now);
+      // Une adresse jamais vérifiée ne bloque pas son vrai propriétaire : le compte inachevé est remplacé
+      // (sinon quelqu'un pourrait réserver ton adresse, et donc l'accès admin, avec son propre mot de passe).
+      if (existing) q('DELETE FROM users WHERE id = ? AND email_verified_at IS NULL').run(existing.id);
+      const { lastInsertRowid } = q(`INSERT INTO users (email, username, password_hash, role, lang, royalties, bonus_packs, packs, packs_at, created_at, last_mail_at, signup_secret)
+        VALUES (?, ?, ?, 'player', ?, ?, ?, 0, ?, ?, ?, ?)`).run(email, username, hash, lang, services.welcome.royalties, services.welcome.packs, now, now, now, sha256(secret));
       return services.getUser(Number(lastInsertRowid));
     });
     const token = issueToken(user.id, 'verify', VERIFY_TOKEN_HOURS * 3_600_000);
     await mailer.sendVerification(user, token);
+    setCookie(res, SIGNUP_COOKIE, secret, VERIFY_TOKEN_HOURS * 3_600_000);
     res.status(201).json({ ok: true, email, devMailbox: mailer.devMailbox });
   });
 
@@ -104,12 +114,26 @@ export function createAuth(db, mailer, services) {
     res.json({ ok: true, devMailbox: mailer.devMailbox });
   });
 
-  router.post('/verify', loginLimit, (req, res) => {
-    const userId = consumeToken(req.body.token, 'verify');
-    if (!userId) throw new HttpError(400, 'invalid_token');
-    q('UPDATE users SET email_verified_at = COALESCE(email_verified_at, ?), packs_at = ? WHERE id = ?').run(Date.now(), Date.now(), userId);
-    startSession(res, userId);
-    res.json(services.state(userId));
+  router.post('/verify', loginLimit, async (req, res) => {
+    const { token } = req.body;
+    const row = typeof token === 'string' && token.length >= 20
+      ? q("SELECT * FROM email_tokens WHERE token_hash = ? AND purpose = 'verify'").get(sha256(token))
+      : null;
+    if (!row || row.expires_at < Date.now()) throw new HttpError(400, 'invalid_token');
+    const user = services.getUser(row.user_id);
+    // Le lien prouve qu'on possède la boîte mail ; il faut aussi prouver qu'on a créé le compte :
+    // soit c'est le navigateur de l'inscription, soit on tape le mot de passe choisi à l'inscription.
+    const secret = parseCookies(req.headers.cookie)[SIGNUP_COOKIE];
+    const sameBrowser = !!secret && !!user.signup_secret && sha256(secret) === user.signup_secret;
+    if (!sameBrowser) {
+      if (typeof req.body.password !== 'string' || !req.body.password) throw new HttpError(401, 'password_required');
+      if (!(await verifyPassword(req.body.password, user.password_hash))) throw new HttpError(401, 'invalid_credentials');
+    }
+    q('DELETE FROM email_tokens WHERE token_hash = ?').run(row.token_hash);
+    q('UPDATE users SET email_verified_at = COALESCE(email_verified_at, ?), packs_at = ?, signup_secret = NULL WHERE id = ?').run(Date.now(), Date.now(), user.id);
+    startSession(res, user.id);
+    setCookie(res, SIGNUP_COOKIE, '', 0);
+    res.json(services.state(user.id));
   });
 
   router.post('/login', loginLimit, async (req, res) => {

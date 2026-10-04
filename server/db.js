@@ -126,6 +126,7 @@ CREATE INDEX IF NOT EXISTS idx_ratings_recent ON ratings(updated_at);
 // Colonnes ajoutées après la première version : ajoutées à la volée sur une base existante.
 const MIGRATIONS = [
   ['users', 'rating_scale', "ALTER TABLE users ADD COLUMN rating_scale TEXT NOT NULL DEFAULT 'stars'"],
+  ['users', 'signup_secret', 'ALTER TABLE users ADD COLUMN signup_secret TEXT'],
 ];
 
 export function openDb(file = config.dbFile) {

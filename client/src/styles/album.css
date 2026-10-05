@@ -1,0 +1,219 @@
+/* ---------- zone album : page d'album, page d'artiste, fiche carte, vinyles ---------- */
+/* Ce fichier est chargé avant app.css : les règles qui précisent une classe d'app.css montent d'un cran
+   en spécificité (ex. .album-page .album-head). */
+
+/* ---------- emplacements de chargement ---------- */
+
+.album-skel {
+  display: block;
+  border-radius: 8px;
+  background: linear-gradient(110deg, #1a1522 30%, #2a2233 50%, #1a1522 70%) 0 0 / 300% 100%;
+  animation: album-skel 1.4s linear infinite;
+}
+
+.album-skel--cover {
+  aspect-ratio: 1;
+  width: 100%;
+}
+
+.album-head__cover.album-skel {
+  border-radius: 16px;
+}
+
+.album-skel--line {
+  height: 12px;
+  width: 70%;
+}
+
+.album-skel--short {
+  width: 34%;
+}
+
+.album-skel--title {
+  height: clamp(28px, 4.4vw, 46px);
+  width: min(100%, 420px);
+}
+
+.album-skel--bar {
+  height: 10px;
+  width: min(100%, 460px);
+  border-radius: 999px;
+}
+
+.album-skel--block {
+  height: 84px;
+  width: min(100%, 560px);
+  border-radius: 14px;
+}
+
+.album-skel--badge {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+}
+
+@keyframes album-skel {
+  to {
+    background-position: -150% 0;
+  }
+}
+
+.artist-skel-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.artist-skel-tile .album-skel--cover {
+  border-radius: 12px;
+}
+
+.sides-skel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 6px 0 4px;
+}
+
+.card-detail__info--loading {
+  gap: 14px;
+}
+
+/* Pochette d'un vinyle dont l'album arrive encore du serveur. */
+.vinyl__sleeve--loading {
+  background: linear-gradient(110deg, #1a1522 30%, #2a2233 50%, #1a1522 70%) 0 0 / 300% 100%;
+  animation: album-skel 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .album-skel,
+  .vinyl__sleeve--loading {
+    animation: none;
+  }
+}
+
+/* ---------- album ou artiste introuvable ---------- */
+
+.catalog-missing {
+  text-align: center;
+}
+
+.catalog-missing__title {
+  font-size: clamp(24px, 3.6vw, 34px);
+  color: var(--paper);
+}
+
+.catalog-missing p {
+  max-width: 46ch;
+  margin: 0;
+}
+
+.catalog-missing__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.album-tracks-error {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
+.album-tracks-error p {
+  margin: 0;
+}
+
+/* ---------- booster d'album ---------- */
+
+.album-booster {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px 22px;
+  margin: -12px 0 28px;
+  padding: 14px 20px 14px 16px;
+  border-radius: var(--radius);
+  background:
+    linear-gradient(100deg, color-mix(in oklab, var(--album-c1, #c26bff) 16%, transparent), transparent 60%),
+    var(--stage);
+  border: 1px solid var(--line-soft);
+}
+
+/* Le booster dessiné, en miniature (purement décoratif). */
+.album-booster .album-booster__pack {
+  --pw: 64px;
+  filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.5));
+  transform: rotate(-6deg);
+}
+
+.album-booster__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.album-booster__title {
+  font-size: 18px;
+}
+
+.album-booster__body {
+  margin: 0;
+  color: var(--paper-dim);
+}
+
+.album-booster__hint {
+  margin: 0;
+  color: var(--haze);
+}
+
+.album-booster--blocked .album-booster__hint {
+  color: var(--gold);
+}
+
+.album-booster__btn {
+  white-space: nowrap;
+}
+
+.album-booster__price {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding-left: 10px;
+  border-left: 1px solid rgba(0, 0, 0, 0.25);
+}
+
+/* ---------- page d'artiste ---------- */
+
+.artist-head__counts {
+  margin: -4px 0 0;
+}
+
+.artist-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 22px;
+}
+
+/* ---------- mobile ---------- */
+
+@media (max-width: 700px) {
+  .album-booster {
+    grid-template-columns: auto minmax(0, 1fr);
+    margin-top: -16px;
+    padding: 14px;
+  }
+
+  .album-booster .album-booster__pack {
+    --pw: 52px;
+  }
+
+  .album-booster__btn {
+    grid-column: 1 / -1;
+    justify-content: center;
+    white-space: normal;
+  }
+}

@@ -3,17 +3,19 @@ import { Link } from 'react-router';
 import Card, { RarityGem } from './Card.jsx';
 import { Modal, Icon, Progress, ProviderMark, useToast } from './ui.jsx';
 import { RatingValue, ReviewEditor, useItemRatings } from './Rating.jsx';
-import { TRACK_BY_ID, ARTIST_BY_ID, ALBUM_BY_ID, artFor } from '@shared/catalog.js';
-import { PROVIDER_NAMES, useCovers } from '../state/CoversContext.jsx';
+import { PROVIDER_NAMES, realCover, useCovers } from '../state/CoversContext.jsx';
+import { useAlbum, useTrack } from '../state/catalog.js';
 import { RARITY, SHOWCASE_SLOTS } from '@shared/rules.js';
 import { useI18n } from '../i18n/index.jsx';
 import { useGame } from '../state/GameContext.jsx';
 import { post } from '../api.js';
+import '../styles/album.css';
 
 const CardModalContext = createContext(() => {});
 
+/** Recherche du morceau sur les principales plateformes (le nom de l'artiste vient de la vue de carte). */
 export function listenLinks(track) {
-  const q = encodeURIComponent(`${ARTIST_BY_ID[track.artistId].name} ${track.title.replace(/\*+/g, '')}`);
+  const q = encodeURIComponent(`${track.artist || ''} ${track.title.replace(/\*+/g, '')}`.trim());
   return [
     { name: 'Spotify', href: `https://open.spotify.com/search/${q}` },
     { name: 'Deezer', href: `https://www.deezer.com/search/${q}` },
@@ -22,12 +24,15 @@ export function listenLinks(track) {
   ];
 }
 
-/** Lien direct vers le morceau sur la plateforme qui fournit la pochette, puis les autres plateformes. */
+/**
+ * Lien direct vers le morceau, puis les autres plateformes. Les 20 albums de base passent par /api/covers
+ * (Spotify ou Deezer) ; les morceaux importés portent directement leur lien Deezer (track.url).
+ */
 function ListenBlock({ track, showsCover }) {
   const { t } = useI18n();
   const covers = useCovers();
-  const direct = covers.tracks[track.id];
-  const cover = covers.items[artFor(track).seed];
+  const direct = covers.tracks[track.id] || (track.url ? { url: track.url, provider: 'deezer' } : null);
+  const cover = realCover(track.art, covers);
   const name = direct && PROVIDER_NAMES[direct.provider];
   return (
     <div className="listen">
@@ -44,7 +49,7 @@ function ListenBlock({ track, showsCover }) {
           </a>
         ))}
       </div>
-      {showsCover && cover && <p className="cover-credit small muted">{t('covers.credit', { p: PROVIDER_NAMES[cover.provider] })}</p>}
+      {showsCover && cover && <p className="cover-credit small muted">{t('covers.credit', { p: PROVIDER_NAMES[cover.provider] || cover.provider })}</p>}
     </div>
   );
 }
@@ -66,17 +71,36 @@ function TrackRating({ trackId }) {
   );
 }
 
+/** Fiche en cours de chargement : la carte scintille, quelques lignes vides à côté. */
+function CardDetailSkeleton() {
+  const { t } = useI18n();
+  return (
+    <div className="card-detail" role="status" aria-label={t('common.loading')}>
+      <div className="card-detail__card"><span className="card card--loading" /></div>
+      <div className="card-detail__info card-detail__info--loading">
+        <span className="album-skel album-skel--line album-skel--short" />
+        <span className="album-skel album-skel--title" />
+        <span className="album-skel album-skel--line" />
+        <span className="album-skel album-skel--block" />
+      </div>
+    </div>
+  );
+}
+
 function CardDetail({ trackId, onClose }) {
   const { t, date, error } = useI18n();
   const { owned, user, applyState } = useGame();
   const toast = useToast();
-  const track = TRACK_BY_ID[trackId];
+  const track = useTrack(trackId);
+  // L'album complète la fiche (son titre arrive déjà avec la carte, on l'affiche tout de suite).
+  const album = useAlbum(track?.albumId || null);
+  const [busy, setBusy] = useState(false);
+  if (!track) return <CardDetailSkeleton />;
   const mine = owned?.get(trackId);
-  const artist = ARTIST_BY_ID[track.artistId];
-  const album = track.albumId ? ALBUM_BY_ID[track.albumId] : null;
   const showcase = user?.showcase || [];
   const pinned = showcase.includes(trackId);
-  const [busy, setBusy] = useState(false);
+  const albumTitle = album?.title || track.album;
+  const rarity = RARITY[track.rarity] ? track.rarity : 'common';
 
   const togglePin = async () => {
     let slots = [...showcase];
@@ -105,33 +129,45 @@ function CardDetail({ trackId, onClose }) {
         <Card trackId={trackId} variant={mine?.holo ? 'holo' : 'std'} ghost={!mine} tilt artSizes="300px" />
       </div>
       <div className="card-detail__info">
-        <span className="eyebrow card-detail__rarity" style={{ color: RARITY[track.rarity].color }}><RarityGem rarity={track.rarity} size={13} /> {t(`rarity.${track.rarity}`)}</span>
+        <span className="eyebrow card-detail__rarity" style={{ color: RARITY[rarity].color }}><RarityGem rarity={rarity} size={13} /> {t(`rarity.${rarity}`)}</span>
         <h2 className="card-detail__title">{track.title}</h2>
         <p className="card-detail__artist">
-          <Link to={`/artist/${artist.id}`} onClick={onClose}>{artist.name}</Link>
+          <Link to={`/artist/${encodeURIComponent(track.artistId)}`} onClick={onClose}>{track.artist}</Link>
           {track.feat && <span className="muted"> · {t('card.feat', { names: track.feat })}</span>}
         </p>
         <dl className="facts">
-          {album ? (
+          {track.albumId ? (
             <>
               <dt>{t('card.album')}</dt>
-              <dd><Link to={`/album/${album.id}`} onClick={onClose}>{album.title}</Link></dd>
+              <dd><Link to={`/album/${encodeURIComponent(track.albumId)}`} onClick={onClose}>{albumTitle || '…'}</Link></dd>
               <dt>&nbsp;</dt>
-              <dd className="muted">{t('card.track', { n: track.n, total: track.total })}</dd>
+              <dd className="muted">{t('card.track', { n: track.n, total: track.total || album?.trackCount || '?' })}</dd>
             </>
           ) : (
             <>
               <dt>{t('rarity.promo')}</dt>
-              <dd>{t(`promoKind.${track.promoKind}`)}{track.context ? ` · ${track.context}` : ''} · <span className="mono">P{String(track.n).padStart(2, '0')}</span></dd>
+              <dd>
+                {[track.promoKind ? t(`promoKind.${track.promoKind}`) : null, track.context].filter(Boolean).join(' · ')}
+                {(track.promoKind || track.context) ? ' · ' : ''}
+                <span className="mono">P{String(track.n).padStart(2, '0')}</span>
+              </dd>
             </>
           )}
-          <dt>{t('card.popularity')}</dt>
-          <dd className="pop-line">
-            <Progress value={track.pop} max={100} color={RARITY[track.rarity].color} size="sm" />
-            <span className="mono">{t('card.popularityValue', { v: track.pop })}</span>
-          </dd>
-          <dt>{t('card.year')}</dt>
-          <dd className="mono">{track.year}</dd>
+          {track.pop != null && (
+            <>
+              <dt>{t('card.popularity')}</dt>
+              <dd className="pop-line">
+                <Progress value={track.pop} max={100} color={RARITY[rarity].color} size="sm" />
+                <span className="mono">{t('card.popularityValue', { v: track.pop })}</span>
+              </dd>
+            </>
+          )}
+          {track.year && (
+            <>
+              <dt>{t('card.year')}</dt>
+              <dd className="mono">{track.year}</dd>
+            </>
+          )}
           <dt>{t('card.owned')}</dt>
           <dd>
             {mine ? (
@@ -163,11 +199,13 @@ function CardDetail({ trackId, onClose }) {
 export function CardModalProvider({ children }) {
   const [trackId, setTrackId] = useState(null);
   const close = useCallback(() => setTrackId(null), []);
+  const track = useTrack(trackId);
+  const { t } = useI18n();
   return (
     <CardModalContext.Provider value={setTrackId}>
       {children}
-      <Modal open={!!trackId} onClose={close} className="modal--card" title={trackId ? TRACK_BY_ID[trackId]?.title : ''}>
-        {trackId && <CardDetail trackId={trackId} onClose={close} />}
+      <Modal open={!!trackId} onClose={close} className="modal--card" title={trackId ? track?.title || t('common.loading') : ''}>
+        {trackId && <CardDetail key={trackId} trackId={trackId} onClose={close} />}
       </Modal>
     </CardModalContext.Provider>
   );

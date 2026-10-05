@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import CoverArt from './CoverArt.jsx';
-import { ALBUM_BY_ID } from '@shared/catalog.js';
+import { useAlbum } from '../state/catalog.js';
 import { useI18n } from '../i18n/index.jsx';
 
 // ---------- icônes ----------------------------------------------------------
@@ -83,12 +83,18 @@ export function Royalties({ value, className = '' }) {
 
 // ---------- avatar -----------------------------------------------------------
 
+/**
+ * Photo de profil : initiale sur la couleur choisie, ou pochette d'un album complété (« album:<id> »).
+ * L'album vient du catalogue du site (les réponses qui citent un joueur l'apportent) ; sinon il est chargé par lots
+ * et l'initiale s'affiche en attendant.
+ */
 export function Avatar({ user, size = 40, className = '' }) {
-  const album = user?.avatar?.startsWith('album:') ? ALBUM_BY_ID[user.avatar.slice(6)] : null;
+  const albumId = user?.avatar?.startsWith('album:') ? user.avatar.slice(6) : null;
+  const album = useAlbum(albumId);
   const style = { width: size, height: size, fontSize: size * 0.44, '--ac': user?.avatarColor || '#ff4f7e' };
   return (
     <span className={`avatar ${className}`} style={style} aria-hidden="true">
-      {album ? <CoverArt art={{ ...album.art, seed: album.id }} /> : <span>{(user?.username || '?')[0].toUpperCase()}</span>}
+      {album?.art ? <CoverArt art={{ ...album.art, seed: album.art.seed || album.id }} /> : <span>{(user?.username || '?')[0].toUpperCase()}</span>}
     </span>
   );
 }

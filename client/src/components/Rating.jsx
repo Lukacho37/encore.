@@ -3,6 +3,8 @@ import { Link } from 'react-router';
 import { get, post, api } from '../api.js';
 import { useGame } from '../state/GameContext.jsx';
 import { useI18n } from '../i18n/index.jsx';
+import { useAlbum, useTrack } from '../state/catalog.js';
+import CoverArt from './CoverArt.jsx';
 import { Avatar, useToast } from './ui.jsx';
 
 // Une note est toujours stockée sur 10 (entier de 0 à 10).
@@ -77,7 +79,9 @@ export function RatingInput({ value, onChange, size = 30, disabled = false, comp
   const [hover, setHover] = useState(null);
   // Valeur locale : plusieurs flèches d'affilée partent de la dernière valeur choisie, pas de celle du serveur.
   const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
   const half = (v) => new Intl.NumberFormat(lang).format(v / 2);
   const ref = useRef(null);
   const name = label || t('rating.yours');
@@ -310,6 +314,49 @@ export function ReviewList({ reviews, renderItem }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+// ----- éléments notés (journal de notes, fil des amis, modération) -------------------------
+
+/**
+ * Album ou morceau noté : { title, artist, art, to }, lu dans le catalogue du site.
+ * Les réponses de notes apportent les fiches des éléments cités ; un élément absent est chargé par lots (null en attendant).
+ */
+export function useRatedItem(type, id) {
+  const album = useAlbum(type === 'album' ? id : null);
+  const track = useTrack(type === 'track' ? id : null);
+  const item = type === 'album' ? album : track;
+  if (!item) return null;
+  // Un morceau mène à son album ; un single promo, à la page de son artiste (qui liste ses promos).
+  const to = type === 'album'
+    ? `/album/${encodeURIComponent(item.id)}`
+    : item.albumId ? `/album/${encodeURIComponent(item.albumId)}` : `/artist/${encodeURIComponent(item.artistId)}`;
+  return { title: item.title, artist: item.artist, art: item.art, to };
+}
+
+/**
+ * Lien vers un élément noté : petite pochette + titre (+ `children` après le titre).
+ * Les classes viennent de l'endroit qui l'affiche (top albums, morceaux préférés, critiques…).
+ */
+export function RatedItemLink({ type, id, className, coverClassName, titleClassName, children }) {
+  const item = useRatedItem(type, id);
+  const { t } = useI18n();
+  if (!item) {
+    return (
+      <span className={`${className} is-loading`} aria-busy="true">
+        <span className={`${coverClassName} rated-skel`} />
+        <span className={titleClassName}>{t('common.loading')}</span>
+        {children}
+      </span>
+    );
+  }
+  return (
+    <Link to={item.to} className={className} title={item.artist ? `${item.title} · ${item.artist}` : item.title}>
+      <span className={coverClassName}><CoverArt art={item.art} /></span>
+      <span className={titleClassName}>{item.title}</span>
+      {children}
+    </Link>
   );
 }
 

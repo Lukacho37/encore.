@@ -1,0 +1,329 @@
+/* Accueil (boosters), écran d'ouverture et booster d'album. Complète app.css sans le modifier. */
+
+/* ---------- rangées d'albums qui défilent ---------- */
+
+.home-shelf {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: clamp(140px, 42vw, 196px);
+  gap: 18px;
+  overflow-x: auto;
+  padding: 6px 2px 14px;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+  overscroll-behavior-x: contain;
+}
+
+.home-shelf > * {
+  scroll-snap-align: start;
+}
+
+.home-head h2 {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.home-head .section__link {
+  flex: none;
+  white-space: nowrap;
+}
+
+.home-count {
+  font: 500 13px/1 var(--font-body);
+  font-stretch: 100%;
+  letter-spacing: 0;
+  color: var(--haze);
+}
+
+.home-hint {
+  margin: -8px 0 14px;
+  max-width: 72ch;
+}
+
+/* ---------- vignette d'album : variante « à découvrir » et chargement ---------- */
+
+.album-tile__info {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--haze);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.album-tile--loading .album-tile__cover,
+.album-tile__skel {
+  background: linear-gradient(110deg, #1a1522 30%, #2a2233 50%, #1a1522 70%) 0 0 / 300% 100%;
+  animation: card-loading 1.4s linear infinite;
+}
+
+.album-tile--loading:hover .album-tile__cover {
+  transform: none;
+}
+
+.album-tile__skel {
+  display: block;
+  width: 80%;
+  height: 12px;
+  margin-top: 4px;
+  border-radius: 6px;
+}
+
+.album-tile__skel--short {
+  width: 52%;
+}
+
+/* ---------- deux façons de finir un album ---------- */
+
+.home-how {
+  padding: 20px;
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(ellipse 50% 120% at 100% 0%, rgba(255, 211, 90, 0.08), transparent 70%),
+    var(--stage);
+  border: 1px solid var(--line-soft);
+}
+
+.home-how__title {
+  margin-bottom: 14px;
+  font-size: 18px;
+}
+
+.home-how__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.home-how__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 0;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--stage-2);
+}
+
+.home-how__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(63, 214, 196, 0.14);
+  color: var(--cue);
+}
+
+.home-how__icon--album {
+  background: rgba(255, 211, 90, 0.14);
+  color: var(--gold);
+}
+
+.home-how__text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--paper-dim);
+}
+
+.home-how__text h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  color: var(--paper);
+}
+
+.home-how__price {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 99px;
+  background: var(--stage-3);
+  font: 600 12px/1 var(--font-body);
+  color: var(--paper-dim);
+}
+
+.home-how__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.home-how__quick {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.home-how__quick svg {
+  flex: none;
+}
+
+.home-how__quick-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- booster d'album ---------- */
+
+.pack--album .pack__body {
+  background:
+    linear-gradient(180deg, rgba(10, 8, 14, 0.1) 0%, rgba(10, 8, 14, 0.62) 100%),
+    linear-gradient(158deg, var(--pa1, #c26bff) 0%, var(--pa0, #241c2e) 58%, var(--pa2, #3fd6c4) 100%);
+}
+
+/* Bandeau aux couleurs de la série, pour qu'on reconnaisse un booster AlbumMania. */
+.pack--album .pack__body::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 1;
+  height: 4%;
+  background: linear-gradient(90deg, #ff4f7e, #c26bff 34%, #4f9dff 66%, #3fd6c4);
+}
+
+/* Le disque sort de la pochette, sur la droite. */
+.pack--album .pack__vinyl {
+  width: 70%;
+  right: -22%;
+  bottom: auto;
+  top: 20%;
+}
+
+.pack__album {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: calc(var(--pw) * 0.08) 8% calc(var(--pw) * 0.065);
+  text-align: center;
+  color: var(--paper);
+}
+
+.pack__album-brand {
+  font: 900 calc(var(--pw) * 0.085) / 1 var(--font-display);
+  font-stretch: 118%;
+  letter-spacing: -0.04em;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+
+.pack__album-brand span {
+  color: #ffd35a;
+}
+
+.pack__album-label {
+  margin-top: calc(var(--pw) * 0.02);
+  font: 650 calc(var(--pw) * 0.042) / 1.2 var(--font-mono);
+  font-stretch: 85%;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(244, 238, 227, 0.82);
+}
+
+.pack__album-cover {
+  flex: none;
+  width: 62%;
+  aspect-ratio: 1;
+  margin-top: calc(var(--pw) * 0.05);
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 calc(var(--pw) * 0.03) calc(var(--pw) * 0.08) rgba(0, 0, 0, 0.6);
+}
+
+.pack__album-title {
+  display: -webkit-box;
+  max-width: 100%;
+  margin-top: calc(var(--pw) * 0.05);
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font: 800 calc(var(--pw) * 0.066) / 1.12 var(--font-display);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  overflow-wrap: anywhere;
+}
+
+.pack__album-artist {
+  max-width: 100%;
+  margin-top: calc(var(--pw) * 0.012);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: 600 calc(var(--pw) * 0.048) / 1.2 var(--font-body);
+  color: rgba(244, 238, 227, 0.78);
+}
+
+.pack__album-content {
+  margin-top: auto;
+  padding: calc(var(--pw) * 0.018) calc(var(--pw) * 0.05);
+  border-radius: 99px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 700 calc(var(--pw) * 0.052) / 1.2 var(--font-body);
+}
+
+/* ---------- résumé d'ouverture ---------- */
+
+.summary:focus {
+  outline: none;
+}
+
+.chip--spent {
+  color: var(--paper-dim);
+}
+
+.delta__cover-empty {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--stage-3);
+}
+
+@media (max-width: 860px) {
+  .home-how__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .home-shelf {
+    gap: 14px;
+  }
+
+  /* Le nombre d'albums commencés passe sous le titre. */
+  .home-count {
+    flex-basis: 100%;
+  }
+
+  .home-how {
+    padding: 16px;
+  }
+
+  .home-how__item {
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .home-how__icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .album-tile--loading .album-tile__cover,
+  .album-tile__skel {
+    animation: none;
+  }
+}

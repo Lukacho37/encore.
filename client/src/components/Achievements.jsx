@@ -1,27 +1,37 @@
 import { useEffect } from 'react';
 import { Vinyl } from './Vinyl.jsx';
 import { Icon, Modal } from './ui.jsx';
-import { ALBUM_BY_ID, ARTIST_BY_ID } from '@shared/catalog.js';
+import { useAlbum, useArtist } from '../state/catalog.js';
 import { useI18n } from '../i18n/index.jsx';
 import { sound } from '../sound.js';
 
-export function AchievementList({ achievements }) {
+/** Un succès : album complété (vinyle) ou artiste maîtrisé. Les noms viennent du catalogue chargé. */
+function Achievement({ a }) {
   const { t } = useI18n();
-  return achievements.map((a) => (
-    <div key={a.key} className={`achievement achievement--${a.type}`}>
-      {a.type === 'album' ? (
-        <span className="achievement__vinyl"><Vinyl albumId={a.id} reveal /></span>
+  const isAlbum = a.type === 'album';
+  const album = useAlbum(isAlbum ? a.id : null);
+  const artist = useArtist(isAlbum ? null : a.id);
+  // Le temps du chargement, on affiche l'identifiant (les réponses de l'API apportent d'habitude ces données).
+  const name = isAlbum ? album?.title ?? a.id : artist?.name ?? a.id;
+  return (
+    <div className={`achievement achievement--${a.type}`}>
+      {isAlbum ? (
+        <span className="achievement__vinyl">{album ? <Vinyl albumId={a.id} reveal /> : <Icon name="disc" size={28} />}</span>
       ) : (
         <span className="achievement__disc"><Icon name="star" size={28} /></span>
       )}
       <span className="achievement__text">
-        <span className="eyebrow">{a.type === 'album' ? t('open.albumDone') : t('open.artistDone')}</span>
-        <strong>{a.type === 'album' ? ALBUM_BY_ID[a.id].title : t('artist.master', { name: ARTIST_BY_ID[a.id].name })}</strong>
+        <span className="eyebrow">{isAlbum ? t('open.albumDone') : t('open.artistDone')}</span>
+        <strong>{isAlbum ? name : t('artist.master', { name })}</strong>
         <span className="muted">{t('open.reward', { r: a.royalties, x: a.xp })}</span>
-        <span className="muted small">{a.type === 'album' ? t('open.albumUnlocks') : t('open.artistUnlocks')}</span>
+        <span className="muted small">{isAlbum ? t('open.albumUnlocks') : t('open.artistUnlocks')}</span>
       </span>
     </div>
-  ));
+  );
+}
+
+export function AchievementList({ achievements }) {
+  return achievements.map((a) => <Achievement key={a.key} a={a} />);
 }
 
 /** Modale de célébration (album complété hors booster, par ex. après un pressage). */

@@ -91,8 +91,12 @@ const cache = new Map();
 export function useApi(path, { keep = true } = {}) {
   const [state, setState] = useState(() => (path && cache.has(path) ? { data: cache.get(path), error: null } : { data: null, error: null }));
   const alive = useRef(true);
-  useEffect(() => () => {
-    alive.current = false;
+  // Remis à true au montage : le mode strict de React démonte puis remonte chaque composant en développement.
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
   }, []);
   const load = useCallback((force = false) => {
     if (!path) return;

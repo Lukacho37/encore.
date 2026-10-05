@@ -1,0 +1,385 @@
+/* ---------- collection à l'échelle du grand catalogue ---------- */
+/* Résumé, barre d'outils (recherche, filtres), listes paginées et emplacements en cours de chargement.
+   Ce fichier est chargé avant app.css : les règles qui reprennent une classe d'app.css sont préfixées
+   par .collection pour garder la main. */
+
+/* résumé : albums complétés, artistes maîtrisés, promos */
+
+.coll-summary {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.coll-summary__item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--stage);
+  border: 1px solid var(--line-soft);
+  transition: border-color 0.15s;
+}
+
+.coll-summary__item:hover {
+  border-color: var(--line);
+}
+
+.coll-summary__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--haze);
+  font: 650 12.5px/1.2 var(--font-body);
+}
+
+.coll-summary__item.is-on .coll-summary__label svg {
+  color: var(--gold);
+}
+
+.coll-summary__value {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--paper);
+}
+
+.coll-summary__value small {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--haze);
+}
+
+.coll-tabs {
+  scroll-margin-top: calc(var(--topbar) + 4px);
+}
+
+/* explication : comment compléter un album */
+
+.coll-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 88ch;
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--cue) 7%, var(--stage));
+  border: 1px solid color-mix(in oklab, var(--cue) 22%, var(--line-soft));
+  color: var(--paper-dim);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.coll-hint svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--cue);
+}
+
+/* barre d'outils */
+
+.coll-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.coll-search {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.coll-search .input {
+  min-height: 42px;
+  padding-right: 42px;
+}
+
+.coll-search input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  display: none;
+}
+
+.coll-search__clear {
+  position: absolute;
+  right: 4px;
+  width: 34px;
+  height: 34px;
+}
+
+/* .search svg place la loupe : l'icône du bouton d'effacement garde sa place normale. */
+.coll-search .coll-search__clear svg {
+  position: static;
+}
+
+.coll-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 14px 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--stage);
+  color: var(--paper-dim);
+  font: 600 13px var(--font-body);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.coll-toggle:hover {
+  color: var(--paper);
+}
+
+.coll-toggle .switch {
+  flex: none;
+  margin-left: 0;
+}
+
+.coll-toggle.is-on {
+  border-color: color-mix(in oklab, var(--cue) 55%, var(--line));
+  color: var(--paper);
+}
+
+/* pastilles de filtre (genres, raretés) */
+
+.coll-chips {
+  margin-bottom: 14px;
+}
+
+.coll-chips .chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  white-space: nowrap;
+}
+
+.coll-chip__n {
+  font: 500 11px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-stretch: 85%;
+  opacity: 0.7;
+}
+
+.coll-chips .chip-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.coll-chips .chip-btn:disabled:hover {
+  color: var(--haze);
+}
+
+/* nombre de résultats */
+
+.coll-count {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  min-height: 30px;
+  margin-bottom: 14px;
+  color: var(--haze);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.coll-count .spinner {
+  width: 14px;
+  height: 14px;
+}
+
+/* liste en cours de remplacement (nouveaux filtres) */
+.is-stale {
+  opacity: 0.45;
+  transition: opacity 0.2s;
+}
+
+.coll-more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 28px;
+  text-align: center;
+}
+
+.coll-more .btn {
+  gap: 8px;
+}
+
+.coll-more .spinner {
+  width: 16px;
+  height: 16px;
+}
+
+.coll-more__n {
+  color: var(--haze);
+  font: 500 12px var(--font-mono);
+  font-stretch: 85%;
+}
+
+.coll-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.coll-empty p {
+  margin: 0;
+  max-width: 60ch;
+}
+
+/* Genres et décennies : les totaux du grand catalogue (17 238) demandent des colonnes plus souples. */
+.collection .rows .row {
+  grid-template-columns: minmax(130px, 220px) minmax(0, 1fr) minmax(64px, auto) minmax(52px, auto);
+}
+
+.coll-row-link {
+  color: inherit;
+}
+
+.coll-row-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* emplacements en cours de chargement (même reflet que les cartes) */
+
+.coll-skel__block,
+.coll-skel__line,
+.collection .coll-skel-row {
+  background: linear-gradient(110deg, #1a1522 30%, #2a2233 50%, #1a1522 70%) 0 0 / 300% 100%;
+  animation: card-loading 1.4s linear infinite;
+}
+
+.coll-skel {
+  pointer-events: none;
+}
+
+.coll-skel .album-tile__cover {
+  box-shadow: none;
+}
+
+.coll-skel__line {
+  display: block;
+  width: 80%;
+  height: 12px;
+  border-radius: 6px;
+}
+
+.coll-skel__line--short {
+  width: 45%;
+}
+
+.collection .coll-skel-row {
+  min-height: 66px;
+  border-color: transparent;
+}
+
+.collection .artist-row.coll-skel-row {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coll-skel__block,
+  .coll-skel__line,
+  .collection .coll-skel-row {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .coll-summary {
+    gap: 8px;
+  }
+
+  /* Raretés plus compactes : le nom, puis la barre et le compte sur une même ligne. */
+  .collection .rarity-bar {
+    gap: 8px;
+  }
+
+  .collection .rarity-bar__item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px 8px;
+    padding: 8px 10px;
+  }
+
+  .collection .rarity-bar__item .rarity-bar__label {
+    grid-column: 1 / -1;
+  }
+
+  .collection .rarity-bar__item .progress {
+    grid-row: 2;
+  }
+
+  .coll-summary__item {
+    padding: 10px;
+  }
+
+  .coll-summary__label {
+    font-size: 11.5px;
+  }
+
+  .coll-summary__label svg {
+    display: none;
+  }
+
+  .coll-summary__value {
+    font-size: 16px;
+  }
+
+  .coll-summary__value small {
+    display: block;
+    font-size: 11px;
+  }
+
+  .coll-hint {
+    font-size: 13px;
+  }
+
+  .coll-search {
+    flex-basis: 100%;
+  }
+
+  .collection .rows .row {
+    grid-template-columns: minmax(0, 1fr) auto minmax(46px, auto);
+  }
+
+  .coll-toolbar .select {
+    flex: 1 1 140px;
+    min-width: 0;
+  }
+
+  .coll-toolbar .select select {
+    width: 100%;
+    padding: 0 28px 0 12px;
+    background-position: right 10px center;
+  }
+
+  /* Sur téléphone, les pastilles défilent sur une seule ligne au lieu d'occuper tout l'écran. */
+  .collection .coll-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 0 28px 2px 0;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+
+  .collection .coll-chips::-webkit-scrollbar {
+    display: none;
+  }
+}

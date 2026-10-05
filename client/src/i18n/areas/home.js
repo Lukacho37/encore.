@@ -1,5 +1,61 @@
 // Textes ajoutés pour le catalogue à grande échelle (zone : home). Fusionnés dans fr.js / en.js au chargement.
 export default {
-  fr: {},
-  en: {},
+  fr: {
+    home: {
+      inProgress: 'Albums en cours',
+      started: { one: '{n} album commencé', other: '{n} albums commencés' },
+      discover: 'À découvrir',
+      discoverHint: 'Les albums les plus écoutés que tu n’as pas encore commencés, parmi {albums} albums et {tracks} cartes.',
+      discoverEmpty: 'Tu as déjà commencé tous les albums les plus populaires : cherche la suite dans la collection.',
+      tracks: { one: '{n} carte', other: '{n} cartes' },
+      howTitle: 'Deux façons de finir un album',
+      howFocusTitle: 'Boosters gratuits',
+      howFocusBody: 'Chaque carte d’un booster a {p} de chances de venir d’un album que tu as déjà commencé : tes albums en cours se remplissent tout seuls.',
+      howAlbumTitle: 'Booster d’album',
+      howAlbumBody: '5 cartes de l’album de ton choix, en priorité celles qui te manquent, sur la page de chaque album. Il se paie en royalties : chaque nouvelle carte obtenue t’en rapporte.',
+      howAlbumFree: 'offert (admin)',
+      howQuick: 'Compléter « {title} »',
+      howCta: 'Choisir un album',
+    },
+    open: {
+      albumBooster: 'Booster d’album',
+      summaryAlbum: 'Ton booster d’album',
+      againAlbum: 'Encore un booster d’album',
+      spent: 'Royalties dépensées',
+      royaltiesHint: 'Droits d’auteur des nouvelles cartes et récompenses',
+    },
+    rarityGuide: {
+      cardsHint: 'Nombre de cartes de cette rareté dans tout le catalogue.',
+      packFocus: 'Chaque carte (hors promo) a {p} de chances de venir d’un album que tu as déjà commencé.',
+    },
+  },
+  en: {
+    home: {
+      inProgress: 'Albums in progress',
+      started: { one: '{n} album started', other: '{n} albums started' },
+      discover: 'Discover',
+      discoverHint: 'The most played albums you haven’t started yet, out of {albums} albums and {tracks} cards.',
+      discoverEmpty: 'You have already started every top album: find more in your collection.',
+      tracks: { one: '{n} card', other: '{n} cards' },
+      howTitle: 'Two ways to finish an album',
+      howFocusTitle: 'Free packs',
+      howFocusBody: 'Each card in a pack has a {p} chance to come from an album you have already started: your albums in progress fill up on their own.',
+      howAlbumTitle: 'Album pack',
+      howAlbumBody: '5 cards from the album of your choice, missing ones first, on any album page. You pay with royalties: every new card you get earns some.',
+      howAlbumFree: 'free (admin)',
+      howQuick: 'Complete “{title}”',
+      howCta: 'Pick an album',
+    },
+    open: {
+      albumBooster: 'Album pack',
+      summaryAlbum: 'Your album pack',
+      againAlbum: 'Another album pack',
+      spent: 'Royalties spent',
+      royaltiesHint: 'Royalties from new cards and rewards',
+    },
+    rarityGuide: {
+      cardsHint: 'Number of cards of this rarity in the whole catalog.',
+      packFocus: 'Each card (except promos) has a {p} chance to come from an album you have already started.',
+    },
+  },
 };

@@ -1,24 +1,41 @@
 import { useMemo, useState } from 'react';
 import { Modal, Icon } from './ui.jsx';
 import { RarityGem } from './Card.jsx';
-import { TRACKS, POP_TIERS } from '@shared/catalog.js';
-import { RARITIES, RARITY, packOdds } from '@shared/rules.js';
+import { POP_TIERS } from '@shared/catalog.js';
+import { FOCUS_CHANCE, RARITIES, RARITY, packOdds } from '@shared/rules.js';
+import { useAlbumDetail, useApi, useCatalogInfo } from '../state/catalog.js';
 import { useI18n } from '../i18n/index.jsx';
+
+/**
+ * Un exemple de morceau par rareté (le plus populaire trouvé). Le catalogue entier n'est pas chargé :
+ * on prend les deux albums les plus populaires (des classiques qui couvrent toutes les raretés) et une promo.
+ */
+function useRarityExamples() {
+  const popular = useApi('/catalog/albums?sort=popular&limit=2').data;
+  const [firstId, secondId] = popular?.items?.map((a) => a.id) || [];
+  const first = useAlbumDetail(firstId).data;
+  const second = useAlbumDetail(secondId).data;
+  const promos = useApi('/catalog/promos?limit=1').data;
+  return useMemo(() => {
+    const best = {};
+    for (const tr of [...(first?.tracks || []), ...(second?.tracks || []), ...(promos?.items || [])]) {
+      if (tr?.rarity && (!best[tr.rarity] || (tr.pop ?? 0) > (best[tr.rarity].pop ?? 0))) best[tr.rarity] = tr;
+    }
+    return best;
+  }, [first, second, promos]);
+}
 
 /** Tableau des raretés : signification, popularité, chance par booster, nombre de cartes et un exemple. */
 export function RarityTable() {
-  const { t, lang } = useI18n();
+  const { t, lang, num } = useI18n();
   const pct = (x) => new Intl.NumberFormat(lang, { style: 'percent', maximumFractionDigits: x < 0.1 ? 1 : 0 }).format(x);
+  // Nombre de cartes par rareté dans tout le catalogue, calculé par le serveur.
+  const counts = useCatalogInfo()?.totals?.rarity;
+  const examples = useRarityExamples();
   const rows = useMemo(() => {
     const odds = packOdds();
     // Même ordre que la liste validée : ⚪ commune → ⭐ légendaire, puis 🟥 promo.
-    return RARITIES.map((r) => {
-      const tier = POP_TIERS.find((x) => x.rarity === r);
-      const cards = TRACKS.filter((tr) => tr.rarity === r);
-      // Exemple : le morceau le plus populaire de la rareté
-      const example = [...cards].sort((a, b) => b.pop - a.pop)[0];
-      return { r, tier, count: cards.length, odds: odds[r], example };
-    });
+    return RARITIES.map((r) => ({ r, tier: POP_TIERS.find((x) => x.rarity === r), odds: odds[r] }));
   }, []);
   return (
     <div className="table-wrap">
@@ -29,22 +46,29 @@ export function RarityTable() {
             <th>{t('rarityGuide.colMeaning')}</th>
             <th className="num">{t('rarityGuide.colPop')}</th>
             <th className="num" title={t('rarityGuide.oddsHint')}>{t('rarityGuide.colOdds')}</th>
-            <th className="num">{t('rarityGuide.colCards')}</th>
+            <th className="num" title={t('rarityGuide.cardsHint')}>{t('rarityGuide.colCards')}</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ r, tier, count, odds, example }) => (
-            <tr key={r}>
-              <td><span className="rarity-name" style={{ color: RARITY[r].color }}><RarityGem rarity={r} size={14} /> {t(`rarity.${r}`)}</span></td>
-              <td>
-                <span className="rarity-meaning">{t(`rarityGuide.meaning.${r}`)}</span>
-                {example && <span className="small muted rarity-example">{t('rarityGuide.example', { title: example.title })}</span>}
-              </td>
-              <td className="num mono">{tier ? `${tier.min}–${tier.max}` : t('rarityGuide.promoRange')}</td>
-              <td className="num mono">{pct(odds)}</td>
-              <td className="num mono">{count}</td>
-            </tr>
-          ))}
+          {rows.map(({ r, tier, odds }) => {
+            const example = examples[r];
+            return (
+              <tr key={r}>
+                <td><span className="rarity-name" style={{ color: RARITY[r].color }}><RarityGem rarity={r} size={14} /> {t(`rarity.${r}`)}</span></td>
+                <td>
+                  <span className="rarity-meaning">{t(`rarityGuide.meaning.${r}`)}</span>
+                  {example && (
+                    <span className="small muted rarity-example">
+                      {t('rarityGuide.example', { title: example.artist ? `${example.title} · ${example.artist}` : example.title })}
+                    </span>
+                  )}
+                </td>
+                <td className="num mono">{tier ? `${tier.min}–${tier.max}` : t('rarityGuide.promoRange')}</td>
+                <td className="num mono">{pct(odds)}</td>
+                <td className="num mono">{counts ? num(counts[r] || 0) : '…'}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -52,7 +76,7 @@ export function RarityTable() {
 }
 
 export function RarityGuideModal({ open, onClose }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   return (
     <Modal open={open} onClose={onClose} title={t('rarityGuide.title')} className="modal--wide">
       <div className="rarity-guide">
@@ -63,6 +87,7 @@ export function RarityGuideModal({ open, onClose }) {
           <section>
             <h3>{t('rarityGuide.packTitle')}</h3>
             <p>{t('rarityGuide.packBody')}</p>
+            <p>{t('rarityGuide.packFocus', { p: new Intl.NumberFormat(lang, { style: 'percent' }).format(FOCUS_CHANCE) })}</p>
           </section>
           <section>
             <h3>{t('rarityGuide.holoTitle')}</h3>

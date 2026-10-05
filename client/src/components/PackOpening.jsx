@@ -6,17 +6,44 @@ import CoverArt from './CoverArt.jsx';
 import { Icon, Progress, RoyaltyIcon } from './ui.jsx';
 import { AchievementList } from './Achievements.jsx';
 import { RarityGuideButton } from './RarityGuide.jsx';
-import { TRACK_BY_ID, ALBUM_BY_ID } from '@shared/catalog.js';
-import { RARITY } from '@shared/rules.js';
+import { ECONOMY, RARITY } from '@shared/rules.js';
+import { getTrack, useAlbum } from '../state/catalog.js';
 import { useI18n } from '../i18n/index.jsx';
 import { useGame } from '../state/GameContext.jsx';
 import { sound } from '../sound.js';
+import '../styles/home.css';
 
 const BIG = new Set(['ultra', 'legendary', 'promo']);
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
-export function PackArt({ className = '', label }) {
+/**
+ * Le booster dessiné. Avec `album` (vue d'album de l'API), c'est un booster d'album : sa pochette (vraie ou
+ * générée) et son titre remplacent le visuel de la série, sur un fond aux couleurs de l'album.
+ */
+export function PackArt({ className = '', label, album }) {
   const { t } = useI18n();
+  if (album?.art) {
+    const [c0, c1, c2] = album.art.palette || [];
+    return (
+      <span className={`pack pack--album ${className}`} style={{ '--pa0': c0, '--pa1': c1, '--pa2': c2 }}
+        aria-hidden={label ? undefined : true} aria-label={label} role={label ? 'img' : undefined}>
+        <span className="pack__top"><span className="pack__crimp" /></span>
+        <span className="pack__body">
+          <span className="pack__foil" />
+          <span className="pack__vinyl" />
+          <span className="pack__album">
+            <span className="pack__album-brand">Album<span>Mania</span></span>
+            <span className="pack__album-label">{t('open.albumBooster')}</span>
+            <span className="pack__album-cover"><CoverArt art={album.art} sizes="270px" /></span>
+            <span className="pack__album-title">{album.title}</span>
+            {album.artist && <span className="pack__album-artist">{album.artist}</span>}
+            <span className="pack__album-content">{t('home.content')}</span>
+          </span>
+        </span>
+        <span className="pack__bottom"><span className="pack__crimp" /></span>
+      </span>
+    );
+  }
   return (
     <span className={`pack ${className}`} aria-hidden={label ? undefined : true} aria-label={label} role={label ? 'img' : undefined}>
       <span className="pack__top"><span className="pack__crimp" /></span>
@@ -87,9 +114,16 @@ function useBurst(canvasRef) {
   }, [canvasRef]);
 }
 
-export default function PackOpening({ promise, count = 1, onClose, onAgain }) {
+/**
+ * Écran d'ouverture d'un booster. `promise` : réponse de /packs/open ou /packs/album (les cartes et albums
+ * cités sont déjà enregistrés dans le catalogue quand elle arrive). `album` : booster d'album (facultatif).
+ */
+export default function PackOpening({ promise, count = 1, onClose, onAgain, album: albumProp }) {
   const { t, num } = useI18n();
-  const { owned, applyState, packs, isAdmin } = useGame();
+  const { owned, applyState, packs, isAdmin, user, albumProgress } = useGame();
+  // Booster d'album : si le parent ne passe qu'un album partiel ({ id }), on complète avec le catalogue.
+  const fetchedAlbum = useAlbum(albumProp && !albumProp.art ? albumProp.id : null);
+  const album = albumProp ? (albumProp.art ? albumProp : { ...albumProp, ...fetchedAlbum }) : null;
   const [phase, setPhase] = useState('pack'); // pack | shake | tear | reveal | summary
   const [result, setResult] = useState(null);
   const [failed, setFailed] = useState(null);
@@ -99,6 +133,7 @@ export default function PackOpening({ promise, count = 1, onClose, onAgain }) {
   const [flash, setFlash] = useState(null);
   const wantOpen = useRef(false);
   const canvasRef = useRef(null);
+  const rootRef = useRef(null);
   const burst = useBurst(canvasRef);
   const multi = count > 1;
 
@@ -118,7 +153,8 @@ export default function PackOpening({ promise, count = 1, onClose, onAgain }) {
 
   const cards = useMemo(() => {
     if (!result) return [];
-    const list = result.cards.map((c, i) => ({ ...c, key: i, rarity: TRACK_BY_ID[c.trackId].rarity }));
+    // La rareté arrive avec chaque carte ; à défaut, on la lit dans le catalogue.
+    const list = (result.cards || []).map((c, i) => ({ ...c, key: i, rarity: RARITY[c.rarity] ? c.rarity : getTrack(c.trackId)?.rarity || 'common' }));
     if (multi) list.sort((a, b) => RARITY[b.rarity].rank - RARITY[a.rarity].rank || (b.variant === 'holo') - (a.variant === 'holo'));
     return list;
   }, [result, multi]);
@@ -209,7 +245,7 @@ export default function PackOpening({ promise, count = 1, onClose, onAgain }) {
   // Son de célébration à l'arrivée sur le résumé.
   useEffect(() => {
     if (phase !== 'summary' || !result) return;
-    if (result.achievements.length) {
+    if (result.achievements?.length) {
       setTimeout(() => sound.complete(), 250);
       burst(['#ffd35a', '#f4eee3', '#ff8b3d', '#ffe9a8'], 160);
     } else if (multi) {
@@ -239,17 +275,32 @@ export default function PackOpening({ promise, count = 1, onClose, onAgain }) {
     return () => document.body.classList.remove('no-scroll');
   }, []);
 
+  // Clavier : le focus passe sur le booster (sinon il reste sur le bouton de la page, qui en rouvrirait un),
+  // puis sur le résumé lui-même : un Entrée de trop après la dernière carte ne relance pas un booster.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    if (phase === 'pack') root.querySelector('.opening__pack-btn')?.focus({ preventScroll: true });
+    else if (phase === 'summary') root.querySelector('.summary')?.focus({ preventScroll: true });
+  }, [phase, result]);
+
   const countOf = (c) => owned?.get(c.trackId)?.[c.variant] || 1;
   const newCount = cards.filter((c) => c.newTrack).length;
   const dupCount = cards.filter((c) => !c.newTrack && !c.newVariant).length;
-  const canAgain = !!onAgain && (isAdmin || (packs?.available ?? 0) > 0);
+  // Booster d'album : payé en royalties (offert à l'admin), inutile une fois l'album complet.
+  // Booster classique : il faut en avoir en stock.
+  const albumPrice = isAdmin ? 0 : ECONOMY.albumPackPrice;
+  const albumDone = !!album && (albumProgress?.(album.id, album.trackCount)?.pct ?? 0) >= 1;
+  const canAgain = !!onAgain && (album ? !albumDone && (user?.royalties ?? 0) >= albumPrice : isAdmin || (packs?.available ?? 0) > 0);
+  const currentTrack = current ? getTrack(current.trackId) : undefined;
 
   const hint = phase === 'pack' || phase === 'shake' ? t('open.tap')
     : phase === 'reveal' ? (flipped ? (index + 1 >= cards.length ? t('open.last') : t('open.next')) : t('open.reveal'))
       : null;
 
   return createPortal(
-    <div className={`opening opening--${phase}${flash ? ` opening--flash-${flash}` : ''}`} role="dialog" aria-modal="true" aria-label={t('home.open')}>
+    <div className={`opening opening--${phase}${flash ? ` opening--flash-${flash}` : ''}`} role="dialog" aria-modal="true" ref={rootRef}
+      aria-label={album ? `${t('open.albumBooster')} · ${album.title}` : t('home.open')}>
       <canvas className="opening__burst" ref={canvasRef} aria-hidden="true" />
       <div className="opening__bar">
         {phase === 'reveal' && <span className="opening__counter mono">{t('open.counter', { i: index + 1, n: cards.length })}</span>}
@@ -265,7 +316,7 @@ export default function PackOpening({ promise, count = 1, onClose, onAgain }) {
       {(phase === 'pack' || phase === 'shake' || phase === 'tear') && (
         <div className="opening__stage">
           <button type="button" className="opening__pack-btn" onClick={tapPack} aria-label={t('open.tap')}>
-            <PackArt className={`pack--xl pack--${phase}`} />
+            <PackArt className={`pack--xl pack--${phase}`} album={album} />
           </button>
           {multi && <span className="opening__multi mono">×{count}</span>}
         </div>
@@ -288,7 +339,7 @@ export default function PackOpening({ promise, count = 1, onClose, onAgain }) {
               </span>
             )}
             <button type="button" className={`reveal-card${!flipped && RARITY[current.rarity].rank >= 2 ? ` reveal-card--tease reveal-card--tease-${current.rarity}` : ''}`}
-              key={current.key} style={{ '--rc': RARITY[current.rarity].color }} aria-label={flipped ? TRACK_BY_ID[current.trackId].title : t('open.reveal')}>
+              key={current.key} style={{ '--rc': RARITY[current.rarity].color }} aria-label={flipped ? currentTrack?.title || t('open.reveal') : t('open.reveal')}>
               <span className={`flip${flipped ? ' flip--done' : ''}`}>
                 <span className="flip__back"><CardBack rarity={current.rarity} /></span>
                 <span className="flip__front">
@@ -308,7 +359,9 @@ export default function PackOpening({ promise, count = 1, onClose, onAgain }) {
           {flipped && (
             <p className="reveal-caption">
               <span className="reveal-caption__rarity" style={{ color: RARITY[current.rarity].color }}>{t(`rarity.${current.rarity}`)}</span>
-              <span>{TRACK_BY_ID[current.trackId].albumId ? ALBUM_BY_ID[TRACK_BY_ID[current.trackId].albumId].title : t(`promoKind.${TRACK_BY_ID[current.trackId].promoKind}`)}</span>
+              {currentTrack && (
+                <span>{currentTrack.albumId ? currentTrack.album : currentTrack.promoKind ? t(`promoKind.${currentTrack.promoKind}`) : currentTrack.artist}</span>
+              )}
             </p>
           )}
           <div className="reveal-tray" aria-hidden="true">
@@ -320,18 +373,23 @@ export default function PackOpening({ promise, count = 1, onClose, onAgain }) {
       )}
 
       {phase === 'summary' && result && (
-        <div className="summary">
+        <div className="summary" tabIndex={-1}>
           <header className="summary__head">
-            <h2>{multi ? t('open.summaryN', { n: count }) : t('open.summary')}</h2>
+            <h2>{multi ? t('open.summaryN', { n: count }) : album ? t('open.summaryAlbum') : t('open.summary')}</h2>
             <div className="summary__chips">
               <span className="chip chip--new">{t('open.newCount', { n: newCount })}</span>
               <span className="chip">{t('open.dupCount', { n: dupCount })}</span>
               <span className="chip">{t('open.xp', { n: result.xp })}</span>
-              {result.royalties > 0 && <span className="chip"><RoyaltyIcon size={14} /> +{num(result.royalties)}</span>}
+              {result.royalties > 0 && (
+                <span className="chip" title={t('open.royaltiesHint')}><RoyaltyIcon size={14} /> +{num(result.royalties)}</span>
+              )}
+              {result.spent > 0 && (
+                <span className="chip chip--spent" title={t('open.spent')}><RoyaltyIcon size={14} /> −{num(result.spent)}</span>
+              )}
             </div>
           </header>
 
-          <AchievementList achievements={result.achievements} />
+          <AchievementList achievements={result.achievements || []} />
 
           <div className={`summary__grid${multi ? ' summary__grid--multi' : ''}`}>
             {cards.map((c, i) => (
@@ -343,25 +401,13 @@ export default function PackOpening({ promise, count = 1, onClose, onAgain }) {
             ))}
           </div>
 
-          {result.albumDeltas.length > 0 && (
+          {result.albumDeltas?.length > 0 && (
             <section className="summary__progress">
               <h3 className="eyebrow">{t('open.progress')}</h3>
               <ul>
-                {result.albumDeltas.slice(0, multi ? 40 : 5).map((d) => {
-                  const album = ALBUM_BY_ID[d.albumId];
-                  return (
-                    <li key={d.albumId}>
-                      <Link to={`/album/${d.albumId}`} onClick={() => onClose()} className="delta">
-                        <span className="delta__cover"><CoverArt art={{ ...album.art, seed: album.id }} /></span>
-                        <span className="delta__text">
-                          <span className="delta__title">{album.title}</span>
-                          <DeltaBar before={d.before} after={d.after} total={d.total} color={album.art.palette[1]} />
-                        </span>
-                        <span className="delta__nums mono">{d.after}/{d.total}<em>+{d.after - d.before}</em></span>
-                      </Link>
-                    </li>
-                  );
-                })}
+                {result.albumDeltas.slice(0, multi ? 40 : 5).map((d) => (
+                  <li key={d.albumId}><Delta delta={d} cards={cards} onOpen={() => onClose()} /></li>
+                ))}
               </ul>
             </section>
           )}
@@ -371,7 +417,8 @@ export default function PackOpening({ promise, count = 1, onClose, onAgain }) {
           <footer className="summary__actions">
             {canAgain && (
               <button type="button" className="btn btn--primary btn--lg" onClick={onAgain} data-autofocus>
-                {t('open.again')}
+                {album ? t('open.againAlbum') : t('open.again')}
+                {album && albumPrice > 0 && <> · <RoyaltyIcon size={14} /> <span className="mono">{num(albumPrice)}</span></>}
               </button>
             )}
             <button type="button" className="btn btn--ghost btn--lg" onClick={() => onClose()}>{t('open.close')}</button>
@@ -382,6 +429,25 @@ export default function PackOpening({ promise, count = 1, onClose, onAgain }) {
       {hint && <p className="opening__hint">{hint}</p>}
     </div>,
     document.body,
+  );
+}
+
+/** Progression d'un album touché par le booster (titre et pochette lus dans le catalogue). */
+function Delta({ delta: d, cards, onOpen }) {
+  const album = useAlbum(d.albumId);
+  // Le temps du chargement : une carte de l'album tirée dans ce booster suffit pour le titre et le visuel.
+  const sample = album ? null : cards.map((c) => getTrack(c.trackId)).find((tr) => tr?.albumId === d.albumId);
+  const title = album?.title || sample?.album || '…';
+  const art = album?.art || sample?.art;
+  return (
+    <Link to={`/album/${encodeURIComponent(d.albumId)}`} onClick={onOpen} className="delta">
+      <span className="delta__cover">{art ? <CoverArt art={art} sizes="44px" /> : <span className="delta__cover-empty" />}</span>
+      <span className="delta__text">
+        <span className="delta__title">{title}</span>
+        <DeltaBar before={d.before} after={d.after} total={d.total} color={art?.palette?.[1]} />
+      </span>
+      <span className="delta__nums mono">{d.after}/{d.total}<em>+{d.after - d.before}</em></span>
+    </Link>
   );
 }
 

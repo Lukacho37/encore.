@@ -5,7 +5,7 @@ import { config } from './config.js';
 import { tx } from './db.js';
 import { newId, secureRandom } from './security.js';
 import {
-  rollPack, rollAlbumPack, newAchievements, xpForCard, recycleValue, pressCost, levelFromXp,
+  rollPack, rollAlbumPack, newAchievements, xpForCard, newCardRoyalties, recycleValue, pressCost, levelFromXp,
   ECONOMY, BLINDTEST, SHOWCASE_SLOTS, AVATAR_COLORS, RARITIES, packOdds, PACK_SLOTS,
   buildBlindtest, blindtestClues, blindtestPoints, blindtestReward,
 } from '../shared/rules.js';
@@ -177,6 +177,8 @@ export function createServices(db, catalog) {
     const upsert = q(`INSERT INTO cards (user_id, track_id, variant, count, first_at) VALUES (?, ?, ?, 1, ?)
       ON CONFLICT (user_id, track_id, variant) DO UPDATE SET count = count + 1`);
     let xp = 0;
+    // Droits d'auteur des nouvelles cartes (pas pour une carte pressée : on vient de la payer).
+    let cardRoyalties = 0;
     const results = list.map(({ trackId, variant }) => {
       const rarity = views.get(trackId).rarity;
       const newTrack = !owned.has(trackId);
@@ -185,6 +187,7 @@ export function createServices(db, catalog) {
       owned.add(trackId);
       seenVariants.add(`${trackId}|${variant}`);
       xp += xpForCard(rarity, newTrack);
+      if (newTrack && source !== 'press') cardRoyalties += newCardRoyalties(rarity);
       return { trackId, variant, rarity, newTrack, newVariant };
     });
 
@@ -193,7 +196,7 @@ export function createServices(db, catalog) {
       AND (t.album_id IN (SELECT value FROM json_each(?)) OR t.artist_id IN (SELECT value FROM json_each(?)))`)
       .all(user.id, json(albumIds), json(artistIds)).map((r) => r.track_id));
     const achievements = newAchievements({ owned: scoped, already: achievementSet(user.id), touched: [...views.values()], catalog });
-    let royalties = 0;
+    let royalties = cardRoyalties;
     const insertAch = q('INSERT OR IGNORE INTO achievements (user_id, key, created_at) VALUES (?, ?, ?)');
     for (const a of achievements) {
       insertAch.run(user.id, a.key, now);
@@ -218,6 +221,7 @@ export function createServices(db, catalog) {
       cards: results,
       xp,
       royalties,
+      cardRoyalties,
       achievements,
       albumDeltas,
       catalog: refs({ trackIds: ids, albumIds, artistIds: achievements.filter((a) => a.type === 'artist').map((a) => a.id) }),

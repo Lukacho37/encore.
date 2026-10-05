@@ -13,7 +13,7 @@ Le jeu de collection de morceaux de musique : ouvre des boosters, collectionne l
 | | |
 |---|---|
 | Comptes | Inscription par e-mail + nom d'utilisateur unique + mot de passe, **vérification de l'adresse e-mail**, connexion par e-mail ou pseudo, mot de passe oublié |
-| Boosters | 1 booster gratuit toutes les 30 min (stock max 5), 5 cartes par booster, 7 raretés, variantes **holo** ; une partie de chaque booster vise les albums que tu as commencés ; **booster d'album** (5 cartes d'un album choisi, 300 royalties) |
+| Boosters | 1 booster gratuit toutes les 30 min (stock max 5), 5 cartes par booster, 7 raretés, variantes **holo** ; une partie de chaque booster vise les albums que tu as commencés ; **booster d'album** (5 cartes d'un album choisi, 300 royalties) ; chaque nouvelle carte rapporte des droits d'auteur (2 à 75 royalties selon sa rareté) |
 | Catalogue | Import automatique depuis l'API Deezer (albums studio, sans live ni compilation), recherche plein texte, filtres par genre et décennie, rareté calibrée sur la popularité réelle de chaque morceau |
 | Raretés | Indice de popularité 0-100 affiché sur chaque carte, rareté calculée automatiquement, guide des raretés avec les chances par booster |
 | Ouverture | Booster à déchirer, cartes retournées une à une, halo d'anticipation selon la rareté, rayons + confettis pour les grosses cartes, **effets sonores** synthétisés (aucun fichier audio) |

@@ -50,6 +50,9 @@ export const ECONOMY = {
   artistXp: 400,
   welcomePacks: 5,
   welcomeRoyalties: 200,
+  // Droits d'auteur touchés pour chaque nouvelle carte (hors pressage) : avec 250 000 cartes, les doublons à recycler
+  // sont rares, c'est la principale source de royalties pour les boosters d'album (≈ 30 par booster gratuit).
+  newCardRoyalties: { common: 2, uncommon: 3, rare: 6, super: 12, ultra: 30, legendary: 75, promo: 50 },
 };
 
 export const BLINDTEST = {
@@ -159,6 +162,11 @@ export function packOdds() {
 export function recycleValue(rarity, variant) {
   const base = RARITY[rarity]?.recycle || 0;
   return variant === 'holo' ? base * ECONOMY.holoRecycleMultiplier : base;
+}
+
+/** Royalties gagnées en obtenant une carte qu'on n'avait pas. */
+export function newCardRoyalties(rarity) {
+  return ECONOMY.newCardRoyalties[rarity] || 0;
 }
 
 export function xpForCard(rarity, isNew) {

@@ -51,6 +51,13 @@ export default {
     jazz: 'Jazz',
     reggae: 'Reggae',
     chanson: 'French chanson',
+    metal: 'Metal',
+    latin: 'Latin',
+    country: 'Country / Folk',
+    classical: 'Classical',
+    soundtrack: 'Soundtracks',
+    world: 'World music',
+    other: 'Other',
   },
   promoKind: {
     soundtrack: 'Soundtrack',

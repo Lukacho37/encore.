@@ -1,4 +1,6 @@
 // Client HTTP de l'API. En mode démo, les appels sont servis par un faux serveur dans le navigateur.
+import { absorbResponse } from './catalogStore.js';
+
 export class ApiError extends Error {
   constructor(status, code, data = {}) {
     super(code);
@@ -13,7 +15,9 @@ let demoServer = null;
 export async function api(method, path, body) {
   if (__DEMO__) {
     demoServer ||= await import('./demo/mockServer.js');
-    return demoServer.handle(method, path, body);
+    const data = await demoServer.handle(method, path, body);
+    absorbResponse(data);
+    return data;
   }
   let res;
   try {
@@ -28,6 +32,7 @@ export async function api(method, path, body) {
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, data.error || 'server_error', data);
+  absorbResponse(data);
   return data;
 }
 

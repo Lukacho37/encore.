@@ -99,6 +99,95 @@ CREATE TABLE IF NOT EXISTS ratings (
   PRIMARY KEY (user_id, item_type, item_id)
 );
 
+-- Catalogue musical : la graine (shared/catalog.js) et les albums importés depuis Deezer.
+CREATE TABLE IF NOT EXISTS cat_artists (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  country TEXT,
+  genre TEXT,
+  fans INTEGER NOT NULL DEFAULT 0,
+  track_count INTEGER NOT NULL DEFAULT 0,
+  album_count INTEGER NOT NULL DEFAULT 0,
+  source TEXT NOT NULL,
+  deezer_id TEXT UNIQUE,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cat_albums (
+  id TEXT PRIMARY KEY,
+  artist_id TEXT NOT NULL REFERENCES cat_artists(id),
+  title TEXT NOT NULL,
+  year INTEGER,
+  genre TEXT,
+  art TEXT,
+  catalog INTEGER NOT NULL UNIQUE,
+  track_count INTEGER NOT NULL,
+  fans INTEGER NOT NULL DEFAULT 0,
+  source TEXT NOT NULL,
+  deezer_id TEXT UNIQUE,
+  cover TEXT,
+  cover_w INTEGER,
+  thumb TEXT,
+  thumb_w INTEGER,
+  url TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS cat_albums_artist ON cat_albums(artist_id);
+CREATE INDEX IF NOT EXISTS cat_albums_genre ON cat_albums(genre, fans);
+CREATE INDEX IF NOT EXISTS cat_albums_year ON cat_albums(year);
+CREATE INDEX IF NOT EXISTS cat_albums_fans ON cat_albums(fans);
+
+CREATE TABLE IF NOT EXISTS cat_tracks (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  album_id TEXT REFERENCES cat_albums(id),
+  artist_id TEXT NOT NULL REFERENCES cat_artists(id),
+  n INTEGER NOT NULL,
+  total INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  feat TEXT,
+  year INTEGER,
+  genre TEXT,
+  pop INTEGER NOT NULL,
+  rarity TEXT NOT NULL,
+  rank INTEGER,
+  promo_kind TEXT,
+  context TEXT,
+  art TEXT,
+  url TEXT,
+  cover TEXT,
+  thumb TEXT,
+  source TEXT NOT NULL,
+  deezer_id TEXT UNIQUE,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS cat_tracks_album ON cat_tracks(album_id, n);
+CREATE INDEX IF NOT EXISTS cat_tracks_artist ON cat_tracks(artist_id);
+CREATE INDEX IF NOT EXISTS cat_tracks_rarity ON cat_tracks(rarity);
+CREATE INDEX IF NOT EXISTS cat_tracks_pop ON cat_tracks(pop);
+CREATE INDEX IF NOT EXISTS cat_tracks_kind ON cat_tracks(kind, n);
+CREATE INDEX IF NOT EXISTS cards_track ON cards(track_id);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS cat_search USING fts5(album_id UNINDEXED, title, artist, tokenize = 'unicode61 remove_diacritics 2');
+
+-- Importation du catalogue : file d'artistes à explorer et état de l'import.
+CREATE TABLE IF NOT EXISTS import_artists (
+  deezer_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  fans INTEGER NOT NULL DEFAULT 0,
+  genre TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  depth INTEGER NOT NULL DEFAULT 0,
+  priority INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS import_artists_queue ON import_artists(status, depth, priority, fans);
+
+CREATE TABLE IF NOT EXISTS kv (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
 -- Pochettes officielles : seulement l'adresse des images et des pages, jamais les fichiers.
 CREATE TABLE IF NOT EXISTS covers (
   item_key TEXT PRIMARY KEY,

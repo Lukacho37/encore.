@@ -13,8 +13,10 @@ export default defineConfig(({ mode }) => {
     define: { __DEMO__: JSON.stringify(demo) },
     resolve: { alias: { '@shared': path.resolve('shared') } },
     server: {
-      port: 5173,
-      proxy: { '/api': 'http://localhost:3000' },
+      // WEB_PORT / API_URL : plusieurs copies du site en parallèle (tests), chacune vers son serveur.
+      port: Number(process.env.WEB_PORT) || 5173,
+      strictPort: !!process.env.WEB_PORT,
+      proxy: { '/api': process.env.API_URL || 'http://localhost:3000' },
       fs: { allow: ['..'] },
     },
     build: {

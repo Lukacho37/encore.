@@ -65,6 +65,13 @@ export const config = {
   spotify: env.SPOTIFY_CLIENT_ID && env.SPOTIFY_CLIENT_SECRET
     ? { clientId: env.SPOTIFY_CLIENT_ID, clientSecret: env.SPOTIFY_CLIENT_SECRET }
     : null,
+  // Grand catalogue importé depuis Deezer : "deezer" (par défaut) ou "off" (seulement les 20 albums de base).
+  catalogImport: (env.CATALOG_IMPORT || (env.NODE_ENV === 'test' ? 'off' : 'deezer')).trim().toLowerCase() === 'off' ? 'off' : 'deezer',
+  catalogTarget: Math.max(0, Number(env.CATALOG_TARGET) || 20000),
+  catalogMinArtistFans: Number(env.CATALOG_MIN_ARTIST_FANS) || 15000,
+  catalogMinAlbumFans: Number(env.CATALOG_MIN_ALBUM_FANS) || 500,
+  catalogMaxAlbumsPerArtist: Number(env.CATALOG_MAX_ALBUMS_PER_ARTIST) || 10,
+
   // Adresses des API : à ne changer que pour les tests.
   spotifyApiUrl: (env.SPOTIFY_API_URL || 'https://api.spotify.com').replace(/\/$/, ''),
   spotifyAccountsUrl: (env.SPOTIFY_ACCOUNTS_URL || 'https://accounts.spotify.com').replace(/\/$/, ''),

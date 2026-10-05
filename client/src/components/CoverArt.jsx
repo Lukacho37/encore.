@@ -1,5 +1,5 @@
 import { memo, useId } from 'react';
-import { useCovers } from '../state/CoversContext.jsx';
+import { useCovers, realCover } from '../state/CoversContext.jsx';
 
 // Pochette d'un album ou d'un single.
 // - Vraie pochette quand le serveur en a trouvé une (Spotify ou Deezer) : l'image reste hébergée par la
@@ -200,7 +200,7 @@ function motif(kind, [c0, c1, c2], rand, id) {
 function CoverArt({ art, className = '', title, generated = false, sizes = '160px' }) {
   const id = useId().replace(/:/g, '');
   const covers = useCovers();
-  const real = generated ? null : covers.items[art.seed];
+  const real = generated ? null : realCover(art, covers);
   if (real) {
     const srcSet = real.thumb && real.thumb !== real.cover && real.thumbW && real.coverW
       ? `${real.thumb} ${real.thumbW}w, ${real.cover} ${real.coverW}w`
@@ -237,5 +237,5 @@ function CoverArt({ art, className = '', title, generated = false, sizes = '160p
   );
 }
 
-export default memo(CoverArt, (a, b) => a.art.seed === b.art.seed && a.className === b.className
+export default memo(CoverArt, (a, b) => a.art.seed === b.art.seed && a.art.cover === b.art.cover && a.className === b.className
   && a.generated === b.generated && a.title === b.title && a.sizes === b.sizes);

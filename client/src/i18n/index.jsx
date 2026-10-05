@@ -1,8 +1,22 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import fr from './fr.js';
-import en from './en.js';
+import baseFr from './fr.js';
+import baseEn from './en.js';
+import areas from './areas/index.js';
 import { storage } from '../storage.js';
 
+/** Fusion profonde : les textes d'une zone complètent (ou précisent) ceux du dictionnaire principal. */
+function merge(base, extra) {
+  const out = { ...base };
+  for (const [k, v] of Object.entries(extra || {})) {
+    out[k] = v && typeof v === 'object' && !Array.isArray(v) && base[k] && typeof base[k] === 'object' && !('one' in v || 'other' in v)
+      ? merge(base[k], v)
+      : v;
+  }
+  return out;
+}
+
+const fr = areas.reduce((d, a) => merge(d, a.fr), baseFr);
+const en = areas.reduce((d, a) => merge(d, a.en), baseEn);
 const DICTS = { fr, en };
 export const LANGS = [
   { id: 'fr', label: 'FR', name: 'Français' },

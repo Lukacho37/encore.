@@ -1,7 +1,7 @@
 import { createApp } from './app.js';
 import { config } from './config.js';
 
-const { app, covers } = createApp();
+const { app, covers, importer } = createApp();
 
 app.listen(config.port, (err) => {
   if (err) {
@@ -19,5 +19,10 @@ app.listen(config.port, (err) => {
   else if (process.env.COVERS && !/^\s*off\s*$/i.test(process.env.COVERS)) console.warn(`  ⚠ COVERS="${process.env.COVERS}" non reconnu : pochettes coupées (valeurs possibles : auto, spotify, deezer, off).`);
   else console.log('  Pochettes : désactivées (visuels générés).');
   covers.start();
+  const cat = importer.status();
+  if (cat.mode === 'off') console.log(`  Catalogue : ${cat.totalAlbums} albums (import automatique coupé, CATALOG_IMPORT=off).`);
+  else if (cat.albums >= cat.target) console.log(`  Catalogue : ${cat.totalAlbums} albums (objectif de ${cat.target} albums importés atteint).`);
+  else console.log(`  Catalogue : ${cat.totalAlbums} albums, import Deezer en cours vers ${cat.target} albums (suivi dans l'espace admin).`);
+  importer.schedule();
   console.log('');
 });

@@ -1,7 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { get, post, ApiError } from '../api.js';
-import { collectionStats } from '@shared/rules.js';
+import { recycleValue } from '@shared/rules.js';
 import { useI18n } from '../i18n/index.jsx';
+import { clearApiCache } from './catalog.js';
+
+const EMPTY_RATIO = { owned: 0, total: 0, pct: 0 };
 
 const GameContext = createContext(null);
 
@@ -27,6 +30,10 @@ export function GameProvider({ children }) {
   const applyState = useCallback((state) => {
     if (!state) return;
     offset.current = state.serverTime - Date.now();
+    // Les progressions gardées en cache (collection, albums commencés) ne sont plus à jour.
+    clearApiCache('/catalog/mine');
+    clearApiCache('/catalog/groups');
+    clearApiCache('/catalog/albums?');
     setData(state);
     setStatus('ready');
   }, []);
@@ -76,9 +83,15 @@ export function GameProvider({ children }) {
     const ownedSet = new Set(owned.keys());
     const achievements = new Map(data.achievements.map((a) => [a.key, a.at]));
     const duplicates = data.cards.reduce((n, c) => n + Math.max(0, c.c - 1), 0);
+    // Valeur des doublons en royalties (chaque ligne de carte porte sa rareté).
+    const duplicatesValue = data.cards.reduce((n, c) => n + Math.max(0, c.c - 1) * recycleValue(c.r, c.v), 0);
     // Mes notes : « album:discovery » ou « track:discovery:01 » -> score sur 10
     const ratings = new Map((data.ratings || []).map((r) => [`${r.t}:${r.i}`, r.s]));
-    return { owned, ownedSet, achievements, stats: collectionStats(ownedSet), duplicates, ratings };
+    // Statistiques calculées par le serveur : seuls les albums et artistes commencés figurent dans stats.albums / stats.artists.
+    const stats = data.stats;
+    const albumProgress = (albumId, total = 0) => stats.albums[albumId] || { ...EMPTY_RATIO, total };
+    const artistProgress = (artistId, total = 0) => stats.artists[artistId] || { ...EMPTY_RATIO, total };
+    return { owned, ownedSet, achievements, stats, albumProgress, artistProgress, duplicates, duplicatesValue, ratings };
   }, [data]);
 
   const value = useMemo(

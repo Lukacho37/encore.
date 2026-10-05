@@ -8,6 +8,8 @@ import { createMailer } from './mailer.js';
 import { createServices, HttpError } from './services.js';
 import { createAuth } from './auth.js';
 import { createCovers } from './covers.js';
+import { createCatalog } from './catalog.js';
+import { createImporter } from './importer.js';
 import { rateLimit } from './security.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -15,7 +17,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export function createApp({ dbFile } = {}) {
   const db = openDb(dbFile);
   const mailer = createMailer(db);
-  const services = createServices(db);
+  const catalog = createCatalog(db);
+  const importer = createImporter(db, catalog);
+  const services = createServices(db, catalog);
   const auth = createAuth(db, mailer, services);
   const covers = createCovers(db);
 
@@ -54,12 +58,31 @@ export function createApp({ dbFile } = {}) {
   const requireAdmin = (req, _res, next) => (services.isAdmin(req.user) ? next() : next(new HttpError(403, 'forbidden')));
   const actionLimit = rateLimit({ windowMs: 60_000, max: config.isTest ? 10_000 : 240, key: (req) => `u${req.user?.id}` });
 
+  // Navigation dans le catalogue : beaucoup de petites requêtes (défilement, recherche), limite à part.
+  const browseLimit = rateLimit({ windowMs: 60_000, max: config.isTest ? 10_000 : 600, key: (req) => `b${req.user?.id}` });
+  const browse = express.Router();
+  browse.use(requireUser, browseLimit);
+  browse.get('/albums', (req, res) => res.json(services.browseAlbums(req.user.id, req.query)));
+  browse.get('/albums/:id', (req, res) => res.json(services.albumDetail(req.params.id)));
+  browse.get('/artists', (req, res) => res.json(services.artistsByIds(req.query.ids)));
+  browse.get('/artists/:id', (req, res) => res.json(services.artistDetail(req.params.id)));
+  browse.get('/tracks', (req, res) => res.json(services.tracksByIds(req.query.ids)));
+  browse.get('/promos', (req, res) => res.json(services.browsePromos(req.query)));
+  browse.get('/mine', (req, res) => res.json(services.myCards(req.user.id, req.query)));
+  browse.get('/groups', (req, res) => res.json(services.groups(req.user.id, req.query.by)));
+  browse.get('/info', (_req, res) => res.json({ totals: catalog.totals(), genres: catalog.genres(), decades: catalog.decades() }));
+  app.use('/api/catalog', browse);
+
   api.use(requireUser, actionLimit);
 
   api.get('/state', (req, res) => res.json(services.state(req.user.id)));
 
   api.post('/packs/open', (req, res) => {
     const result = services.openPacks(req.user.id, req.body.count);
+    res.json({ ...result, state: services.state(req.user.id) });
+  });
+  api.post('/packs/album', (req, res) => {
+    const result = services.openAlbumPack(req.user.id, req.body.albumId);
     res.json({ ...result, state: services.state(req.user.id) });
   });
   api.post('/shop/buy-pack', (req, res) => {
@@ -145,8 +168,17 @@ export function createApp({ dbFile } = {}) {
     services.adminResetCollection(req.user.id);
     res.json({ state: services.state(req.user.id) });
   });
+  api.get('/admin/catalog', requireAdmin, (req, res) => res.json(importer.status()));
+  api.post('/admin/catalog/import', requireAdmin, (req, res) => {
+    importer.start({ force: true });
+    res.json(importer.status());
+  });
+  api.post('/admin/catalog/pause', requireAdmin, (req, res) => {
+    importer.pause();
+    res.json(importer.status());
+  });
   api.post('/admin/me/complete', requireAdmin, (req, res) => {
-    services.adminCompleteCollection(req.user.id);
+    services.adminCompleteCollection(req.user.id, req.body.albumId);
     res.json({ state: services.state(req.user.id) });
   });
   api.post('/admin/me/almost', requireAdmin, (req, res) => {
@@ -179,5 +211,5 @@ export function createApp({ dbFile } = {}) {
     res.status(500).json({ error: 'server_error' });
   });
 
-  return { app, db, services, covers };
+  return { app, db, services, covers, catalog, importer };
 }

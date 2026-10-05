@@ -1113,6 +1113,25 @@ a:hover > .logo .logo__mark,
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Carte dont les données arrivent encore du serveur. */
+.card--loading {
+  border-radius: 7cqi;
+  background: linear-gradient(110deg, #1a1522 30%, #2a2233 50%, #1a1522 70%) 0 0 / 300% 100%;
+  animation: card-loading 1.4s linear infinite;
+}
+
+@keyframes card-loading {
+  to {
+    background-position: -150% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card--loading {
+    animation: none;
+  }
+}
+
 button.card {
   cursor: pointer;
   transition: transform 0.18s ease, filter 0.18s ease;

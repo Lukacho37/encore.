@@ -279,8 +279,11 @@ test('notes et critiques', async () => {
   await a('POST', '/api/friends/request', { username: 'dan' });
   const inbox = (await b('GET', '/api/friends')).body;
   await b('POST', `/api/friends/${inbox.incoming[0].requestId}/accept`);
-  const feed = (await b('GET', '/api/ratings/feed')).body;
+  const feedBody = (await b('GET', '/api/ratings/feed')).body;
+  const feed = feedBody.items;
   assert.ok(feed.length >= 2 && feed.every((f) => f.user.username === 'carla'));
+  // Les éléments notés arrivent avec leurs données (titre, visuel), sans autre requête.
+  assert.ok(feed.every((f) => (f.type === 'album' ? feedBody.catalog.albums : feedBody.catalog.tracks).some((x) => x.id === f.id)));
   // Échelle de notation
   const scale = await b('POST', '/api/profile/settings', { ratingScale: 'points' });
   assert.equal(scale.body.state.user.ratingScale, 'points');
@@ -291,12 +294,12 @@ test('notes et critiques', async () => {
   // Modération admin
   const admin = client();
   await admin('POST', '/api/auth/login', { identifier: 'alice', password: 'motdepasse123' });
-  const mod = (await admin('GET', '/api/admin/reviews')).body;
+  const mod = (await admin('GET', '/api/admin/reviews')).body.items;
   const target = mod.find((x) => x.user.username === 'carla' && x.id === 'discovery');
   assert.ok(target);
   const after = await admin('DELETE', `/api/admin/reviews/${target.user.id}/album/discovery`);
   assert.equal(after.status, 200);
-  assert.ok(!after.body.some((x) => x.user.username === 'carla' && x.id === 'discovery'));
+  assert.ok(!after.body.items.some((x) => x.user.username === 'carla' && x.id === 'discovery'));
   assert.equal((await b('GET', '/api/admin/reviews')).status, 403);
 });
 
@@ -351,7 +354,7 @@ test('modération : supprimer une critique garde la note', async () => {
   await author('POST', '/api/auth/login', { identifier: 'dan', password: 'motdepasse123' });
   await author('PUT', '/api/ratings/album/thriller', { score: 7, review: 'Texte à modérer' });
   await admin('POST', '/api/auth/login', { identifier: 'alice', password: 'motdepasse123' });
-  const target = (await admin('GET', '/api/admin/reviews')).body.find((r) => r.id === 'thriller' && r.user.username === 'dan');
+  const target = (await admin('GET', '/api/admin/reviews')).body.items.find((r) => r.id === 'thriller' && r.user.username === 'dan');
   assert.equal((await admin('DELETE', `/api/admin/reviews/${target.user.id}/album/thriller`)).status, 200);
   const mine = (await author('GET', '/api/ratings/album/thriller')).body.mine;
   assert.equal(mine.score, 7);

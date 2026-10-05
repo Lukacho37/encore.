@@ -249,13 +249,43 @@ test('crédits des plateformes : U.S.A. for Africa, duo Mark Ronson, état « in
   assert.ok(!status.missing.some((m) => m.key === 'thriller'));
   assert.equal(status.pending, 1);
   assert.equal(status.missing.length, 34 - 2 - 1);
-  assert.match(status.lastError, /réseau coupé/);
+  assert.match(status.lastError, /^deezer: réseau coupé$/);
   db.close();
 });
 
 test('interrupteur COVERS : toutes les façons de dire « off » coupent', () => {
-  for (const v of ['off', 'OFF', ' Off ', 'false', '0', 'no', 'none']) assert.equal(coversMode(v), 'off', v);
+  for (const v of ['off', 'OFF', ' Off ', 'false', '0', 'no', 'none', 'disable', 'désactivé', 'of', 'n’importe quoi']) assert.equal(coversMode(v), 'off', v);
   assert.equal(coversMode(undefined), 'auto');
+  assert.equal(coversMode(''), 'auto');
+  assert.equal(coversMode(' AUTO '), 'auto');
   assert.equal(coversMode('Spotify'), 'spotify');
-  assert.equal(coversMode('n’importe quoi'), 'auto');
+});
+
+test('Spotify 403 reste visible même si Deezer échoue ; un fournisseur abandonné ne laisse pas de faux « en attente »', async () => {
+  const db = openDb(':memory:');
+  const fetchImpl = async (url) => {
+    if (url.includes('accounts.spotify.test')) return json({ access_token: 'tok', expires_in: 3600 });
+    if (url.includes('spotify.test')) return json({ error: { status: 403 } }, 403);
+    throw new Error('fetch failed');
+  };
+  const covers = createCovers(db, { cfg: BASE, fetchImpl, pauseMs: 0 });
+  await covers.warm();
+  const status = covers.status();
+  assert.equal(status.spotifyPremium, true);
+  assert.equal(status.lastError, 'spotify: HTTP 403 · deezer: fetch failed');
+  assert.equal(status.found, 0);
+
+  // Des pochettes Spotify déjà en base, puis plus de clés : Deezer répond sans résultat.
+  const at = Date.now();
+  for (const item of ['discovery', 'thriller']) {
+    db.prepare('INSERT INTO covers (item_key, provider, cover, url, tracks, fetched_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(item, 'spotify', `https://i.scdn.test/${item}`, `https://open.spotify.test/album/${item}`, '{}', at);
+  }
+  const deezerOnly = createCovers(db, { cfg: { ...BASE, spotify: null }, fetchImpl: async () => json({ data: [] }), pauseMs: 0 });
+  await deezerOnly.warm();
+  const after = deezerOnly.status();
+  assert.equal(after.found, 0);
+  assert.equal(after.pending, 0, 'tout a été cherché');
+  assert.equal(after.missing.length, 34);
+  db.close();
 });

@@ -13,7 +13,8 @@ const FAN = ['the-college-dropout', 'promo:hey-jude', 'discovery'];
 function AuthLayout({ children }) {
   const { t, lang, setLang } = useI18n();
   const covers = useCovers();
-  const sources = [...new Set(FAN.map((seed) => PROVIDER_NAMES[covers.items[seed]?.provider]).filter(Boolean))];
+  const shown = FAN.map((seed) => covers.items[seed]).filter(Boolean);
+  const sources = shown.filter((item, i) => shown.findIndex((x) => x.provider === item.provider) === i);
   return (
     <div className="auth">
       <aside className="auth__stage">
@@ -23,7 +24,17 @@ function AuthLayout({ children }) {
           <Card trackId="promo:hey-jude" variant="holo" className="auth__fan-card auth__fan-card--2" />
           <Card trackId="discovery:01" className="auth__fan-card auth__fan-card--3" />
         </div>
-        {sources.length > 0 && <p className="auth__credit small muted">{t('covers.credit', { p: sources.join(' / ') })}</p>}
+        {sources.length > 0 && (
+          <p className="auth__credit small muted">
+            {t('covers.creditMany')}{' '}
+            {sources.map((item, i) => (
+              <span key={item.provider}>
+                {i > 0 && ' / '}
+                <a href={item.url} target="_blank" rel="noreferrer noopener">{PROVIDER_NAMES[item.provider]}</a>
+              </span>
+            ))}
+          </p>
+        )}
         <h1 className="auth__tagline">{t('auth.tagline')}</h1>
         <ul className="auth__pitch">
           {t('auth.pitch').map((line) => <li key={line}>{line}</li>)}

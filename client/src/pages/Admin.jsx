@@ -41,6 +41,7 @@ function CoversPanel({ status, onRefresh }) {
           <ul className="covers-missing">{status.missing.map((m) => <li key={m.key}>{m.artist} · {m.title}</li>)}</ul>
         </details>
       )}
+      {status.spotifyPremium && <p className="small">{t('admin.coversPremium')}</p>}
       {status.lastError && <p className="small muted mono">{t('admin.coversError', { e: status.lastError })}</p>}
       {active && (
         <button type="button" className="btn btn--ghost btn--sm" onClick={onRefresh} disabled={status.running}>

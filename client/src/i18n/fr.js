@@ -209,6 +209,7 @@ export default {
     last: 'Touche pour voir le résumé',
     revealAll: 'Tout révéler',
     new: 'Nouveau',
+    newVariantShort: 'Variante',
     newVariant: 'Nouvelle variante',
     dup: 'Doublon ×{n}',
     holo: 'Holo',
@@ -435,6 +436,7 @@ export default {
     coversSpotifyHint: 'Sans clés Spotify, les pochettes et les liens d’écoute viennent de Deezer. Renseigne SPOTIFY_CLIENT_ID et SPOTIFY_CLIENT_SECRET pour passer à Spotify (voir DEPLOIEMENT.md).',
     coversNoKeys: 'COVERS=spotify, mais SPOTIFY_CLIENT_ID et SPOTIFY_CLIENT_SECRET manquent : pochettes désactivées.',
     coversPending: '{n} pas encore cherchées (recherche en cours ou plateforme injoignable).',
+    coversPremium: 'Spotify refuse l’accès (erreur 403) : le propriétaire de l’application Spotify doit avoir un abonnement Premium actif. En attendant, les pochettes viennent de Deezer.',
     coversMissing: '{n} introuvables',
     coversRefresh: 'Actualiser les pochettes',
     coversRunning: 'Recherche en cours…',
@@ -537,6 +539,7 @@ export default {
   covers: {
     listenOn: 'Écouter sur {p}',
     listenAlbumOn: 'Écouter l’album sur {p}',
+    creditMany: 'Pochettes fournies par',
     credit: 'Pochette fournie par {p}',
   },
   demo: {

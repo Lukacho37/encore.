@@ -209,6 +209,7 @@ export default {
     last: 'Tap to see the summary',
     revealAll: 'Reveal all',
     new: 'New',
+    newVariantShort: 'Variant',
     newVariant: 'New variant',
     dup: 'Duplicate ×{n}',
     holo: 'Holo',
@@ -435,6 +436,7 @@ export default {
     coversSpotifyHint: 'Without Spotify keys, covers and listening links come from Deezer. Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to switch to Spotify (see DEPLOIEMENT.md).',
     coversNoKeys: 'COVERS=spotify, but SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET are missing: covers are off.',
     coversPending: '{n} not searched yet (search running or platform unreachable).',
+    coversPremium: 'Spotify refused access (error 403): the Spotify app owner needs an active Premium subscription. Meanwhile, covers come from Deezer.',
     coversMissing: '{n} not found',
     coversRefresh: 'Refresh covers',
     coversRunning: 'Searching…',
@@ -537,6 +539,7 @@ export default {
   covers: {
     listenOn: 'Listen on {p}',
     listenAlbumOn: 'Listen to the album on {p}',
+    creditMany: 'Covers provided by',
     credit: 'Cover provided by {p}',
   },
   demo: {

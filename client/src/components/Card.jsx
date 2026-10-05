@@ -86,6 +86,8 @@ function Card({ trackId, variant = 'std', count = 0, ghost = false, badge, badge
   const art = artFor(track);
   // Une carte non obtenue garde le visuel généré : la vraie pochette se révèle quand on l'obtient.
   const realCover = !ghost && !!covers.items[art.seed];
+  // Sur une vraie pochette, « Nouveau » et le nombre d'exemplaires vont dans le pied de carte.
+  const footTags = realCover && (!!badge || count > 1);
   const Tag = onClick ? 'button' : 'div';
   const number = track.kind === 'promo' ? `P${pad(track.n)}` : `${pad(track.n)}/${pad(track.total)}`;
 
@@ -114,14 +116,18 @@ function Card({ trackId, variant = 'std', count = 0, ghost = false, badge, badge
             {track.feat ? <span className="card__feat"> · feat. {track.feat}</span> : null}
           </span>
         </span>
-        <span className="card__foot">
-          <span className="card__rarity">{realCover && <RarityGem rarity={track.rarity} size={9} />}{t(`rarity.${track.rarity}`)}</span>
-          {realCover && (badge || count > 1) ? (
+        <span className={`card__foot${footTags ? ' card__foot--tags' : ''}`}>
+          <span className="card__rarity" title={t(`rarity.${track.rarity}`)}>
+            {realCover && <RarityGem rarity={track.rarity} size={9} />}
+            {!footTags && t(`rarity.${track.rarity}`)}
+          </span>
+          {footTags && (
             <span className="card__foot-tags">
               {badge && <span className={`card__tag${badgeTone ? ` card__tag--${badgeTone}` : ''}`}>{badge}</span>}
               {count > 1 && <span className="card__tag card__tag--count">×{count}</span>}
             </span>
-          ) : track.pop != null
+          )}
+          {track.pop != null
             ? <span className="card__pop" title={`${t('card.popularity')} ${track.pop}/100`}><PopIcon />{track.pop}</span>
             : <span className="card__code">{catalogCode(track)}</span>}
         </span>

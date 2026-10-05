@@ -337,7 +337,7 @@ export default function PackOpening({ promise, count = 1, onClose, onAgain }) {
             {cards.map((c, i) => (
               <span key={c.key} className="summary__cell" style={{ '--i': Math.min(i, 30) }}>
                 <Card trackId={c.trackId} variant={c.variant}
-                  badge={c.newTrack ? t('open.new') : c.newVariant ? t('open.newVariant') : `×${countOf(c)}`}
+                  badge={c.newTrack ? t('open.new') : c.newVariant ? t('open.newVariantShort') : `×${countOf(c)}`}
                   badgeTone={c.newTrack || c.newVariant ? 'new' : 'dup'} />
               </span>
             ))}

@@ -3,7 +3,7 @@ import { get } from '../api.js';
 
 // Pochettes officielles et liens d'écoute fournis par le serveur (Spotify ou Deezer).
 // Sans réponse, l'application garde ses visuels générés : rien ne dépend de ces données.
-const EMPTY = { providers: [], items: {}, tracks: {}, markBroken: () => {} };
+const EMPTY = { providers: [], items: {}, all: {}, tracks: {}, markBroken: () => {} };
 const CoversContext = createContext(EMPTY);
 
 export const PROVIDER_NAMES = { spotify: 'Spotify', deezer: 'Deezer' };
@@ -31,7 +31,8 @@ export function CoversProvider({ children }) {
 
   const value = useMemo(() => {
     const items = broken.size ? Object.fromEntries(Object.entries(data.items).filter(([seed]) => !broken.has(seed))) : data.items;
-    return { ...data, items, markBroken };
+    // all : toutes les entrées, y compris celles dont l'image ne charge pas (leurs liens d'écoute restent valables).
+    return { ...data, all: data.items, items, markBroken };
   }, [data, broken, markBroken]);
 
   return <CoversContext.Provider value={value}>{children}</CoversContext.Provider>;

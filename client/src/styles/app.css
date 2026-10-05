@@ -5748,8 +5748,8 @@ button.vinyl:hover .disc__body {
 }
 
 /* Rien ne recouvre une vraie pochette : la pastille de rareté, « Nouveau » et le nombre d'exemplaires passent dans
-   le pied de carte (le numéro reste dans la fiche et la tracklist), le reflet holo reste sur le cadre, et le survol
-   n'éclaircit pas l'image. */
+   le pied de carte (le numéro reste dans la fiche de la carte et, pour les albums, dans la tracklist), le reflet holo
+   reste sur le cadre, et le survol n'éclaircit pas l'image. */
 .card--cover .card__top {
   display: none;
 }
@@ -5764,8 +5764,19 @@ button.card.card--cover:hover {
 
 .card__foot-tags {
   display: inline-flex;
-  flex: none;
+  flex: 0 1 auto;
   gap: 1.4cqi;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.card__foot-tags .card__tag {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card__foot--tags .card__rarity {
+  flex: none;
 }
 
 .card__tag {
@@ -5792,11 +5803,6 @@ button.card.card--cover:hover {
   display: none;
 }
 
-.album-tile__meta .album-tile__badge {
-  position: static;
-  align-self: flex-start;
-  margin-bottom: 2px;
-}
 
 .card--cover .card__rarity .gem {
   margin-right: 1.4cqi;
@@ -5826,4 +5832,22 @@ button.card.card--cover:hover {
 
 .auth__credit {
   margin: -2px 0 10px;
+}
+
+/* Studio : le bouton « retirer » passe sous une carte à vraie pochette au lieu de mordre sur l'image. */
+.showcase__slot:has(.card--cover) {
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.showcase__slot:has(.card--cover) .showcase__remove {
+  position: static;
+}
+
+.album-tile__progress .album-tile__badge {
+  position: static;
+  flex: none;
+  padding: 2px 8px;
+  font-size: 11px;
 }

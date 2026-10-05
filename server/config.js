@@ -18,11 +18,12 @@ const isProd = env.NODE_ENV === 'production';
 const port = Number(env.PORT) || 3000;
 const list = (v) => (v || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 
-// L'interrupteur des pochettes doit couper même avec « OFF », « false » ou « 0 ».
+// Interrupteur des pochettes : il échoue fermé. Vide ou absent = "auto" ; toute valeur inconnue (« OFF », « désactivé »,
+// une faute de frappe…) coupe les pochettes plutôt que de les laisser allumées.
 export function coversMode(v) {
-  const mode = String(v ?? 'auto').trim().toLowerCase();
-  if (['off', 'false', '0', 'no', 'non', 'none', 'disabled'].includes(mode)) return 'off';
-  return ['spotify', 'deezer'].includes(mode) ? mode : 'auto';
+  const mode = String(v ?? '').trim().toLowerCase();
+  if (!mode) return 'auto';
+  return ['auto', 'spotify', 'deezer'].includes(mode) ? mode : 'off';
 }
 
 export const config = {

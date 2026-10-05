@@ -122,7 +122,7 @@ function CardDetail({ trackId, onClose }) {
           ) : (
             <>
               <dt>{t('rarity.promo')}</dt>
-              <dd>{t(`promoKind.${track.promoKind}`)}{track.context ? ` · ${track.context}` : ''}</dd>
+              <dd>{t(`promoKind.${track.promoKind}`)}{track.context ? ` · ${track.context}` : ''} · <span className="mono">P{String(track.n).padStart(2, '0')}</span></dd>
             </>
           )}
           <dt>{t('card.popularity')}</dt>

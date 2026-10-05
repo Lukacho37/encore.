@@ -149,9 +149,8 @@ function spotifyProvider(cfg, fetchImpl, pause) {
     const res = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(8000) });
     if (res.status === 429) throw new RateLimited('spotify');
     if (res.status === 401) token = null;
-    // Spotify refuse (403) les applications dont le propriétaire n'a pas d'abonnement Premium actif.
-    if (res.status === 403) throw new Error('spotify 403 (abonnement Premium du propriétaire de l’application requis ?)');
-    if (!res.ok) throw new Error(`spotify ${res.status}`);
+    // 403 : Spotify refuse les applications dont le propriétaire n'a pas d'abonnement Premium actif.
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
   }
 
@@ -218,12 +217,12 @@ function deezerProvider(cfg, fetchImpl, pause) {
   async function get(path) {
     const res = await fetchImpl(`${cfg.deezerApiUrl}${path}`, { signal: AbortSignal.timeout(8000) });
     if (res.status === 429) throw new RateLimited('deezer');
-    if (!res.ok) throw new Error(`deezer ${res.status}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     // Deezer répond 200 avec un objet « error » ; le code 4 signale le dépassement de quota.
     if (data?.error) {
       if (data.error.code === 4) throw new RateLimited('deezer');
-      throw new Error(`deezer ${data.error.code || data.error.type}`);
+      throw new Error(`erreur ${data.error.code || data.error.type}`);
     }
     return data;
   }
@@ -301,7 +300,8 @@ export function createCovers(db, { cfg = config, fetchImpl = (...a) => fetch(...
   let running = null;
   let timer = null;
   let lastRun = null;
-  let lastError = null;
+  // Dernière erreur de chaque fournisseur pendant la tournée en cours (une erreur Spotify reste visible si Deezer échoue aussi).
+  let lastErrors = {};
 
   function isStale(row, now = Date.now()) {
     if (!row) return true;
@@ -322,7 +322,7 @@ export function createCovers(db, { cfg = config, fetchImpl = (...a) => fetch(...
       } catch (err) {
         if (err instanceof RateLimited) throw err;
         reachedAll = false;
-        lastError = `${id}: ${err.message}`;
+        lastErrors[id] = err.message;
       }
       await pause();
     }
@@ -347,14 +347,15 @@ export function createCovers(db, { cfg = config, fetchImpl = (...a) => fetch(...
 
   async function run({ force = false } = {}) {
     if (!order.length) return;
-    lastError = null;
+    lastErrors = {};
     const rows = new Map(selectAll.all().map((r) => [r.item_key, r]));
     for (const item of items) {
       const row = rows.get(item.key);
       if (!force && !isStale(row)) continue;
       const found = await resolve(item);
-      // On garde une ancienne pochette plutôt que de l'effacer sur un échec passager.
-      if (found && (found.cover || !row?.cover)) save(item.key, found);
+      // On garde une ancienne pochette plutôt que de l'effacer sur un échec passager,
+      // sauf si elle vient d'un fournisseur qui n'est plus utilisé (elle n'est de toute façon plus affichée).
+      if (found && (found.cover || !row?.cover || !order.includes(row.provider))) save(item.key, found);
       await pause();
     }
   }
@@ -366,7 +367,8 @@ export function createCovers(db, { cfg = config, fetchImpl = (...a) => fetch(...
         lastRun = Date.now();
       })
       .catch((err) => {
-        lastError = err instanceof RateLimited ? `${err.message}: quota` : err.message;
+        if (err instanceof RateLimited) lastErrors[err.message] = 'quota';
+        else lastErrors.serveur = err.message;
         if (err instanceof RateLimited) setTimeout(() => warm(), RETRY_MS).unref?.();
       })
       .finally(() => {
@@ -413,7 +415,9 @@ export function createCovers(db, { cfg = config, fetchImpl = (...a) => fetch(...
       pending: items.filter((i) => !snap.items[i.key] && !(rows.has(i.key) && !rows.get(i.key).cover)).length,
       running: !!running,
       lastRun,
-      lastError,
+      lastError: Object.entries(lastErrors).map(([p, e]) => `${p}: ${e}`).join(' · ') || null,
+      // Spotify répond 403 quand le propriétaire de l'application n'a pas d'abonnement Premium actif.
+      spotifyPremium: lastErrors.spotify === 'HTTP 403',
     };
   }
 

@@ -248,7 +248,8 @@ export default function AlbumPage() {
   const reward = albumReward(id);
   const edition = doneAt && isHoloComplete(id, owned) ? 'holo' : 'black';
   const summary = ratingsApi.data?.summary;
-  const albumCover = covers.items[id];
+  const albumLink = covers.all[id];
+  const coverShown = !!covers.items[id];
   const chooseView = (v) => {
     setView(v);
     storage.set('albummania.albumView', v);
@@ -264,19 +265,19 @@ export default function AlbumPage() {
           </div>
         ) : (
           <div className="album-head__cover">
-            <CoverArt art={{ ...album.art, seed: album.id }} title={album.title} sizes="(max-width: 700px) 45vw, 280px" />
+            <CoverArt art={{ ...album.art, seed: album.id }} title={album.title} sizes="(max-width: 860px) 220px, 280px" />
           </div>
         )}
         <div className="album-head__info">
           <span className="eyebrow mono">{catalogCode(tracks[0])} · {t(`genre.${album.genre}`)} · {album.year}</span>
           <h1>{album.title}</h1>
           <Link to={`/artist/${artist.id}`} className="album-head__artist">{artist.name}</Link>
-          {albumCover && (
+          {albumLink && (
             <div className="cover-credit">
-              <a href={albumCover.url} target="_blank" rel="noreferrer noopener" className="btn btn--ghost btn--sm">
-                <ProviderMark provider={albumCover.provider} /> {t('covers.listenAlbumOn', { p: PROVIDER_NAMES[albumCover.provider] })}
+              <a href={albumLink.url} target="_blank" rel="noreferrer noopener" className="btn btn--ghost btn--sm">
+                <ProviderMark provider={albumLink.provider} /> {t('covers.listenAlbumOn', { p: PROVIDER_NAMES[albumLink.provider] })}
               </a>
-              <span className="small muted">{t('covers.credit', { p: PROVIDER_NAMES[albumCover.provider] })}</span>
+              {coverShown && <span className="small muted">{t('covers.credit', { p: PROVIDER_NAMES[albumLink.provider] })}</span>}
             </div>
           )}
           {summary?.count > 0 && (

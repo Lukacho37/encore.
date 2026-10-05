@@ -14,7 +14,8 @@
     "build": "vite build",
     "build:demo": "vite build --mode demo && node scripts/package-demo.js",
     "start": "NODE_ENV=production node --disable-warning=ExperimentalWarning server/index.js",
-    "test": "node --disable-warning=ExperimentalWarning --test server/test/*.test.js"
+    "test": "node --disable-warning=ExperimentalWarning --test server/test/*.test.js",
+    "catalog:purge": "node --disable-warning=ExperimentalWarning scripts/purge-catalog.js"
   },
   "dependencies": {
     "express": "^5.2.1",

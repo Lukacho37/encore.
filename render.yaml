@@ -38,6 +38,10 @@ services:
         value: "off"
       - key: COVERS # "auto" : Spotify si les clés ci-dessous sont renseignées, sinon Deezer ; "off" pour tout couper
         value: auto
+      - key: CATALOG_IMPORT # "deezer" : le serveur importe tout seul ~20 000 albums depuis Deezer ; "off" pour s'en tenir aux 20 albums de base
+        value: deezer
+      - key: CATALOG_TARGET # nombre d'albums à importer
+        value: "20000"
       - key: SPOTIFY_CLIENT_ID # facultatif, voir DEPLOIEMENT.md
         sync: false
       - key: SPOTIFY_CLIENT_SECRET

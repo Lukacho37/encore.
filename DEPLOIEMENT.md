@@ -41,7 +41,23 @@ Plus tard, avec un nom de domaine à toi, authentifie-le dans Brevo (SPF, DKIM) 
 
 Personne d'autre ne peut devenir admin : le serveur compare l'adresse vérifiée du compte à `ADMIN_EMAILS` à chaque requête. Il n'y a ni bouton « passer admin », ni rôle stocké en base qu'on pourrait modifier.
 
-## 4. Pochettes et liens Spotify (facultatif)
+## 4. Le catalogue : 20 000 albums, tout seul
+
+Rien à faire : au premier démarrage, le serveur commence à importer des albums depuis l'**API publique de Deezer** (sans clé), jusqu'à **20 000 albums** (environ 250 000 cartes) :
+
+- il part des classements Deezer de chaque genre (rap, pop, rock, métal, électro, R&B, jazz, reggae, chanson, latino, country, classique, musiques de film, musiques du monde), puis suit les artistes proches ;
+- il ne garde que les **albums studio** (pas de live, de compilation ni de best-of ; une seule version quand il existe une réédition « Deluxe ») des artistes suivis par au moins 15 000 fans ;
+- chaque album importé arrive avec sa tracklist, sa pochette, ses liens Deezer et un **indice de popularité** par morceau, d'où découle la rareté (les 0,5 % de morceaux les plus écoutés sont légendaires, les 60 % les moins écoutés sont communs) ; les singles hors album deviennent des cartes **Promo**.
+
+Compte **environ 3 heures** pour les 20 000 albums (le serveur ménage l'API de Deezer). Le jeu est jouable pendant ce temps : les nouveaux albums apparaissent au fur et à mesure dans la collection et les boosters. L'import reprend où il en était après un redémarrage, puis le serveur vérifie une fois par jour les nouvelles sorties.
+
+Dans l'espace **Admin**, le bloc **Catalogue** montre l'avancement (albums importés, artistes en file, dernière erreur) avec des boutons pour mettre en pause ou relancer. Réglages possibles dans **Environment** : `CATALOG_TARGET` (nombre d'albums, 20000 par défaut) et `CATALOG_IMPORT=off` pour s'en tenir aux 20 albums de base.
+
+Avec autant d'albums, deux choses aident les joueurs à en finir un : une partie de chaque booster gratuit est tirée dans les **albums qu'ils ont commencés**, et chaque page d'album propose un **booster d'album** (5 cartes de cet album, celles qui manquent d'abord, contre 300 royalties).
+
+> Les conditions de l'API Deezer réservent son usage aux applications non commerciales et n'autorisent pas à recopier son catalogue dans sa propre base. Importer 20 000 albums est donc, comme les pochettes, un risque que tu choisis de prendre : en cas de demande de Deezer, mets `CATALOG_IMPORT=off` (plus aucun appel), puis retire les albums importés depuis le **Shell** de Render avec `npm run catalog:purge -- --yes`, puis redémarre le service (**Manual Deploy → Restart**) ; les 20 albums de base restent.
+
+## 5. Pochettes et liens Spotify (facultatif)
 
 Sans rien configurer, le serveur récupère les vraies pochettes et les liens d'écoute auprès de **Deezer** (API publique, sans clé) quelques secondes après le démarrage, puis une fois par jour. Pour passer à **Spotify**, avec un bouton « Écouter sur Spotify » qui ouvre directement chaque morceau :
 
@@ -55,7 +71,7 @@ Les images ne sont jamais copiées sur ton serveur : le site affiche celles héb
 
 > Les conditions de Spotify interdisent les jeux et les quiz (« Do not create a game, including trivia quizzes »), et celles de Deezer limitent l'API à un usage privé. Afficher les vraies pochettes dans AlbumMania reste donc un risque que tu choisis de prendre : en cas de demande de retrait, coupe-les avec `COVERS=off`.
 
-## 5. Nom de domaine (facultatif)
+## 6. Nom de domaine (facultatif)
 
 Dans Render : **Settings → Custom Domains**, ajoute ton domaine et suis les instructions DNS. Mets ensuite à jour `APP_URL` avec la nouvelle adresse.
 
@@ -68,4 +84,4 @@ Le fichier `Dockerfile` permet de déployer partout où Docker est accepté (Rai
 
 ## Sauvegardes
 
-Toute la base tient dans un seul fichier, `albummania.db`, sur le disque persistant. Render propose des instantanés du disque ; tu peux aussi télécharger le fichier de temps en temps depuis le **Shell** de Render.
+Toute la base tient dans un seul fichier, `albummania.db` (une centaine de Mo avec le catalogue complet), sur le disque persistant. Render propose des instantanés du disque ; tu peux aussi télécharger le fichier de temps en temps depuis le **Shell** de Render.

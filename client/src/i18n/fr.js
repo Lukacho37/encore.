@@ -392,7 +392,7 @@ export default {
     seeResults: 'Voir les résultats',
     results: 'Résultats',
     score: '{n} points',
-    correctCount: '{c} bonnes réponses sur {total}',
+    correctCount: { one: '{c} bonne réponse sur {total}', other: '{c} bonnes réponses sur {total}' },
     won: { one: 'Tu gagnes {n} booster !', other: 'Tu gagnes {n} boosters !' },
     wonNone: 'Pas de booster cette fois : il faut au moins 3 bonnes réponses.',
     notRewarded: 'Partie non récompensée : limite du jour atteinte.',

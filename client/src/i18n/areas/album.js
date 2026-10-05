@@ -8,6 +8,7 @@ export default {
       loadError: 'Impossible de charger cet album',
       tracksError: 'Impossible de charger les cartes de cet album pour le moment.',
       retry: 'Réessayer',
+      pressFreeShort: 'Gratuit',
       booster: {
         title: 'Booster d’album',
         body: '5 cartes de cet album, celles qui te manquent d’abord — {price} royalties.',
@@ -41,6 +42,7 @@ export default {
       loadError: 'Couldn’t load this album',
       tracksError: 'Couldn’t load this album’s cards right now.',
       retry: 'Try again',
+      pressFreeShort: 'Free',
       booster: {
         title: 'Album pack',
         body: '5 cards from this album, missing ones first — {price} royalties.',

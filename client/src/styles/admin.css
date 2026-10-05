@@ -1,0 +1,255 @@
+/* ---------- admin : catalogue importé, recherche d'album pour les outils de test ---------- */
+
+/* deux panneaux qui se suivent (pochettes puis réglages) ne se collent pas */
+.admin .panel + .panel {
+  margin-top: 16px;
+}
+
+.admin .panel.adm-catalog {
+  margin-top: 28px;
+}
+
+.adm-catalog__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* état de l'import : en attente, en cours, en pause, terminé, interrompu */
+.adm-phase {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--stage-3);
+  color: var(--paper-dim);
+  font: 600 11px var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.adm-phase--running {
+  background: color-mix(in oklab, var(--cue) 18%, transparent);
+  color: var(--cue);
+}
+
+.adm-phase--done {
+  background: color-mix(in oklab, var(--ok) 16%, transparent);
+  color: var(--ok);
+}
+
+.adm-phase--paused {
+  background: color-mix(in oklab, var(--gold) 14%, transparent);
+  color: var(--gold);
+}
+
+.adm-phase--error {
+  background: color-mix(in oklab, var(--danger) 16%, transparent);
+  color: #ffb4b4;
+}
+
+.adm-phase__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: adm-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes adm-pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .adm-phase__dot {
+    animation: none;
+  }
+}
+
+.adm-catalog__progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+.adm-catalog__progress .progress {
+  min-width: 160px;
+}
+
+.adm-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--paper-dim);
+}
+
+.adm-error {
+  overflow-wrap: anywhere;
+}
+
+/* outils de test : un album cherché dans le catalogue */
+.adm-album-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.adm-picker {
+  position: relative;
+  max-width: 560px;
+}
+
+.adm-picker__pop {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: min(420px, 60vh);
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--stage-2);
+  box-shadow: 0 18px 40px rgb(0 0 0 / 0.45);
+}
+
+.adm-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  transition: opacity 0.15s;
+}
+
+.adm-picker__list:empty {
+  display: none;
+}
+
+.adm-picker__list.is-stale {
+  opacity: 0.6;
+}
+
+.adm-picker__note {
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.adm-option {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.adm-option.is-active {
+  background: var(--stage-3);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.adm-option__cover,
+.adm-album__cover {
+  display: block;
+  overflow: hidden;
+  border-radius: 6px;
+  aspect-ratio: 1;
+  background: var(--stage-3);
+}
+
+.adm-option__cover {
+  width: 40px;
+}
+
+.adm-option__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.adm-option__text > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adm-option__title {
+  font-weight: 650;
+}
+
+.adm-option .role-tag {
+  margin-left: 0;
+}
+
+.adm-album {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px 16px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid var(--line-soft);
+  background: var(--stage-2);
+}
+
+.adm-album__cover {
+  width: 72px;
+  border-radius: 8px;
+}
+
+.adm-album__info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.adm-album__title {
+  overflow-wrap: anywhere;
+}
+
+.adm-album__progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 320px;
+}
+
+.adm-album__progress .mono {
+  flex: none;
+}
+
+.adm-album__actions {
+  grid-column: 1 / -1;
+}
+
+.adm-link {
+  color: var(--paper-dim);
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 3px;
+}
+
+.adm-link:hover {
+  color: var(--paper);
+}
+
+@media (max-width: 600px) {
+  .adm-album__actions .btn {
+    flex: 1 1 auto;
+  }
+}

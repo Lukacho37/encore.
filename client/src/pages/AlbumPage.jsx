@@ -79,8 +79,11 @@ export function TrackGrid({ tracks, onPress }) {
             <Card trackId={tr.id} variant={mine?.holo ? 'holo' : 'std'} ghost={!mine} count={mine ? mine.std + mine.holo : 0}
               onClick={() => openCard(tr.id)} />
             {!mine && cost != null && onPress && (
-              <button type="button" className="press-btn" onClick={() => onPress(tr.id)}>
-                <Icon name="press" size={14} /> {t('album.press')} · {isAdmin ? t('album.pressFree') : <span className="mono">{cost}</span>}
+              <button type="button" className={`press-btn${isAdmin ? ' press-btn--free' : ''}`} onClick={() => onPress(tr.id)}>
+                <Icon name="press" size={14} />
+                {/* Sur un écran étroit, le libellé se raccourcit mais le prix reste lisible. */}
+                <span className="press-btn__label">{t('album.press')} ·</span>
+                <span className="press-btn__cost">{isAdmin ? t('album.pressFreeShort') : <span className="mono">{cost}</span>}</span>
               </button>
             )}
           </div>

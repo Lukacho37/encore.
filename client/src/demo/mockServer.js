@@ -1,20 +1,21 @@
 // Faux serveur pour la démo autonome : reproduit l'API du vrai serveur dans le navigateur.
 // Les données restent dans le localStorage du visiteur. Utilisé uniquement par `npm run build:demo`.
+// Le catalogue est celui des 20 albums de base (shared/staticCatalog.js), avec la même interface que la base du serveur.
 import { ApiError } from '../api.js';
 import { storage } from '../storage.js';
+import { registerCatalog } from '../catalogStore.js';
+import { staticCatalog } from '@shared/staticCatalog.js';
 import {
-  TRACKS, TRACK_BY_ID, TRACKS_BY_ALBUM, ALBUM_BY_ID, ARTIST_BY_ID, GENRES,
-} from '@shared/catalog.js';
-import {
-  rollPack, newAchievements, xpForCard, recycleValue, pressCost, levelFromXp, collectionStats,
-  ECONOMY, BLINDTEST, SHOWCASE_SLOTS, AVATAR_COLORS, packOdds, PACK_SLOTS,
-  buildBlindtest, blindtestClues, blindtestPoints, blindtestReward, blindtestPool,
+  rollPack, rollAlbumPack, newAchievements, xpForCard, newCardRoyalties, recycleValue, pressCost, levelFromXp,
+  ECONOMY, BLINDTEST, SHOWCASE_SLOTS, AVATAR_COLORS, RARITY, RARITIES, packOdds, PACK_SLOTS,
+  buildBlindtest, blindtestClues, blindtestPoints, blindtestReward,
   validateEmail, validatePassword, validateUsername,
 } from '@shared/rules.js';
 
 const KEY = 'albummania.demo.v1';
 const REGEN_MS = 30 * 60_000;
 const MAX_STOCK = 5;
+const GAME_TTL = 2 * 86_400_000; // parties de blind test gardées deux jours (le quota est quotidien)
 
 const fail = (status, code, extra) => {
   throw new ApiError(status, code, { error: code, ...extra });
@@ -26,6 +27,35 @@ const hash = (s) => {
   return `h${h >>> 0}`;
 };
 const token = () => Array.from(crypto.getRandomValues(new Uint8Array(18)), (b) => b.toString(16).padStart(2, '0')).join('');
+/** Identifiant reçu d'une requête : une chaîne courte, sinon rien (comme le vrai serveur). */
+const idOf = (v) => (typeof v === 'string' && v.length > 0 && v.length <= 80 ? v : null);
+
+// ---------- catalogue ----------
+
+// Tout le catalogue de la démo, lu une fois par l'interface du catalogue statique.
+const ALL_ALBUMS = staticCatalog.searchAlbums({ limit: 10_000 }).items.map(({ owned: _owned, ...a }) => a);
+const ALL_TRACKS = [...ALL_ALBUMS.flatMap((a) => staticCatalog.albumTracks(a.id)), ...staticCatalog.promos({ limit: 10_000 }).items];
+const ALL_ARTISTS = [...new Set(ALL_TRACKS.map((t) => t.artistId))].map((id) => staticCatalog.artist(id)).filter(Boolean);
+const TRACK = new Map(ALL_TRACKS.map((t) => [t.id, t]));
+const ALBUM = new Map(ALL_ALBUMS.map((a) => [a.id, a]));
+const ARTIST = new Map(ALL_ARTISTS.map((a) => [a.id, a]));
+const trackOf = (id) => (typeof id === 'string' ? TRACK.get(id) : undefined);
+
+// Les pages de la démo s'affichent tout de suite : le catalogue du site connaît déjà toutes les cartes.
+registerCatalog({ tracks: ALL_TRACKS, albums: ALL_ALBUMS, artists: ALL_ARTISTS });
+
+/** Données des cartes, albums et artistes cités dans une réponse (champ `catalog`, comme le vrai serveur). */
+function refs({ trackIds = [], albumIds = [], artistIds = [] } = {}) {
+  const uniq = (list) => [...new Set(list.filter(idOf))];
+  return {
+    tracks: staticCatalog.tracks(uniq(trackIds).slice(0, 500)),
+    albums: uniq(albumIds).slice(0, 300).map((id) => staticCatalog.album(id)).filter(Boolean),
+    artists: uniq(artistIds).slice(0, 300).map((id) => staticCatalog.artist(id)).filter(Boolean),
+  };
+}
+
+/** Album de la photo de profil (« album:<id> »). */
+const avatarAlbum = (avatar) => (typeof avatar === 'string' && avatar.startsWith('album:') ? avatar.slice(6) : null);
 
 let db = null;
 
@@ -37,6 +67,21 @@ function seededRng(seed) {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/** Albums commencés mais pas finis (les plus récents d'abord), vers lesquels les boosters gratuits sont orientés. */
+function focusAlbums(cards) {
+  const byAlbum = new Map();
+  for (const [k, v] of Object.entries(cards)) {
+    const t = trackOf(k.split('|')[0]);
+    if (!t?.albumId) continue;
+    const e = byAlbum.get(t.albumId) || { ids: new Set(), at: 0, total: t.total };
+    e.ids.add(t.id);
+    e.at = Math.max(e.at, v.at || 0);
+    byAlbum.set(t.albumId, e);
+  }
+  return [...byAlbum.entries()].filter(([, e]) => e.ids.size < e.total)
+    .sort((a, b) => b[1].at - a[1].at).slice(0, 200).map(([id]) => id);
 }
 
 function fresh() {
@@ -51,25 +96,33 @@ function fresh() {
   ];
   for (const [i, b] of bots.entries()) {
     const id = data.nextId++;
-    data.users.push({
+    const user = {
       id, email: `${b.username}@demo.albummania`, username: b.username, password: hash('demo-bot'), verified: now - 86_400_000 * (30 + i * 9),
       role: 'player', lang: 'fr', avatar: 'initials', avatarColor: b.color, royalties: 500, xp: 0, packs: 0, packsAt: now, bonusPacks: 0,
-      showcase: [], createdAt: now - 86_400_000 * (30 + i * 9), bot: true,
-    });
+      showcase: [], createdAt: now - 86_400_000 * (30 + i * 9), openings: b.packs, bot: true,
+    };
+    data.users.push(user);
     const rng = seededRng(1234 + i * 77);
-    const user = data.users[data.users.length - 1];
     const cards = (data.cards[id] = {});
     for (let p = 0; p < b.packs; p++) {
-      for (const c of rollPack(rng)) {
+      // Même tirage que pour un vrai joueur : une partie des emplacements vise les albums commencés.
+      for (const c of rollPack(rng, staticCatalog, { focusAlbumIds: focusAlbums(cards) })) {
         const k = `${c.trackId}|${c.variant}`;
-        cards[k] = { count: (cards[k]?.count || 0) + 1, at: now - p * 3_600_000 };
-        user.xp += 8;
+        const isNew = !cards[`${c.trackId}|std`] && !cards[`${c.trackId}|holo`];
+        cards[k] = { count: (cards[k]?.count || 0) + 1, at: cards[k]?.at || now - (b.packs - p) * 3_600_000 };
+        user.xp += xpForCard(c.rarity, isNew);
       }
     }
     const owned = new Set(Object.keys(cards).map((k) => k.split('|')[0]));
     data.achievements[id] = {};
-    for (const a of newAchievements(owned, new Set(), [...owned])) data.achievements[id][a.key] = now;
-    const best = [...owned].sort((x, y) => (TRACK_BY_ID[y].rarity === 'legendary') - (TRACK_BY_ID[x].rarity === 'legendary')).slice(0, 4);
+    const done = newAchievements({ owned, already: new Set(), touched: [...owned].map(trackOf), catalog: staticCatalog });
+    for (const a of done) {
+      data.achievements[id][a.key] = now - 86_400_000 * (done.length - done.indexOf(a));
+      user.xp += a.xp;
+    }
+    // Vitrine : les cartes les plus rares (promos au rang des légendaires, pour varier), puis les plus populaires.
+    const rank = (id) => RARITY[trackOf(id).rarity === 'promo' ? 'legendary' : trackOf(id).rarity].rank * 1000 + trackOf(id).pop;
+    const best = [...owned].sort((x, y) => rank(y) - rank(x)).slice(0, 4);
     user.showcase = [...best, null, null];
     const firstDone = Object.keys(data.achievements[id]).find((k) => k.startsWith('album:'));
     if (firstDone) user.avatar = firstDone;
@@ -96,6 +149,7 @@ function fresh() {
     ['k.dot_fan', 'track', 'discovery:04', 9, null],
   ];
   seed.forEach(([name, type, itemId, score, review], i) => {
+    if (!itemExists(type, itemId)) return;
     const at = now - (i + 1) * 5_400_000;
     data.ratings.push({ userId: byName(name), type, id: itemId, score, review, createdAt: at, updatedAt: at });
   });
@@ -114,8 +168,8 @@ function sanitize(d) {
   d.users = d.users.filter((u) => isObj(u) && Number.isInteger(u.id) && typeof u.username === 'string' && u.username);
   if (!d.users.length) return null;
   for (const u of d.users) {
-    u.showcase = Array.from({ length: SHOWCASE_SLOTS }, (_, i) => (Array.isArray(u.showcase) && TRACK_BY_ID[u.showcase[i]] ? u.showcase[i] : null));
-    if (typeof u.avatar !== 'string' || (u.avatar !== 'initials' && !ALBUM_BY_ID[u.avatar.replace(/^album:/, '')])) u.avatar = 'initials';
+    u.showcase = Array.from({ length: SHOWCASE_SLOTS }, (_, i) => (Array.isArray(u.showcase) && trackOf(u.showcase[i]) ? u.showcase[i] : null));
+    if (typeof u.avatar !== 'string' || (u.avatar !== 'initials' && !ALBUM.has(avatarAlbum(u.avatar)))) u.avatar = 'initials';
     if (typeof u.avatarColor !== 'string') u.avatarColor = AVATAR_COLORS[0];
     if (u.lang !== 'fr' && u.lang !== 'en') u.lang = 'fr';
     if (u.role !== 'admin') u.role = 'player';
@@ -126,6 +180,7 @@ function sanitize(d) {
     u.bonusPacks = num(u.bonusPacks, 0);
     u.packsAt = num(u.packsAt, now);
     u.createdAt = num(u.createdAt, now);
+    u.openings = num(u.openings, 0);
   }
   const ids = new Set(d.users.map((u) => u.id));
   for (const key of Object.keys(d.cards)) {
@@ -136,7 +191,7 @@ function sanitize(d) {
     }
     for (const k of Object.keys(cards)) {
       const [t, v] = k.split('|');
-      if (!TRACK_BY_ID[t] || (v !== 'std' && v !== 'holo') || !isObj(cards[k]) || !(cards[k].count > 0)) delete cards[k];
+      if (!trackOf(t) || (v !== 'std' && v !== 'holo') || !isObj(cards[k]) || !(cards[k].count > 0)) delete cards[k];
       else cards[k].at = num(cards[k].at, now);
     }
   }
@@ -148,11 +203,15 @@ function sanitize(d) {
     }
     for (const k of Object.keys(list)) {
       const [type, id] = [k.slice(0, k.indexOf(':')), k.slice(k.indexOf(':') + 1)];
-      if (!((type === 'album' && ALBUM_BY_ID[id]) || (type === 'artist' && ARTIST_BY_ID[id]))) delete list[k];
+      if (!((type === 'album' && ALBUM.has(id)) || (type === 'artist' && ARTIST.has(id)))) delete list[k];
+      else list[k] = num(list[k], now);
     }
   }
+  for (const [id, g] of Object.entries(d.games)) {
+    if (!isObj(g) || !Array.isArray(g.questions) || !(now - num(g.createdAt, 0) < GAME_TTL)) delete d.games[id];
+  }
   d.ratings = d.ratings.filter((r) => isObj(r) && ids.has(r.userId) && Number.isInteger(r.score) && r.score >= 0 && r.score <= 10
-    && ((r.type === 'album' && ALBUM_BY_ID[r.id]) || (r.type === 'track' && TRACK_BY_ID[r.id])));
+    && itemExists(r.type, r.id));
   d.friendships = d.friendships.filter((f) => isObj(f) && ids.has(f.requester) && ids.has(f.addressee));
   d.nextId = Math.max(num(d.nextId, 1), ...d.users.map((u) => u.id + 1));
   if (!ids.has(d.session)) d.session = null;
@@ -180,6 +239,8 @@ const userByName = (name) => db.users.find((u) => u.username.toLowerCase() === S
 const cardsOf = (id) => (db.cards[id] ||= {});
 const achOf = (id) => (db.achievements[id] ||= {});
 const ownedSet = (id) => new Set(Object.keys(cardsOf(id)).map((k) => k.split('|')[0]));
+const holoSet = (id) => new Set(Object.keys(cardsOf(id)).filter((k) => k.endsWith('|holo')).map((k) => k.split('|')[0]));
+const isAdmin = (u) => u?.role === 'admin';
 
 function me() {
   const u = db.session && userById(db.session);
@@ -209,11 +270,12 @@ function botsRespond(u) {
   }
 }
 
+/** État complet du joueur connecté, comme le vrai serveur (statistiques calculées ici, cartes avec leur rareté). */
 function state() {
   const u = me();
   syncPacks(u);
   botsRespond(u);
-  const admin = u.role === 'admin';
+  const admin = isAdmin(u);
   return {
     user: {
       id: u.id, username: u.username, email: u.email, role: u.role, lang: u.lang, avatar: u.avatar, avatarColor: u.avatarColor,
@@ -223,35 +285,55 @@ function state() {
       regen: u.packs, bonus: u.bonusPacks, available: u.packs + u.bonusPacks, max: MAX_STOCK, intervalMs: REGEN_MS,
       nextAt: u.packs < MAX_STOCK ? u.packsAt + REGEN_MS : null, unlimited: admin,
     },
+    // r : rareté (les sauvegardes des anciennes versions de la démo ne la stockaient pas : on la lit dans le catalogue).
     cards: Object.entries(cardsOf(u.id)).map(([k, v]) => {
       const [t, variant] = k.split('|');
-      return { t, v: variant, c: v.count, at: v.at };
+      return { t, v: variant, c: v.count, at: v.at, r: trackOf(t)?.rarity || 'common' };
     }),
     achievements: Object.entries(achOf(u.id)).map(([key, at]) => ({ key, at })),
     ratings: db.ratings.filter((r) => r.userId === u.id).map((r) => ({ t: r.type, i: r.id, s: r.score })),
     pendingFriends: db.friendships.filter((f) => f.addressee === u.id && f.status === 'pending').length,
+    stats: staticCatalog.stats(ownedSet(u.id)),
+    catalog: refs({ trackIds: u.showcase.filter(Boolean), albumIds: [avatarAlbum(u.avatar)].filter(Boolean) }),
     serverTime: Date.now(),
   };
 }
 
-function addCards(u, cards) {
+/** Cartes possédées de ces albums : { albumId: nombre }. */
+function albumCounts(owned, albumIds) {
+  return new Map(albumIds.map((id) => [id, staticCatalog.albumTrackIds(id).filter((t) => owned.has(t)).length]));
+}
+
+/**
+ * Ajoute des cartes à la collection, attribue XP, droits d'auteur, succès et récompenses (même calcul que le serveur).
+ * `source` : 'pack', 'admin-pack', 'album-pack' ou 'press' (une carte pressée ne rapporte pas de droits d'auteur).
+ */
+function addCards(u, cards, source) {
   const now = Date.now();
   const mine = cardsOf(u.id);
+  const list = cards.filter((c) => trackOf(c.trackId));
+  const ids = [...new Set(list.map((c) => c.trackId))];
+  const views = ids.map(trackOf);
+  const albumIds = [...new Set(views.map((t) => t.albumId).filter(Boolean))];
   const before = ownedSet(u.id);
+  const beforeCounts = albumCounts(before, albumIds);
   const owned = new Set(before);
   let xp = 0;
-  const results = cards.map(({ trackId, variant }) => {
+  let cardRoyalties = 0;
+  const results = list.map(({ trackId, variant }) => {
+    const rarity = trackOf(trackId).rarity;
     const k = `${trackId}|${variant}`;
     const newTrack = !owned.has(trackId);
     const newVariant = !mine[k];
     mine[k] = { count: (mine[k]?.count || 0) + 1, at: mine[k]?.at || now };
     owned.add(trackId);
-    xp += xpForCard(trackId, newTrack);
-    return { trackId, variant, newTrack, newVariant };
+    xp += xpForCard(rarity, newTrack);
+    if (newTrack && source !== 'press') cardRoyalties += newCardRoyalties(rarity);
+    return { trackId, variant, rarity, newTrack, newVariant };
   });
   const ach = achOf(u.id);
-  const achievements = newAchievements(owned, new Set(Object.keys(ach)), cards.map((c) => c.trackId));
-  let royalties = 0;
+  const achievements = newAchievements({ owned, already: new Set(Object.keys(ach)), touched: views, catalog: staticCatalog });
+  let royalties = cardRoyalties;
   for (const a of achievements) {
     ach[a.key] = now;
     royalties += a.royalties;
@@ -259,16 +341,27 @@ function addCards(u, cards) {
   }
   u.xp += xp;
   u.royalties += royalties;
-  const albumIds = [...new Set(cards.map((c) => TRACK_BY_ID[c.trackId].albumId).filter(Boolean))];
-  const albumDeltas = albumIds.map((albumId) => {
-    const list = TRACKS_BY_ALBUM[albumId];
-    return { albumId, before: list.filter((t) => before.has(t.id)).length, after: list.filter((t) => owned.has(t.id)).length, total: list.length };
-  }).filter((d) => d.after > d.before);
-  return { cards: results, xp, royalties, achievements, albumDeltas };
+  u.openings = (u.openings || 0) + 1;
+  const afterCounts = albumCounts(owned, albumIds);
+  const albumDeltas = albumIds.map((albumId) => ({
+    albumId,
+    before: beforeCounts.get(albumId) || 0,
+    after: afterCounts.get(albumId) || 0,
+    total: views.find((t) => t.albumId === albumId).total,
+  })).filter((d) => d.after > d.before);
+  return {
+    cards: results,
+    xp,
+    royalties,
+    cardRoyalties,
+    achievements,
+    albumDeltas,
+    catalog: refs({ trackIds: ids, albumIds, artistIds: achievements.filter((a) => a.type === 'artist').map((a) => a.id) }),
+  };
 }
 
 function summary(u) {
-  return { id: u.id, username: u.username, avatar: u.avatar, avatarColor: u.avatarColor, level: levelFromXp(u.xp).level, unique: ownedSet(u.id).size, total: TRACKS.length };
+  return { id: u.id, username: u.username, avatar: u.avatar, avatarColor: u.avatarColor, level: levelFromXp(u.xp).level, unique: ownedSet(u.id).size, total: ALL_TRACKS.length };
 }
 
 function between(a, b) {
@@ -285,7 +378,61 @@ function friendsOf(uid) {
     else if (f.addressee === uid) out.incoming.push(entry);
     else out.outgoing.push(entry);
   }
-  return out;
+  const albumIds = [...out.friends, ...out.incoming, ...out.outgoing].map((e) => avatarAlbum(e.user.avatar)).filter(Boolean);
+  return { ...out, catalog: refs({ albumIds }) };
+}
+
+/** Profil public d'un joueur : statistiques, vitrine, vinyles, prochains vinyles (même forme que le serveur). */
+function publicProfile(viewer, target) {
+  const owned = ownedSet(target.id);
+  const holo = holoSet(target.id);
+  const stats = staticCatalog.stats(owned);
+  let friendship = 'none';
+  let requestId = null;
+  if (target.id === viewer.id) friendship = 'self';
+  else {
+    const f = between(viewer.id, target.id);
+    if (f) {
+      requestId = f.id;
+      friendship = f.status === 'accepted' ? 'friends' : f.requester === viewer.id ? 'outgoing' : 'incoming';
+    }
+  }
+  const entries = Object.entries(achOf(target.id));
+  // Vinyles : les 120 albums complétés les plus récents, du plus ancien au plus récent ; holo si toutes les cartes le sont.
+  const vinyls = entries.filter(([k]) => k.startsWith('album:') && ALBUM.has(k.slice(6)))
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 120).reverse()
+    .map(([k, at]) => {
+      const albumId = k.slice(6);
+      return { albumId, at, edition: staticCatalog.albumTrackIds(albumId).every((id) => holo.has(id)) ? 'holo' : 'black' };
+    });
+  const mastered = entries.filter(([k]) => k.startsWith('artist:')).sort((a, b) => b[1] - a[1]).slice(0, 100).map(([k]) => k.slice(7));
+  // Prochains vinyles : les albums commencés les plus avancés.
+  const upcoming = Object.entries(stats.albums).filter(([, p]) => p.pct < 1)
+    .sort((a, b) => b[1].pct - a[1].pct || b[1].owned - a[1].owned).slice(0, 3)
+    .map(([albumId, progress]) => ({ albumId, progress }));
+  const slotIds = target.showcase.map(idOf);
+  return {
+    id: target.id, username: target.username, avatar: target.avatar, avatarColor: target.avatarColor, level: levelFromXp(target.xp),
+    createdAt: target.createdAt, role: target.role,
+    stats: {
+      unique: stats.total.owned, total: stats.total.total,
+      albumsCompleted: stats.albumsCompleted, albumsTotal: stats.catalog.albums,
+      artistsMastered: stats.artistsMastered, artistsTotal: stats.catalog.artists,
+      promos: stats.promos.owned, promosTotal: stats.promos.total,
+    },
+    showcase: slotIds.map((id) => (id && owned.has(id) ? { trackId: id, variant: holo.has(id) ? 'holo' : 'std' } : null)),
+    completedAlbums: vinyls.map((v) => v.albumId),
+    vinyls,
+    masteredArtists: mastered,
+    upcoming,
+    friendship,
+    requestId,
+    catalog: refs({
+      trackIds: slotIds.filter(Boolean),
+      albumIds: [...vinyls.map((v) => v.albumId), ...upcoming.map((x) => x.albumId), avatarAlbum(target.avatar)].filter(Boolean),
+      artistIds: mastered,
+    }),
+  };
 }
 
 function demoEmail(kind, u, tok) {
@@ -321,6 +468,8 @@ function consume(tok, purpose) {
   return row.expiresAt > Date.now() ? userById(row.userId) : null;
 }
 
+// ---------- blind test ----------
+
 const dayStart = () => {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -330,17 +479,36 @@ const rewardedToday = (uid) => Object.values(db.games).filter((g) => g.userId ==
 
 function roundPayload(questions, index, admin) {
   const q = questions[index];
+  const views = new Map(staticCatalog.tracks(q.choices).map((t) => [t.id, t]));
+  const answer = views.get(q.answer);
   return {
+    // L'admin reçoit la bonne réponse pour pouvoir tester le jeu rapidement.
     answer: admin ? q.answer : undefined,
-    index, rounds: questions.length,
-    choices: q.choices.map((id) => ({ id, title: TRACK_BY_ID[id].title, artist: ARTIST_BY_ID[TRACK_BY_ID[id].artistId].name })),
-    audio: null, clues: blindtestClues(q.answer), seconds: BLINDTEST.roundSeconds,
+    index,
+    rounds: questions.length,
+    choices: q.choices.filter((id) => views.has(id)).map((id) => ({ id, title: views.get(id).title, artist: views.get(id).artist })),
+    // La démo est coupée d'Internet : pas d'extrait audio, les indices le remplacent.
+    audio: null,
+    clues: answer ? blindtestClues(answer) : null,
+    seconds: BLINDTEST.roundSeconds,
   };
 }
 
+function loadGame(u, gameId) {
+  const g = db.games[gameId];
+  if (!g || g.userId !== u.id) fail(404, 'game_not_found');
+  if (g.finishedAt) fail(409, 'game_finished');
+  return g;
+}
+
+// ---------- notes ----------
+
 const ADMIN_CODE_SHA256 = '22ecf3278dbed86211363046e3c6cc4a43be18686bc9a35e9815f6ac4d949fd9';
 
-const itemExists = (type, id) => (type === 'album' ? !!ALBUM_BY_ID[id] : type === 'track' ? !!TRACK_BY_ID[id] : false);
+function itemExists(type, id) {
+  if (!idOf(id)) return false;
+  return type === 'album' ? ALBUM.has(id) : type === 'track' ? TRACK.has(id) : false;
+}
 
 function friendIds(uid) {
   return new Set(db.friendships.filter((f) => f.status === 'accepted' && (f.requester === uid || f.addressee === uid))
@@ -358,27 +526,38 @@ function summarize(scores) {
   return { count: scores.length, average: scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null, distribution };
 }
 
+/** Références des éléments notés (titres, visuels) et des photos de profil des auteurs. */
+function ratingRefs(items, authors = []) {
+  return refs({
+    albumIds: [...items.filter((x) => x.type === 'album').map((x) => x.id), ...authors.map((a) => avatarAlbum(a.avatar)).filter(Boolean)],
+    trackIds: items.filter((x) => x.type === 'track').map((x) => x.id),
+  });
+}
+
 function itemRatings(viewerId, type, id) {
   if (!itemExists(type, id)) fail(404, 'unknown_item');
   const rows = db.ratings.filter((r) => r.type === type && r.id === id);
   const mine = rows.find((r) => r.userId === viewerId);
   const friends = friendIds(viewerId);
   const others = rows.filter((r) => r.userId !== viewerId).sort((a, b) => b.updatedAt - a.updatedAt);
+  const reviews = others.filter((r) => r.review)
+    .sort((a, b) => Number(friends.has(b.userId)) - Number(friends.has(a.userId)) || b.updatedAt - a.updatedAt)
+    .slice(0, 30)
+    .map((r) => ({ user: author(r.userId), score: r.score, review: r.review, updatedAt: r.updatedAt, friend: friends.has(r.userId) }));
+  const friendScores = others.filter((r) => friends.has(r.userId)).slice(0, 12).map((r) => ({ user: author(r.userId), score: r.score }));
   const result = {
     summary: summarize(rows.map((r) => r.score)),
     mine: mine ? { score: mine.score, review: mine.review, updatedAt: mine.updatedAt } : null,
-    reviews: others.filter((r) => r.review)
-      .sort((a, b) => Number(friends.has(b.userId)) - Number(friends.has(a.userId)) || b.updatedAt - a.updatedAt)
-      .slice(0, 30)
-      .map((r) => ({ user: author(r.userId), score: r.score, review: r.review, updatedAt: r.updatedAt, friend: friends.has(r.userId) })),
-    friendScores: others.filter((r) => friends.has(r.userId)).slice(0, 12).map((r) => ({ user: author(r.userId), score: r.score })),
+    reviews,
+    friendScores,
+    catalog: ratingRefs([], [...reviews, ...friendScores].map((r) => r.user)),
   };
   if (type === 'album') {
     const tracks = {};
-    for (const tr of TRACKS_BY_ALBUM[id]) {
-      const list = db.ratings.filter((r) => r.type === 'track' && r.id === tr.id);
+    for (const trackId of staticCatalog.albumTrackIds(id)) {
+      const list = db.ratings.filter((r) => r.type === 'track' && r.id === trackId);
       const m = list.find((r) => r.userId === viewerId);
-      if (list.length) tracks[tr.id] = { count: list.length, average: list.reduce((a, r) => a + r.score, 0) / list.length, ...(m ? { mine: m.score } : {}) };
+      if (list.length) tracks[trackId] = { count: list.length, average: list.reduce((a, r) => a + r.score, 0) / list.length, ...(m ? { mine: m.score } : {}) };
     }
     result.tracks = tracks;
   }
@@ -386,14 +565,55 @@ function itemRatings(viewerId, type, id) {
 }
 
 function adminReviews() {
-  return db.ratings.filter((r) => r.review).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 60)
+  const items = db.ratings.filter((r) => r.review).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 60)
     .map((r) => ({ user: author(r.userId), type: r.type, id: r.id, score: r.score, review: r.review, updatedAt: r.updatedAt }));
+  return { items, catalog: ratingRefs(items, items.map((i) => i.user)) };
 }
 
 function requireAdmin() {
   const u = me();
-  if (u.role !== 'admin') fail(403, 'forbidden');
+  if (!isAdmin(u)) fail(403, 'forbidden');
   return u;
+}
+
+// ---------- navigation dans le catalogue ----------
+
+const SORTS = new Set(['popular', 'progress', 'title', 'year', 'recent']);
+const idList = (raw, max) => String(raw || '').split(',').map((x) => x.trim()).filter((x) => x && x.length <= 80).slice(0, max);
+const clampInt = (raw, min, max, fallback) => Math.min(max, Math.max(min, Math.floor(Number(raw) || fallback)));
+
+function browseAlbums(u, query) {
+  const owned = ownedSet(u.id);
+  // ?ids=a,b,c : ces albums précis, avec la progression du joueur.
+  if (query.get('ids') != null) {
+    const items = idList(query.get('ids'), 100).map((id) => staticCatalog.album(id)).filter(Boolean);
+    const counts = albumCounts(owned, items.map((a) => a.id));
+    return { total: items.length, items: items.map((a) => ({ ...a, owned: counts.get(a.id) || 0 })) };
+  }
+  const genre = query.get('genre');
+  const decade = query.get('decade');
+  const mine = query.get('mine');
+  return staticCatalog.searchAlbums({
+    q: (query.get('q') || '').slice(0, 100),
+    genre: genre && genre.length <= 30 ? genre : null,
+    decade: /^\d{4}$/.test(decade || '') ? Number(decade) : null,
+    artistId: idOf(query.get('artist')),
+    sort: SORTS.has(query.get('sort')) ? query.get('sort') : 'popular',
+    mine: mine === '1' || mine === 'true',
+    offset: clampInt(query.get('offset'), 0, 10_000, 0),
+    limit: clampInt(query.get('limit'), 1, 60, 36),
+    owned,
+  });
+}
+
+// État de l'import du catalogue : la démo n'a que les 20 albums de base et ne peut rien importer (pas d'Internet).
+function catalogStatus() {
+  const totals = staticCatalog.totals();
+  return {
+    mode: 'off', target: 20_000, running: false, phase: 'idle', albums: totals.imported, totalAlbums: totals.albums,
+    tracks: totals.tracks, promos: totals.promos, artists: { pending: 0, done: 0, skipped: 0, error: 0 }, requests: 0,
+    startedAt: null, finishedAt: null, lastError: null, demo: true,
+  };
 }
 
 // ---------- routes ----------
@@ -428,7 +648,7 @@ const routes = [
     const u = {
       id: db.nextId++, email, username, password: hash(body.password), verified: null, role: 'player',
       lang: body.lang === 'en' ? 'en' : 'fr', avatar: 'initials', avatarColor: AVATAR_COLORS[Math.floor(rand() * AVATAR_COLORS.length)],
-      royalties: ECONOMY.welcomeRoyalties, xp: 0, packs: 0, packsAt: now, bonusPacks: ECONOMY.welcomePacks, showcase: [], createdAt: now,
+      royalties: ECONOMY.welcomeRoyalties, xp: 0, packs: 0, packsAt: now, bonusPacks: ECONOMY.welcomePacks, showcase: [], createdAt: now, openings: 0,
     };
     db.users.push(u);
     return { ok: true, email, demoEmail: demoEmail('verify', u, issue(u, 'verify')) };
@@ -478,11 +698,59 @@ const routes = [
     return state();
   }],
 
+  // Catalogue : mêmes routes, filtres et limites que le vrai serveur.
+  ['GET', /^\/catalog\/info$/, () => {
+    me();
+    return { totals: staticCatalog.totals(), genres: staticCatalog.genres(), decades: staticCatalog.decades() };
+  }],
+  ['GET', /^\/catalog\/albums$/, ({ query }) => browseAlbums(me(), query)],
+  ['GET', /^\/catalog\/albums\/([^/]+)$/, ({ params }) => {
+    me();
+    const album = staticCatalog.album(idOf(decodeURIComponent(params[0])));
+    if (!album) fail(404, 'unknown_album');
+    return { album, tracks: staticCatalog.albumTracks(album.id), artist: staticCatalog.artist(album.artistId) };
+  }],
+  ['GET', /^\/catalog\/artists$/, ({ query }) => {
+    me();
+    return { artists: idList(query.get('ids'), 100).map((id) => staticCatalog.artist(id)).filter(Boolean) };
+  }],
+  ['GET', /^\/catalog\/artists\/([^/]+)$/, ({ params }) => {
+    me();
+    const artist = staticCatalog.artist(idOf(decodeURIComponent(params[0])));
+    if (!artist) fail(404, 'unknown_artist');
+    return { artist, albums: staticCatalog.artistAlbums(artist.id), promos: staticCatalog.artistTracks(artist.id).filter((t) => t.kind === 'promo') };
+  }],
+  ['GET', /^\/catalog\/tracks$/, ({ query }) => {
+    me();
+    return { tracks: staticCatalog.tracks(idList(query.get('ids'), 200)) };
+  }],
+  ['GET', /^\/catalog\/promos$/, ({ query }) => {
+    me();
+    return staticCatalog.promos({ offset: clampInt(query.get('offset'), 0, 100_000, 0), limit: clampInt(query.get('limit'), 1, 120, 60) });
+  }],
+  ['GET', /^\/catalog\/mine$/, ({ query }) => {
+    const u = me();
+    const rarity = query.get('rarity');
+    return staticCatalog.ownedTracks(ownedSet(u.id), {
+      q: (query.get('q') || '').slice(0, 80),
+      rarity: RARITIES.includes(rarity) ? rarity : null,
+      offset: clampInt(query.get('offset'), 0, 100_000, 0),
+      limit: clampInt(query.get('limit'), 1, 120, 60),
+      holo: holoSet(u.id),
+    });
+  }],
+  ['GET', /^\/catalog\/groups$/, ({ query }) => {
+    const u = me();
+    const by = query.get('by');
+    if (by !== 'genre' && by !== 'decade') fail(400, 'invalid_group');
+    return { by, groups: staticCatalog.groupStats(ownedSet(u.id), by) };
+  }],
+
   ['GET', /^\/state$/, () => state()],
   ['POST', /^\/packs\/open$/, ({ body }) => {
     const u = me();
     syncPacks(u);
-    const admin = u.role === 'admin';
+    const admin = isAdmin(u);
     const n = Math.floor(Number(body.count) || 1);
     if (n < 1 || n > (admin ? 50 : 1)) fail(400, 'invalid_count');
     if (!admin) {
@@ -492,8 +760,21 @@ const routes = [
         u.packs -= 1;
       } else u.bonusPacks -= 1;
     }
-    const packs = Array.from({ length: n }, () => rollPack(rand));
-    return { packs: packs.map((p) => p.length), ...addCards(u, packs.flat()), state: state() };
+    const focusAlbumIds = focusAlbums(cardsOf(u.id));
+    const packs = Array.from({ length: n }, () => rollPack(rand, staticCatalog, { focusAlbumIds }));
+    return { packs: packs.map((p) => p.length), ...addCards(u, packs.flat(), admin ? 'admin-pack' : 'pack'), state: state() };
+  }],
+  // Booster d'album : 5 cartes de l'album choisi, en priorité celles qui manquent ; payé en royalties (gratuit pour l'admin).
+  ['POST', /^\/packs\/album$/, ({ body }) => {
+    const u = me();
+    const album = staticCatalog.album(idOf(body.albumId));
+    if (!album) fail(404, 'unknown_album');
+    const cost = isAdmin(u) ? 0 : ECONOMY.albumPackPrice;
+    if (u.royalties < cost) fail(409, 'not_enough_royalties');
+    u.royalties -= cost;
+    const owned = ownedSet(u.id);
+    const cards = rollAlbumPack(rand, staticCatalog, album.id, owned);
+    return { spent: cost, albumId: album.id, packs: [cards.length], ...addCards(u, cards, 'album-pack'), state: state() };
   }],
   ['POST', /^\/shop\/buy-pack$/, () => {
     const u = me();
@@ -509,7 +790,7 @@ const routes = [
     for (const [k, v] of Object.entries(cardsOf(u.id))) {
       if (v.count > 1) {
         const [t, variant] = k.split('|');
-        royalties += recycleValue(t, variant) * (v.count - 1);
+        royalties += recycleValue(trackOf(t)?.rarity, variant) * (v.count - 1);
         recycled += v.count - 1;
         v.count = 1;
       }
@@ -519,24 +800,25 @@ const routes = [
   }],
   ['POST', /^\/collection\/press$/, ({ body }) => {
     const u = me();
-    const track = TRACK_BY_ID[body.trackId];
+    const track = trackOf(idOf(body.trackId));
     if (!track) fail(404, 'unknown_track');
-    const admin = u.role === 'admin';
-    const base = pressCost(track.id);
+    const admin = isAdmin(u);
+    const base = pressCost(track.rarity);
+    // L'admin presse gratuitement, promos comprises, pour tester.
     if (base == null && !admin) fail(400, 'not_pressable');
     const cost = admin ? 0 : base;
     if (ownedSet(u.id).has(track.id)) fail(409, 'already_owned');
     if (u.royalties < cost) fail(409, 'not_enough_royalties');
     u.royalties -= cost;
-    return { spent: cost, ...addCards(u, [{ trackId: track.id, variant: 'std' }]), state: state() };
+    return { spent: cost, ...addCards(u, [{ trackId: track.id, variant: 'std' }], 'press'), state: state() };
   }],
   ['POST', /^\/profile\/avatar$/, ({ body }) => {
     const u = me();
     if (body.color !== undefined && !AVATAR_COLORS.includes(body.color)) fail(400, 'invalid_color');
     if (body.avatar !== undefined && body.avatar !== 'initials') {
       const m = /^album:(.+)$/.exec(String(body.avatar));
-      if (!m || !ALBUM_BY_ID[m[1]]) fail(400, 'invalid_avatar');
-      if (u.role !== 'admin' && !achOf(u.id)[`album:${m[1]}`]) fail(403, 'avatar_locked');
+      if (!m || !ALBUM.has(m[1])) fail(400, 'invalid_avatar');
+      if (!isAdmin(u) && !achOf(u.id)[`album:${m[1]}`]) fail(403, 'avatar_locked');
     }
     u.avatar = body.avatar ?? u.avatar;
     u.avatarColor = body.color ?? u.avatarColor;
@@ -546,49 +828,16 @@ const routes = [
     const u = me();
     if (!Array.isArray(body.slots) || body.slots.length > SHOWCASE_SLOTS) fail(400, 'invalid_showcase');
     const owned = ownedSet(u.id);
-    const clean = body.slots.map((id) => (id && owned.has(id) ? id : null));
+    const clean = body.slots.map((id) => (idOf(id) && owned.has(id) ? id : null));
     while (clean.length < SHOWCASE_SLOTS) clean.push(null);
     u.showcase = clean;
     return { state: state() };
   }],
   ['POST', /^\/profile\/lang$/, ({ body }) => {
-    me().lang = body.lang === 'en' ? 'en' : 'fr';
+    if (body.lang !== 'fr' && body.lang !== 'en') fail(400, 'invalid_lang');
+    me().lang = body.lang;
     return { ok: true };
   }],
-  ['GET', /^\/users\/([^/]+)$/, ({ params }) => {
-    const viewer = me();
-    const target = userByName(decodeURIComponent(params[0]));
-    if (!target || !target.verified) fail(404, 'user_not_found');
-    const owned = ownedSet(target.id);
-    const holo = new Set(Object.keys(cardsOf(target.id)).filter((k) => k.endsWith('|holo')).map((k) => k.split('|')[0]));
-    const stats = collectionStats(owned);
-    const ach = Object.keys(achOf(target.id));
-    let friendship = 'none';
-    let requestId = null;
-    if (target.id === viewer.id) friendship = 'self';
-    else {
-      const f = between(viewer.id, target.id);
-      if (f) {
-        requestId = f.id;
-        friendship = f.status === 'accepted' ? 'friends' : f.requester === viewer.id ? 'outgoing' : 'incoming';
-      }
-    }
-    return {
-      id: target.id, username: target.username, avatar: target.avatar, avatarColor: target.avatarColor, level: levelFromXp(target.xp),
-      createdAt: target.createdAt, role: target.role,
-      stats: { unique: stats.total.owned, total: stats.total.total, albumsCompleted: stats.albumsCompleted, artistsMastered: stats.artistsMastered, promos: stats.promos.owned, promosTotal: stats.promos.total },
-      showcase: Array.from({ length: SHOWCASE_SLOTS }, (_, i) => {
-        const id = target.showcase[i];
-        return id && owned.has(id) ? { trackId: id, variant: holo.has(id) ? 'holo' : 'std' } : null;
-      }),
-      completedAlbums: ach.filter((k) => k.startsWith('album:')).map((k) => k.slice(6)),
-      vinyls: Object.entries(achOf(target.id)).filter(([k]) => k.startsWith('album:')).sort((a, b) => a[1] - b[1])
-        .map(([k, at]) => ({ albumId: k.slice(6), at, edition: TRACKS_BY_ALBUM[k.slice(6)].every((tr) => holo.has(tr.id)) ? 'holo' : 'black' })),
-      masteredArtists: ach.filter((k) => k.startsWith('artist:')).map((k) => k.slice(7)),
-      albumProgress: stats.albums, friendship, requestId,
-    };
-  }],
-
   ['POST', /^\/profile\/settings$/, ({ body }) => {
     const u = me();
     if (body.ratingScale !== undefined) {
@@ -597,6 +846,12 @@ const routes = [
     }
     return { state: state() };
   }],
+  ['GET', /^\/users\/([^/]+)$/, ({ params }) => {
+    const viewer = me();
+    const target = userByName(decodeURIComponent(params[0]));
+    if (!target || !target.verified) fail(404, 'user_not_found');
+    return publicProfile(viewer, target);
+  }],
   ['GET', /^\/users\/([^/]+)\/ratings$/, ({ params }) => {
     me();
     const target = userByName(decodeURIComponent(params[0]));
@@ -604,20 +859,23 @@ const routes = [
     const rows = db.ratings.filter((r) => r.userId === target.id && itemExists(r.type, r.id)).sort((a, b) => b.updatedAt - a.updatedAt);
     const entry = (r) => ({ type: r.type, id: r.id, score: r.score, review: r.review, updatedAt: r.updatedAt });
     const albums = rows.filter((r) => r.type === 'album');
-    return {
+    const result = {
       stats: { ...summarize(rows.map((r) => r.score)), albums: albums.length, tracks: rows.length - albums.length, reviews: rows.filter((r) => r.review).length },
       topAlbums: [...albums].sort((a, b) => b.score - a.score || b.updatedAt - a.updatedAt).slice(0, 4).map(entry),
       topTracks: rows.filter((r) => r.type === 'track').sort((a, b) => b.score - a.score || b.updatedAt - a.updatedAt).slice(0, 5).map(entry),
       recent: rows.slice(0, 12).map(entry),
       reviews: rows.filter((r) => r.review).slice(0, 10).map(entry),
     };
+    result.catalog = ratingRefs([...result.topAlbums, ...result.topTracks, ...result.recent, ...result.reviews]);
+    return result;
   }],
   ['GET', /^\/ratings\/feed$/, () => {
     const u = me();
     botsRespond(u);
     const friends = friendIds(u.id);
-    return db.ratings.filter((r) => friends.has(r.userId)).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 20)
+    const items = db.ratings.filter((r) => friends.has(r.userId) && itemExists(r.type, r.id)).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 20)
       .map((r) => ({ user: author(r.userId), type: r.type, id: r.id, score: r.score, review: r.review, updatedAt: r.updatedAt }));
+    return { items, catalog: ratingRefs(items, items.map((i) => i.user)) };
   }],
   ['GET', /^\/ratings\/(album|track)\/([^/]+)$/, ({ params }) => itemRatings(me().id, params[0], decodeURIComponent(params[1]))],
   ['PUT', /^\/ratings\/(album|track)\/([^/]+)$/, ({ params, body }) => {
@@ -626,7 +884,8 @@ const routes = [
     if (!itemExists(type, id)) fail(404, 'unknown_item');
     if (!Number.isInteger(body.score) || body.score < 0 || body.score > 10) fail(400, 'invalid_score');
     const existing = db.ratings.find((r) => r.userId === u.id && r.type === type && r.id === id);
-    let text = body.review === undefined ? existing?.review || '' : String(body.review || '');
+    // Sans champ `review`, on garde la critique déjà écrite (changement de note depuis la tracklist).
+    let text = body.review === undefined ? existing?.review || '' : typeof body.review === 'string' ? body.review : '';
     text = text.trim();
     if (text.length > 2000) fail(400, 'review_too_long');
     const now = Date.now();
@@ -640,19 +899,6 @@ const routes = [
     if (!itemExists(type, id)) fail(404, 'unknown_item');
     db.ratings = db.ratings.filter((r) => !(r.userId === u.id && r.type === type && r.id === id));
     return { ...itemRatings(u.id, type, id), state: state() };
-  }],
-  ['GET', /^\/admin\/reviews$/, () => {
-    requireAdmin();
-    return adminReviews();
-  }],
-  ['DELETE', /^\/admin\/reviews\/(\d+)\/(album|track)\/([^/]+)$/, ({ params }) => {
-    requireAdmin();
-    const [userId, type, id] = [Number(params[0]), params[1], decodeURIComponent(params[2])];
-    // Comme le vrai serveur : on efface le texte, la note reste.
-    const row = db.ratings.find((r) => r.userId === userId && r.type === type && r.id === id && r.review);
-    if (!row) fail(404, 'review_not_found');
-    row.review = null;
-    return adminReviews();
   }],
   // Démo : l'accès admin se déverrouille avec le code du propriétaire (seule son empreinte SHA-256 est ici).
   ['POST', /^\/demo\/unlock-admin$/, async ({ body }) => {
@@ -677,6 +923,7 @@ const routes = [
     if (f) {
       if (f.status === 'accepted') fail(409, 'already_friends');
       if (f.requester === u.id) fail(409, 'already_requested');
+      // L'autre joueur nous avait déjà invité : on accepte directement.
       f.status = 'accepted';
       f.respondedAt = Date.now();
       return { status: 'accepted', username: target.username };
@@ -693,6 +940,7 @@ const routes = [
       f.status = 'accepted';
       f.respondedAt = Date.now();
     } else {
+      // Refuser (destinataire) ou annuler (expéditeur).
       if (f.addressee !== u.id && f.requester !== u.id) fail(403, 'forbidden');
       db.friendships = db.friendships.filter((x) => x !== f);
     }
@@ -709,75 +957,122 @@ const routes = [
   ['GET', /^\/blindtest$/, () => {
     const u = me();
     return {
-      genres: ['all', ...GENRES].map((id) => ({ id, count: blindtestPool(id).length })),
-      rewardedToday: rewardedToday(u.id), rewardedLimit: u.role === 'admin' ? null : BLINDTEST.rewardedGamesPerDay,
+      genres: [{ id: 'all', count: staticCatalog.totals().tracks }, ...staticCatalog.genres().map((g) => ({ id: g.id, count: g.tracks }))],
+      rewardedToday: rewardedToday(u.id), rewardedLimit: isAdmin(u) ? null : BLINDTEST.rewardedGamesPerDay,
       rounds: BLINDTEST.rounds, roundSeconds: BLINDTEST.roundSeconds, rewards: BLINDTEST.rewards, audio: false,
     };
   }],
   ['POST', /^\/blindtest\/start$/, ({ body }) => {
     const u = me();
     const genre = body.genre;
-    if (genre !== 'all' && !GENRES.includes(genre)) fail(400, 'invalid_genre');
-    const rewarded = u.role === 'admin' || rewardedToday(u.id) < BLINDTEST.rewardedGamesPerDay;
-    const questions = buildBlindtest(genre, rand);
-    questions[0].startedAt = Date.now();
+    if (typeof genre !== 'string' || (genre !== 'all' && !staticCatalog.genres().some((g) => g.id === genre))) fail(400, 'invalid_genre');
+    const rewarded = isAdmin(u) || rewardedToday(u.id) < BLINDTEST.rewardedGamesPerDay;
+    const questions = buildBlindtest(genre, rand, staticCatalog);
+    if (questions.length < BLINDTEST.rounds || questions.some((qq) => qq.choices.length < 2)) fail(409, 'not_enough_tracks');
     const id = token();
-    db.games[id] = { id, userId: u.id, questions, current: 0, score: 0, correct: 0, rewarded, createdAt: Date.now() };
-    return { gameId: id, rewarded, round: roundPayload(questions, 0, u.role === 'admin') };
+    const round = roundPayload(questions, 0, isAdmin(u));
+    questions[0].startedAt = Date.now();
+    db.games[id] = { id, userId: u.id, genre, questions, current: 0, score: 0, correct: 0, rewarded, createdAt: Date.now() };
+    return { gameId: id, rewarded, round };
   }],
   ['POST', /^\/blindtest\/([^/]+)\/answer$/, ({ params, body }) => {
     const u = me();
-    const g = db.games[params[0]];
-    if (!g || g.userId !== u.id) fail(404, 'game_not_found');
-    if (g.finishedAt) fail(409, 'game_finished');
+    const g = loadGame(u, params[0]);
     const q = g.questions[g.current];
-    if (q.picked !== undefined) fail(409, 'round_not_active');
+    if (!q.startedAt || q.picked !== undefined) fail(409, 'round_not_active');
     const elapsed = Date.now() - q.startedAt;
     const correct = elapsed <= (BLINDTEST.roundSeconds + 2) * 1000 && body.choice === q.answer;
     const points = blindtestPoints(correct, elapsed);
-    q.picked = body.choice ?? null;
+    q.picked = idOf(body.choice);
+    q.points = points;
     g.score += points;
     if (correct) g.correct += 1;
     let final = null;
     if (g.current === g.questions.length - 1) {
       const rewardPacks = g.rewarded ? blindtestReward(g.correct) : 0;
+      const xp = g.correct * 10;
       u.bonusPacks += rewardPacks;
-      u.xp += g.correct * 10;
+      u.xp += xp;
       g.finishedAt = Date.now();
-      final = { score: g.score, correct: g.correct, rounds: g.questions.length, rewardPacks, rewarded: g.rewarded, xp: g.correct * 10 };
+      final = { score: g.score, correct: g.correct, rounds: g.questions.length, rewardPacks, rewarded: g.rewarded, xp };
     }
-    const result = { correct, answer: q.answer, picked: q.picked, points, score: g.score };
-    return final ? { result, final, state: state() } : { result, final };
+    const result = { result: { correct, answer: q.answer, picked: q.picked, points, score: g.score }, final, catalog: refs({ trackIds: [q.answer] }) };
+    return final ? { ...result, state: state() } : result;
   }],
   ['POST', /^\/blindtest\/([^/]+)\/next$/, ({ params }) => {
     const u = me();
-    const g = db.games[params[0]];
-    if (!g || g.userId !== u.id) fail(404, 'game_not_found');
-    if (g.finishedAt) fail(409, 'game_finished');
-    g.current += 1;
-    g.questions[g.current].startedAt = Date.now();
-    return { round: roundPayload(g.questions, g.current, u.role === 'admin') };
+    const g = loadGame(u, params[0]);
+    if (g.questions[g.current].picked === undefined) fail(409, 'round_not_answered');
+    const index = g.current + 1;
+    if (index >= g.questions.length) fail(409, 'game_finished');
+    const round = roundPayload(g.questions, index, isAdmin(u));
+    g.current = index;
+    g.questions[index].startedAt = Date.now();
+    return { round };
   }],
 
   ['GET', /^\/admin\/overview$/, () => {
     requireAdmin();
-    const users = db.users.map((u) => ({
+    const users = [...db.users].sort((a, b) => b.createdAt - a.createdAt).map((u) => ({
       id: u.id, username: u.username, email: u.email, role: u.role, verified: !!u.verified, unique: ownedSet(u.id).size,
-      openings: 0, royalties: u.royalties, packs: u.packs + u.bonusPacks, level: levelFromXp(u.xp).level, createdAt: u.createdAt, lastSeenAt: null,
+      openings: u.openings || 0, royalties: u.royalties, packs: u.packs + u.bonusPacks, level: levelFromXp(u.xp).level, createdAt: u.createdAt, lastSeenAt: null,
     }));
     return {
       users,
-      totals: { users: users.length, verified: users.filter((u) => u.verified).length, openings: 0, cards: Object.values(db.cards).reduce((s, c) => s + Object.values(c).reduce((a, v) => a + v.count, 0), 0), ratings: db.ratings.length },
-      odds: packOdds(), slots: PACK_SLOTS, config: { packRegenMinutes: 30, packMaxStock: MAX_STOCK, blindtestAudio: 'off (démo)' },
+      totals: {
+        users: users.length,
+        verified: users.filter((u) => u.verified).length,
+        openings: users.reduce((s, u) => s + u.openings, 0),
+        cards: Object.values(db.cards).reduce((s, c) => s + Object.values(c).reduce((a, v) => a + v.count, 0), 0),
+        ratings: db.ratings.length,
+      },
+      catalog: staticCatalog.totals(),
+      adminCount: 1,
+      odds: packOdds(),
+      slots: PACK_SLOTS,
+      rarities: RARITIES,
+      config: { packRegenMinutes: REGEN_MS / 60_000, packMaxStock: MAX_STOCK, blindtestAudio: 'off (démo)' },
     };
   }],
   ['POST', /^\/admin\/users\/(\d+)\/grant$/, ({ params, body }) => {
     requireAdmin();
     const t = userById(Number(params[0]));
     if (!t) fail(404, 'user_not_found');
-    t.bonusPacks += Math.max(0, Math.floor(Number(body.packs) || 0));
-    t.royalties += Math.max(0, Math.floor(Number(body.royalties) || 0));
-    return { ok: true };
+    const packs = Math.max(0, Math.min(1000, Math.floor(Number(body.packs) || 0)));
+    const royalties = Math.max(0, Math.min(1_000_000, Math.floor(Number(body.royalties) || 0)));
+    t.bonusPacks += packs;
+    t.royalties += royalties;
+    return { packs, royalties };
+  }],
+  ['GET', /^\/admin\/reviews$/, () => {
+    requireAdmin();
+    return adminReviews();
+  }],
+  ['DELETE', /^\/admin\/reviews\/(\d+)\/(album|track)\/([^/]+)$/, ({ params }) => {
+    requireAdmin();
+    const [userId, type, id] = [Number(params[0]), params[1], decodeURIComponent(params[2])];
+    // Comme le vrai serveur : on efface le texte, la note reste.
+    const row = db.ratings.find((r) => r.userId === userId && r.type === type && r.id === id && r.review);
+    if (!row) fail(404, 'review_not_found');
+    row.review = null;
+    return adminReviews();
+  }],
+  ['GET', /^\/admin\/covers$/, () => {
+    requireAdmin();
+    return coverStatus();
+  }],
+  ['POST', /^\/admin\/covers\/refresh$/, () => {
+    requireAdmin();
+    return coverStatus();
+  }],
+  ['GET', /^\/admin\/catalog$/, () => {
+    requireAdmin();
+    return catalogStatus();
+  }],
+  // Import et pause : rien à faire dans la démo, l'état reste celui des 20 albums de base.
+  ['POST', /^\/admin\/catalog\/(import|pause)$/, () => {
+    requireAdmin();
+    return catalogStatus();
   }],
   ['POST', /^\/admin\/me\/reset$/, () => {
     const u = requireAdmin();
@@ -788,43 +1083,48 @@ const routes = [
     u.showcase = [];
     return { state: state() };
   }],
-  ['POST', /^\/admin\/me\/complete$/, () => {
+  // Sans albumId : les 20 albums de base (tout le catalogue de la démo) ; avec albumId : cet album seulement.
+  ['POST', /^\/admin\/me\/complete$/, ({ body }) => {
     const u = requireAdmin();
+    const id = idOf(body.albumId);
+    if (body.albumId != null && !(id && ALBUM.has(id))) fail(404, 'unknown_album');
     const mine = cardsOf(u.id);
-    const now = Date.now();
-    for (const t of TRACKS) if (!mine[`${t.id}|std`] && !mine[`${t.id}|holo`]) mine[`${t.id}|std`] = { count: 1, at: now };
     const ach = achOf(u.id);
-    for (const a of Object.keys(ALBUM_BY_ID)) ach[`album:${a}`] ||= now;
-    for (const a of Object.keys(ARTIST_BY_ID)) ach[`artist:${a}`] ||= now;
+    const now = Date.now();
+    const list = id ? staticCatalog.albumTracks(id) : ALL_TRACKS;
+    for (const t of list) if (!mine[`${t.id}|std`] && !mine[`${t.id}|holo`]) mine[`${t.id}|std`] = { count: 1, at: now };
+    for (const albumId of id ? [id] : ALBUM.keys()) ach[`album:${albumId}`] ||= now;
+    // Artistes dont toutes les cartes sont maintenant possédées.
+    const owned = ownedSet(u.id);
+    for (const artistId of new Set(list.map((t) => t.artistId))) {
+      const ids = staticCatalog.artistTrackIds(artistId);
+      if (ids.length && ids.every((x) => owned.has(x))) ach[`artist:${artistId}`] ||= now;
+    }
     return { state: state() };
   }],
-  ['GET', /^\/admin\/covers$/, () => {
-    requireAdmin();
-    return coverStatus();
-  }],
-  ['POST', /^\/admin\/covers\/refresh$/, () => {
-    requireAdmin();
-    return coverStatus();
-  }],
+  // Prépare un album complet à une carte près, pour tester la célébration de fin d'album.
   ['POST', /^\/admin\/me\/almost$/, ({ body }) => {
     const u = requireAdmin();
-    const list = TRACKS_BY_ALBUM[body.albumId];
-    if (!list) fail(404, 'unknown_album');
+    const id = idOf(body.albumId);
+    const list = id ? staticCatalog.albumTracks(id) : [];
+    if (!list.length) fail(404, 'unknown_album');
     const missing = list[Math.floor(rand() * list.length)];
     const mine = cardsOf(u.id);
     for (const t of list) if (t.id !== missing.id && !mine[`${t.id}|std`] && !mine[`${t.id}|holo`]) mine[`${t.id}|std`] = { count: 1, at: Date.now() };
     delete mine[`${missing.id}|std`];
     delete mine[`${missing.id}|holo`];
-    delete achOf(u.id)[`album:${body.albumId}`];
+    delete achOf(u.id)[`album:${id}`];
     delete achOf(u.id)[`artist:${missing.artistId}`];
-    return { missing: missing.id, state: state() };
+    return { missing: missing.id, catalog: refs({ trackIds: [missing.id], albumIds: [id] }), state: state() };
   }],
 ];
 
 export async function handle(method, path, body = {}) {
   load();
-  await new Promise((r) => setTimeout(r, 90 + Math.random() * 110));
   const [pathname, qs] = path.split('?');
+  // Petit délai réseau simulé (plus court pour la navigation dans le catalogue : défilement, recherche).
+  const browsing = method === 'GET' && pathname.startsWith('/catalog/');
+  await new Promise((r) => setTimeout(r, browsing ? 40 + rand() * 60 : 90 + rand() * 110));
   for (const [m, re, fn] of routes) {
     if (m !== method) continue;
     const match = re.exec(pathname);

@@ -4,6 +4,7 @@ import { get, post, del } from '../api.js';
 import { useGame } from '../state/GameContext.jsx';
 import { useI18n } from '../i18n/index.jsx';
 import { Avatar, ConfirmButton, Icon, Progress, Spinner, useToast } from '../components/ui.jsx';
+import '../styles/profile.css';
 
 function FriendRow({ entry, children }) {
   const { t } = useI18n();
@@ -14,7 +15,10 @@ function FriendRow({ entry, children }) {
         <Avatar user={u} size={44} />
         <span className="friend__text">
           <span className="friend__name">{u.username}</span>
-          <span className="small muted">{t('profile.level', { n: u.level })} · {t('friends.progress', { n: u.unique, total: u.total })}</span>
+          <span className="small muted friend__meta">
+            <span>{t('profile.level', { n: u.level })}</span>
+            <span>{t('friends.progress', { n: u.unique, total: u.total })}</span>
+          </span>
           <Progress value={u.unique} max={u.total} color="var(--cue)" size="xs" />
         </span>
       </Link>
@@ -28,14 +32,18 @@ export default function Friends() {
   const { refresh } = useGame();
   const toast = useToast();
   const [data, setData] = useState(null);
+  const [failed, setFailed] = useState(false);
   const [username, setUsername] = useState('');
   const [message, setMessage] = useState(null);
   const [busy, setBusy] = useState(false);
 
+  // Les photos de profil « album:<id> » des joueurs cités arrivent avec la réponse (champ catalog, enregistré par api.js).
   const load = useCallback(async () => {
     try {
       setData(await get('/friends'));
+      setFailed(false);
     } catch (err) {
+      setFailed(true);
       toast(error(err.code), 'error');
     }
   }, [toast, error]);
@@ -94,7 +102,12 @@ export default function Friends() {
         {message && <p className={message.tone === 'ok' ? 'form-ok' : 'form-error'} role="status">{message.text}</p>}
       </section>
 
-      {!data ? <Spinner /> : (
+      {!data && failed ? (
+        <div className="empty pf-empty" role="alert">
+          <p>{t('friends.loadError')}</p>
+          <button type="button" className="btn btn--ghost btn--sm" onClick={() => { setFailed(false); load(); }}>{t('friends.retry')}</button>
+        </div>
+      ) : !data ? <Spinner /> : (
         <>
           {data.incoming.length > 0 && (
             <section className="section">

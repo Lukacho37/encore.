@@ -186,6 +186,29 @@
   border-left: 1px solid rgba(0, 0, 0, 0.25);
 }
 
+/* ---------- bouton « Presser » sous les cartes manquantes ---------- */
+
+/* Une seule ligne : faute de place, le libellé se raccourcit, jamais le prix. Les boutons d'une même rangée
+   restent alignés, même quand un titre de carte passe sur deux lignes. */
+.card-cell .press-btn {
+  position: relative;
+  min-width: 0;
+  margin-top: auto;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+.press-btn__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-cell .press-btn > svg,
+.press-btn__cost {
+  flex: none;
+}
+
 /* ---------- page d'artiste ---------- */
 
 .artist-head__counts {
@@ -215,5 +238,20 @@
     grid-column: 1 / -1;
     justify-content: center;
     white-space: normal;
+  }
+
+  .card-cell .press-btn {
+    gap: 4px;
+    padding: 0 6px;
+    font-size: 11.5px;
+  }
+
+  /* Admin : « Gratuit » suffit à côté de l'icône ; le libellé reste lu par les lecteurs d'écran. */
+  .card-cell .press-btn--free .press-btn__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
   }
 }

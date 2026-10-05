@@ -392,7 +392,7 @@ export default {
     seeResults: 'See results',
     results: 'Results',
     score: '{n} points',
-    correctCount: '{c} right answers out of {total}',
+    correctCount: { one: '{c} right answer out of {total}', other: '{c} right answers out of {total}' },
     won: { one: 'You win {n} pack!', other: 'You win {n} packs!' },
     wonNone: 'No pack this time: you need at least 3 right answers.',
     notRewarded: 'Unrewarded game: daily limit reached.',

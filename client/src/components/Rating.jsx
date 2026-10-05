@@ -6,6 +6,7 @@ import { useI18n } from '../i18n/index.jsx';
 import { useAlbum, useTrack } from '../state/catalog.js';
 import CoverArt from './CoverArt.jsx';
 import { Avatar, useToast } from './ui.jsx';
+import '../styles/profile.css';
 
 // Une note est toujours stockée sur 10 (entier de 0 à 10).
 // Affichage au choix du joueur : 5 étoiles avec demi-étoiles (1 point = ½ étoile) ou une note sur 10.

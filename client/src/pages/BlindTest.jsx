@@ -5,11 +5,15 @@ import { useGame } from '../state/GameContext.jsx';
 import { useI18n } from '../i18n/index.jsx';
 import Card from '../components/Card.jsx';
 import { Icon, Spinner, useToast } from '../components/ui.jsx';
-import { TRACK_BY_ID, ARTIST_BY_ID } from '@shared/catalog.js';
+import { useTrack } from '../state/catalog.js';
 import { sound } from '../sound.js';
 import { storage } from '../storage.js';
 
 const CLUE_STEP = 4; // secondes entre deux indices
+const MIN_GENRE_TRACKS = 12; // en dessous, un genre donne des parties trop répétitives : il n'est pas proposé
+
+/** Genres jouables : « tous » et ceux qui ont assez de morceaux au catalogue. */
+const playableGenres = (info) => (info?.genres || []).filter((g) => g.id === 'all' || g.count >= MIN_GENRE_TRACKS);
 
 function TimerRing({ seconds, total }) {
   const r = 26;
@@ -36,6 +40,32 @@ function Clue({ clue }) {
     case 'words': return t('bt.clue.words', { count: clue.value.count, n: clue.value.count, initial: clue.value.initial });
     default: return null;
   }
+}
+
+/** Réponse de la manche : carte, titre, artiste, album et année (la carte arrive avec la réponse du serveur). */
+function AnswerReveal({ answer, choice, final, busy, onNext }) {
+  const { t } = useI18n();
+  const track = useTrack(answer.answer);
+  const title = track?.title || choice?.title || '…';
+  const artist = track?.artist || choice?.artist;
+  let detail = null;
+  if (track) detail = [track.kind === 'promo' || !track.albumId ? t('bt.clue.promo') : track.album, track.year].filter(Boolean).join(' · ');
+  return (
+    <section className={`bt-result${answer.correct ? ' is-right' : ' is-wrong'}`}>
+      <div className="bt-result__card"><Card trackId={answer.answer} /></div>
+      <div className="bt-result__text">
+        <strong className="bt-result__verdict">
+          {answer.correct ? t('bt.correct') : answer.timeout ? t('bt.timeout') : t('bt.wrong')}
+          {answer.correct && <span className="mono"> {t('bt.points', { n: answer.points })}</span>}
+        </strong>
+        <span className="muted">{t('bt.answerWas')} <b>{title}</b>{artist ? ` · ${artist}` : ''}</span>
+        {detail && <span className="small muted">{detail}</span>}
+        <button type="button" className="btn btn--primary" onClick={onNext} disabled={busy} autoFocus>
+          {final ? t('bt.seeResults') : t('bt.next')}
+        </button>
+      </div>
+    </section>
+  );
 }
 
 function Equalizer({ playing }) {
@@ -136,7 +166,8 @@ export default function BlindTest() {
     sound.unlock();
     setBusy(true);
     try {
-      const res = await post('/blindtest/start', { genre });
+      // Un genre choisi qui n'est plus proposé (catalogue modifié entre-temps) retombe sur « tous ».
+      const res = await post('/blindtest/start', { genre: playableGenres(info).some((g) => g.id === genre) ? genre : 'all' });
       setGame({ id: res.gameId, rewarded: res.rewarded });
       setFinal(null);
       setScore(0);
@@ -181,7 +212,7 @@ export default function BlindTest() {
         <section className="bt-final panel">
           <span className="eyebrow">{t('bt.results')}</span>
           <h1 className="bt-final__score mono">{t('bt.score', { n: num(final.score) })}</h1>
-          <p>{t('bt.correctCount', { c: final.correct, total: final.rounds })}</p>
+          <p>{t('bt.correctCount', { n: final.correct, c: final.correct, total: final.rounds })}</p>
           <div className={`bt-final__reward${final.rewardPacks ? ' is-win' : ''}`}>
             <Icon name="pack" size={22} />
             <span>
@@ -202,7 +233,6 @@ export default function BlindTest() {
   if (round) {
     const remaining = Math.max(0, round.seconds - elapsed);
     const shownClues = round.clues ? Math.min(round.clues.length, 1 + Math.floor(elapsed / CLUE_STEP)) : 0;
-    const answerTrack = answer ? TRACK_BY_ID[answer.answer] : null;
     return (
       <div className="bt">
         <header className="bt-bar">
@@ -259,19 +289,7 @@ export default function BlindTest() {
         </div>
 
         {answer && (
-          <section className={`bt-result${answer.correct ? ' is-right' : ' is-wrong'}`}>
-            <div className="bt-result__card"><Card trackId={answer.answer} /></div>
-            <div className="bt-result__text">
-              <strong className="bt-result__verdict">
-                {answer.correct ? t('bt.correct') : answer.timeout ? t('bt.timeout') : t('bt.wrong')}
-                {answer.correct && <span className="mono"> {t('bt.points', { n: answer.points })}</span>}
-              </strong>
-              <span className="muted">{t('bt.answerWas')} <b>{answerTrack.title}</b> · {ARTIST_BY_ID[answerTrack.artistId].name}</span>
-              <button type="button" className="btn btn--primary" onClick={next} disabled={busy} autoFocus>
-                {final ? t('bt.seeResults') : t('bt.next')}
-              </button>
-            </div>
-          </section>
+          <AnswerReveal answer={answer} choice={round.choices.find((c) => c.id === answer.answer)} final={final} busy={busy} onNext={next} />
         )}
       </div>
     );
@@ -279,6 +297,13 @@ export default function BlindTest() {
 
   // ---------- accueil ----------
   const limitReached = info.rewardedLimit != null && info.rewardedToday >= info.rewardedLimit;
+  const genres = playableGenres(info);
+  const selected = genres.some((g) => g.id === genre) ? genre : 'all';
+  // Libellé d'un genre ; un genre sans traduction garde son identifiant.
+  const genreName = (id) => {
+    const label = t(`genre.${id}`);
+    return label === `genre.${id}` ? id : label;
+  };
   return (
     <div className="bt">
       <header className="page-head">
@@ -292,9 +317,9 @@ export default function BlindTest() {
         <section className="panel">
           <h2 className="panel__title">{t('bt.genre')}</h2>
           <div className="genre-grid" role="radiogroup" aria-label={t('bt.genre')}>
-            {info.genres.map((g) => (
-              <button key={g.id} type="button" role="radio" aria-checked={genre === g.id} className={`genre-btn genre-btn--${g.id}${genre === g.id ? ' is-on' : ''}`} onClick={() => setGenre(g.id)}>
-                <span className="genre-btn__name">{t(`genre.${g.id}`)}</span>
+            {genres.map((g) => (
+              <button key={g.id} type="button" role="radio" aria-checked={selected === g.id} className={`genre-btn genre-btn--${g.id}${selected === g.id ? ' is-on' : ''}`} onClick={() => setGenre(g.id)}>
+                <span className="genre-btn__name">{genreName(g.id)}</span>
                 <span className="small muted">{t('bt.tracks', { n: g.count })}</span>
               </button>
             ))}

@@ -291,7 +291,7 @@ export default function PackOpening({ promise, count = 1, onClose, onAgain, albu
   // Booster classique : il faut en avoir en stock.
   const albumPrice = isAdmin ? 0 : ECONOMY.albumPackPrice;
   const albumDone = !!album && (albumProgress?.(album.id, album.trackCount)?.pct ?? 0) >= 1;
-  const canAgain = !!onAgain && (album ? !albumDone && (user?.royalties ?? 0) >= albumPrice : isAdmin || (packs?.available ?? 0) > 0);
+  const canAgain = !!onAgain && (album ? isAdmin || (!albumDone && (user?.royalties ?? 0) >= albumPrice) : isAdmin || (packs?.available ?? 0) > 0);
   const currentTrack = current ? getTrack(current.trackId) : undefined;
 
   const hint = phase === 'pack' || phase === 'shake' ? t('open.tap')

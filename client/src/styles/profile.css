@@ -1,0 +1,207 @@
+/* Profil, Studio, photo de profil, notes : listes paginées et recherches (catalogue à grande échelle). */
+/* app.css est chargé après ce fichier : un sélecteur qui le précise doit être plus spécifique que le sien. */
+
+/* ---------- recherche dans une fenêtre de choix ---------- */
+
+.pf-search .input {
+  min-height: 42px;
+  padding-right: 42px;
+}
+
+.pf-search input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  display: none;
+}
+
+.pf-search .pf-search__clear {
+  position: absolute;
+  right: 4px;
+  width: 34px;
+  height: 34px;
+}
+
+/* .search svg place la loupe : l'icône du bouton d'effacement garde sa place normale. */
+.pf-search .pf-search__clear svg {
+  position: static;
+}
+
+/* ---------- filtres par rareté ---------- */
+
+.chips.pf-chips {
+  gap: 6px;
+}
+
+.pf-chips .chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+}
+
+/* Sur téléphone, les raretés défilent sur une ligne au lieu d'occuper quatre lignes. */
+@media (max-width: 640px) {
+  .chips.pf-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin: 0 -4px;
+    padding: 2px 4px 4px;
+    scrollbar-width: none;
+  }
+
+  .pf-chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .pf-chips .chip-btn {
+    flex: none;
+  }
+}
+
+.pf-chip__n {
+  font: 500 11px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.pf-count {
+  margin: -6px 0 0;
+  min-height: 1.4em;
+}
+
+/* ---------- pages suivantes, erreurs, chargement ---------- */
+
+.picker .is-stale,
+.avatar-picker .is-stale {
+  opacity: 0.45;
+  transition: opacity 0.2s;
+}
+
+.pf-more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 4px;
+  text-align: center;
+}
+
+.pf-more .btn {
+  gap: 8px;
+}
+
+.pf-more .spinner {
+  width: 16px;
+  height: 16px;
+}
+
+.pf-more__n {
+  color: var(--haze);
+  font: 500 12px var(--font-mono);
+}
+
+.empty.pf-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.pf-empty p {
+  margin: 0;
+}
+
+.cover-pick.pf-cover-skel,
+.is-loading .rated-skel {
+  display: block;
+  background: linear-gradient(110deg, #1a1522 30%, #2a2233 50%, #1a1522 70%) 0 0 / 300% 100%;
+  animation: card-loading 1.4s linear infinite;
+}
+
+.cover-pick.pf-cover-skel {
+  cursor: default;
+}
+
+.is-loading .rated-skel + span {
+  color: var(--haze);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cover-pick.pf-cover-skel,
+  .is-loading .rated-skel {
+    animation: none;
+  }
+}
+
+/* ---------- photo de profil ---------- */
+
+.pf-eyebrow-n {
+  color: var(--haze);
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* La fenêtre peut contenir beaucoup de pochettes : elle défile, les boutons restent en bas. */
+.avatar-picker .modal__actions {
+  position: sticky;
+  bottom: -22px;
+  margin: 0 -22px -22px;
+  padding: 16px 22px 22px;
+  background: linear-gradient(to bottom, transparent, var(--stage) 40%);
+}
+
+/* ---------- en-tête du profil ---------- */
+
+.pf-master {
+  text-decoration: none;
+}
+
+.pf-master:hover,
+.pf-master:focus-visible {
+  background: color-mix(in oklab, var(--gold) 30%, transparent);
+}
+
+.masters .pf-masters__toggle {
+  align-self: center;
+  font-size: 12px;
+}
+
+.pf-shelf-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 4px;
+  text-align: center;
+}
+
+.pf-shelf-foot .btn {
+  gap: 8px;
+}
+
+.pf-shelf-foot p {
+  margin: 0;
+}
+
+/* ---------- amis ---------- */
+
+/* Avec 250 000 cartes au catalogue, la ligne de progression s'allonge : cartes plus larges, texte qui ne se coupe pas. */
+.friends .friend-list {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr));
+}
+
+.friend__meta {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 5px;
+}
+
+.friend__meta > span {
+  white-space: nowrap;
+}
+
+.friend__meta > span + span::before {
+  content: '· ';
+}

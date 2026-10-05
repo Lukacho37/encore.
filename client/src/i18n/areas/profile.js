@@ -5,6 +5,8 @@ export default {
       mastersMore: { one: '+{n} autre', other: '+{n} autres' },
       mastersLess: 'Réduire',
       shelfCapped: 'Les {shown} derniers vinyles pressés sont exposés ({n} au total).',
+      shelfMore: { one: 'Voir {n} vinyle de plus', other: 'Voir {n} vinyles de plus' },
+      shelfLess: 'Réduire l’étagère',
       loadError: 'Impossible de charger ce profil pour le moment.',
       retry: 'Réessayer',
     },
@@ -31,12 +33,18 @@ export default {
       loadError: 'Impossible de charger les albums pour le moment.',
       retry: 'Réessayer',
     },
+    friends: {
+      loadError: 'Impossible de charger tes amis pour le moment.',
+      retry: 'Réessayer',
+    },
   },
   en: {
     profile: {
       mastersMore: { one: '+{n} more', other: '+{n} more' },
       mastersLess: 'Show less',
       shelfCapped: 'Showing the {shown} most recently pressed vinyls ({n} in total).',
+      shelfMore: { one: 'Show {n} more vinyl', other: 'Show {n} more vinyls' },
+      shelfLess: 'Collapse the shelf',
       loadError: 'This profile can’t be loaded right now.',
       retry: 'Try again',
     },
@@ -61,6 +69,10 @@ export default {
       adminSearch: 'Album or artist…',
       noResult: 'No album matches.',
       loadError: 'Albums can’t be loaded right now.',
+      retry: 'Try again',
+    },
+    friends: {
+      loadError: 'Your friends can’t be loaded right now.',
       retry: 'Try again',
     },
   },

@@ -16,8 +16,10 @@ const RETRY_MS = 15 * 60_000;
 
 // Morceaux crédités autrement sur les plateformes.
 const SEARCH_ARTIST = {
-  'promo:we-are-the-world': 'USA for Africa',
-};
+  'promo:we-are-the-world': 'U.S.A. for Africa',
+  // Le duo de 2007 est publié sous le nom de Mark Ronson ; « Amy Winehouse » seul tomberait sur ses versions solo.
+  'promo:valerie': 'Mark Ronson',
+}
 
 export class RateLimited extends Error {}
 
@@ -35,7 +37,8 @@ export function normTitle(s) {
     .trim();
 }
 
-const normArtist = (s) => normTitle(s);
+// Sans les points : « U.S.A. for Africa » et « USA for Africa » sont le même artiste.
+const normArtist = (s) => normTitle(String(s || '').replace(/\./g, ''));
 
 function artistMatches(names, wanted) {
   const want = normArtist(wanted);
@@ -146,6 +149,8 @@ function spotifyProvider(cfg, fetchImpl, pause) {
     const res = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(8000) });
     if (res.status === 429) throw new RateLimited('spotify');
     if (res.status === 401) token = null;
+    // Spotify refuse (403) les applications dont le propriétaire n'a pas d'abonnement Premium actif.
+    if (res.status === 403) throw new Error('spotify 403 (abonnement Premium du propriétaire de l’application requis ?)');
     if (!res.ok) throw new Error(`spotify ${res.status}`);
     return res.json();
   }
@@ -342,6 +347,7 @@ export function createCovers(db, { cfg = config, fetchImpl = (...a) => fetch(...
 
   async function run({ force = false } = {}) {
     if (!order.length) return;
+    lastError = null;
     const rows = new Map(selectAll.all().map((r) => [r.item_key, r]));
     for (const item of items) {
       const row = rows.get(item.key);
@@ -391,14 +397,20 @@ export function createCovers(db, { cfg = config, fetchImpl = (...a) => fetch(...
 
   function status() {
     const snap = snapshot();
-    const found = new Set(Object.keys(snap.items));
+    const rows = new Map(selectAll.all().map((r) => [r.item_key, r]));
+    const served = {};
+    for (const it of Object.values(snap.items)) served[it.provider] = (served[it.provider] || 0) + 1;
+    const describe = (i) => ({ key: i.key, type: i.type, title: i.title, artist: i.artist });
     return {
       mode,
       providers: order,
       spotifyKeys: !!cfg.spotify,
       total: items.length,
-      found: found.size,
-      missing: items.filter((i) => !found.has(i.key)).map((i) => ({ key: i.key, type: i.type, title: i.title, artist: i.artist })),
+      found: Object.keys(snap.items).length,
+      served,
+      // Cherchés sans résultat, et pas encore cherchés (ou fournisseur injoignable) : deux cas à ne pas confondre.
+      missing: items.filter((i) => !snap.items[i.key] && rows.has(i.key) && !rows.get(i.key).cover).map(describe),
+      pending: items.filter((i) => !snap.items[i.key] && !(rows.has(i.key) && !rows.get(i.key).cover)).length,
       running: !!running,
       lastRun,
       lastError,

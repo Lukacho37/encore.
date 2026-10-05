@@ -6,9 +6,14 @@ import { useGame } from '../state/GameContext.jsx';
 import { Icon, Logo, Spinner, useToast } from '../components/ui.jsx';
 import Card from '../components/Card.jsx';
 import { validateUsername, PASSWORD_MIN } from '@shared/rules.js';
+import { PROVIDER_NAMES, useCovers } from '../state/CoversContext.jsx';
+
+const FAN = ['the-college-dropout', 'promo:hey-jude', 'discovery'];
 
 function AuthLayout({ children }) {
   const { t, lang, setLang } = useI18n();
+  const covers = useCovers();
+  const sources = [...new Set(FAN.map((seed) => PROVIDER_NAMES[covers.items[seed]?.provider]).filter(Boolean))];
   return (
     <div className="auth">
       <aside className="auth__stage">
@@ -18,6 +23,7 @@ function AuthLayout({ children }) {
           <Card trackId="promo:hey-jude" variant="holo" className="auth__fan-card auth__fan-card--2" />
           <Card trackId="discovery:01" className="auth__fan-card auth__fan-card--3" />
         </div>
+        {sources.length > 0 && <p className="auth__credit small muted">{t('covers.credit', { p: sources.join(' / ') })}</p>}
         <h1 className="auth__tagline">{t('auth.tagline')}</h1>
         <ul className="auth__pitch">
           {t('auth.pitch').map((line) => <li key={line}>{line}</li>)}

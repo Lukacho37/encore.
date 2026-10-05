@@ -21,7 +21,7 @@ export function ArtistBadge({ artist, size = 44 }) {
   const album = ALBUMS_BY_ARTIST[artist.id]?.[0];
   return (
     <span className="artist-badge" style={{ width: size, height: size }}>
-      {album && <CoverArt art={{ ...album.art, seed: album.id }} />}
+      {album && <CoverArt art={{ ...album.art, seed: album.id }} generated />}
       <span className="artist-badge__initial" style={{ fontSize: size * 0.42 }}>{artist.name[0]}</span>
     </span>
   );

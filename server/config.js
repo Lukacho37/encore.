@@ -18,6 +18,13 @@ const isProd = env.NODE_ENV === 'production';
 const port = Number(env.PORT) || 3000;
 const list = (v) => (v || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 
+// L'interrupteur des pochettes doit couper même avec « OFF », « false » ou « 0 ».
+export function coversMode(v) {
+  const mode = String(v ?? 'auto').trim().toLowerCase();
+  if (['off', 'false', '0', 'no', 'non', 'none', 'disabled'].includes(mode)) return 'off';
+  return ['spotify', 'deezer'].includes(mode) ? mode : 'auto';
+}
+
 export const config = {
   isProd,
   isTest: env.NODE_ENV === 'test',
@@ -50,7 +57,7 @@ export const config = {
 
   // Vraies pochettes : "auto" (Spotify si les clés sont renseignées, sinon Deezer), "spotify", "deezer" ou "off".
   // Les images ne sont jamais copiées : le site affiche celle hébergée par la plateforme, avec un lien vers elle.
-  covers: ['auto', 'spotify', 'deezer', 'off'].includes(env.COVERS) ? env.COVERS : 'auto',
+  covers: coversMode(env.COVERS),
   coversMarket: (env.COVERS_MARKET || 'FR').toUpperCase(),
   spotify: env.SPOTIFY_CLIENT_ID && env.SPOTIFY_CLIENT_SECRET
     ? { clientId: env.SPOTIFY_CLIENT_ID, clientSecret: env.SPOTIFY_CLIENT_SECRET }

@@ -433,6 +433,8 @@ export default {
     coversStatus: '{found}/{total} pochettes trouvées · source : {p}',
     coversOff: 'Pochettes désactivées (COVERS=off) : le site affiche les visuels générés.',
     coversSpotifyHint: 'Sans clés Spotify, les pochettes et les liens d’écoute viennent de Deezer. Renseigne SPOTIFY_CLIENT_ID et SPOTIFY_CLIENT_SECRET pour passer à Spotify (voir DEPLOIEMENT.md).',
+    coversNoKeys: 'COVERS=spotify, mais SPOTIFY_CLIENT_ID et SPOTIFY_CLIENT_SECRET manquent : pochettes désactivées.',
+    coversPending: '{n} pas encore cherchées (recherche en cours ou plateforme injoignable).',
     coversMissing: '{n} introuvables',
     coversRefresh: 'Actualiser les pochettes',
     coversRunning: 'Recherche en cours…',

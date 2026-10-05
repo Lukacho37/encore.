@@ -12,25 +12,37 @@ const pct = (x) => `${(x * 100).toFixed(x < 0.1 ? 1 : 0)} %`;
 
 const PROVIDERS = { spotify: 'Spotify', deezer: 'Deezer' };
 
-/** État des vraies pochettes : source, nombre trouvé, albums introuvables, actualisation. */
+/** État des vraies pochettes : source réelle, trouvées, introuvables, en attente, actualisation. */
 function CoversPanel({ status, onRefresh }) {
   const { t, date } = useI18n();
-  const source = status.providers.map((p) => PROVIDERS[p]).join(' → ');
+  const active = !status.demo && status.providers.length > 0;
+  const served = Object.entries(status.served || {}).map(([p, n]) => `${n} ${PROVIDERS[p] || p}`).join(' · ');
+  let summary;
+  if (status.demo) summary = <p className="small muted">{t('admin.coversDemo')}</p>;
+  else if (status.mode === 'off') summary = <p className="small">{t('admin.coversOff')}</p>;
+  else if (!active) summary = <p className="small">{t('admin.coversNoKeys')}</p>;
+  else {
+    summary = (
+      <p className="mono small">
+        {t('admin.coversStatus', { found: status.found, total: status.total, p: served || status.providers.map((p) => PROVIDERS[p]).join(' → ') })}
+        {status.lastRun ? ` · ${date(status.lastRun)}` : ''}
+      </p>
+    );
+  }
   return (
     <section className="panel">
       <h2 className="panel__title">{t('admin.covers')}</h2>
-      {status.demo ? <p className="small muted">{t('admin.coversDemo')}</p>
-        : !status.providers.length ? <p className="small">{t('admin.coversOff')}</p>
-          : <p className="mono small">{t('admin.coversStatus', { found: status.found, total: status.total, p: source })}{status.lastRun ? ` · ${date(status.lastRun)}` : ''}</p>}
-      {!status.demo && status.providers.length > 0 && !status.spotifyKeys && <p className="small muted">{t('admin.coversSpotifyHint')}</p>}
-      {status.missing.length > 0 && status.providers.length > 0 && (
+      {summary}
+      {active && status.mode === 'auto' && !status.spotifyKeys && <p className="small muted">{t('admin.coversSpotifyHint')}</p>}
+      {active && status.pending > 0 && <p className="small muted">{t('admin.coversPending', { n: status.pending })}</p>}
+      {active && status.missing.length > 0 && (
         <details className="small">
           <summary>{t('admin.coversMissing', { n: status.missing.length })}</summary>
           <ul className="covers-missing">{status.missing.map((m) => <li key={m.key}>{m.artist} · {m.title}</li>)}</ul>
         </details>
       )}
       {status.lastError && <p className="small muted mono">{t('admin.coversError', { e: status.lastError })}</p>}
-      {!status.demo && status.providers.length > 0 && (
+      {active && (
         <button type="button" className="btn btn--ghost btn--sm" onClick={onRefresh} disabled={status.running}>
           {status.running ? t('admin.coversRunning') : t('admin.coversRefresh')}
         </button>
@@ -54,6 +66,12 @@ export default function Admin() {
     get('/admin/reviews').then(setReviews).catch(() => setReviews([]));
     get('/admin/covers').then(setCoverStatus).catch(() => setCoverStatus(null));
   }, [toast, error]);
+  // Pendant une recherche de pochettes, l'état se met à jour tout seul.
+  useEffect(() => {
+    if (!coverStatus?.running) return undefined;
+    const id = setInterval(() => get('/admin/covers').then(setCoverStatus).catch(() => {}), 3000);
+    return () => clearInterval(id);
+  }, [coverStatus?.running]);
   useEffect(() => {
     if (isAdmin) load();
   }, [isAdmin, load]);

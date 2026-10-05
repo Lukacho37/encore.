@@ -23,7 +23,7 @@ export function listenLinks(track) {
 }
 
 /** Lien direct vers le morceau sur la plateforme qui fournit la pochette, puis les autres plateformes. */
-function ListenBlock({ track }) {
+function ListenBlock({ track, showsCover }) {
   const { t } = useI18n();
   const covers = useCovers();
   const direct = covers.tracks[track.id];
@@ -44,7 +44,7 @@ function ListenBlock({ track }) {
           </a>
         ))}
       </div>
-      {cover && <p className="cover-credit small muted">{t('covers.credit', { p: PROVIDER_NAMES[cover.provider] })}</p>}
+      {showsCover && cover && <p className="cover-credit small muted">{t('covers.credit', { p: PROVIDER_NAMES[cover.provider] })}</p>}
     </div>
   );
 }
@@ -149,7 +149,7 @@ function CardDetail({ trackId, onClose }) {
           )}
         </dl>
         <TrackRating trackId={trackId} />
-        <ListenBlock track={track} />
+        <ListenBlock track={track} showsCover={!!mine} />
         {mine && (
           <button type="button" className={`btn ${pinned ? 'btn--ghost' : 'btn--primary'}`} onClick={togglePin} disabled={busy}>
             {pinned ? t('card.unpin') : t('card.pin')}

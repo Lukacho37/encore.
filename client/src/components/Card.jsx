@@ -116,15 +116,20 @@ function Card({ trackId, variant = 'std', count = 0, ghost = false, badge, badge
         </span>
         <span className="card__foot">
           <span className="card__rarity">{realCover && <RarityGem rarity={track.rarity} size={9} />}{t(`rarity.${track.rarity}`)}</span>
-          {track.pop != null
+          {realCover && (badge || count > 1) ? (
+            <span className="card__foot-tags">
+              {badge && <span className={`card__tag${badgeTone ? ` card__tag--${badgeTone}` : ''}`}>{badge}</span>}
+              {count > 1 && <span className="card__tag card__tag--count">×{count}</span>}
+            </span>
+          ) : track.pop != null
             ? <span className="card__pop" title={`${t('card.popularity')} ${track.pop}/100`}><PopIcon />{track.pop}</span>
             : <span className="card__code">{catalogCode(track)}</span>}
         </span>
       </span>
       {holo && <span className="card__holo" aria-hidden="true" />}
       {track.kind === 'promo' && !ghost && !realCover && <span className="card__ribbon" aria-hidden="true">PROMO</span>}
-      {badge && <span className={`card__badge${badgeTone ? ` card__badge--${badgeTone}` : ''}`}>{badge}</span>}
-      {count > 1 && <span className="card__count">×{count}</span>}
+      {badge && !realCover && <span className={`card__badge${badgeTone ? ` card__badge--${badgeTone}` : ''}`}>{badge}</span>}
+      {count > 1 && !realCover && <span className="card__count">×{count}</span>}
       {children}
     </Tag>
   );

@@ -45,7 +45,7 @@ Personne d'autre ne peut devenir admin : le serveur compare l'adresse vérifiée
 
 Sans rien configurer, le serveur récupère les vraies pochettes et les liens d'écoute auprès de **Deezer** (API publique, sans clé) quelques secondes après le démarrage, puis une fois par jour. Pour passer à **Spotify**, avec un bouton « Écouter sur Spotify » qui ouvre directement chaque morceau :
 
-1. Va sur [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard), connecte-toi avec ton compte Spotify et clique sur **Create app**.
+1. Va sur [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard), connecte-toi avec ton compte Spotify et clique sur **Create app**. Depuis février 2026, Spotify exige un abonnement **Premium actif** pour le propriétaire d'une application de développement : sans lui, l'API refuse les requêtes et le site reste sur Deezer (l'espace admin affiche alors l'erreur « spotify 403 »).
 2. Nom : `AlbumMania` ; description : au choix ; *Redirect URI* : l'adresse de ton site (elle n'est pas utilisée) ; coche **Web API**, accepte les conditions et enregistre.
 3. Dans **Settings**, copie le **Client ID** et le **Client secret**.
 4. Sur Render, dans **Environment**, ajoute `SPOTIFY_CLIENT_ID` et `SPOTIFY_CLIENT_SECRET`, puis enregistre (le site redémarre).

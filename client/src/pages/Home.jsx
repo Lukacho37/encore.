@@ -14,17 +14,23 @@ import { Icon, Progress, Royalties, RoyaltyIcon, formatDuration, useNow, useToas
 import { ALBUMS, ALBUM_BY_ID, ARTIST_BY_ID, TRACK_BY_ID } from '@shared/catalog.js';
 import { ECONOMY, recycleValue } from '@shared/rules.js';
 import { sound } from '../sound.js';
+import { useCovers } from '../state/CoversContext.jsx';
 
 export function AlbumTile({ album, progress, compact = false }) {
   const { t } = useI18n();
+  const covers = useCovers();
   const done = progress.pct === 1;
+  // Le badge « complété » ne se pose pas sur une vraie pochette : il passe sous l'image.
+  const real = !!covers.items[album.id];
+  const badge = done && <span className="album-tile__badge"><Icon name="disc" size={14} /> {t('collection.completed')}</span>;
   return (
     <Link to={`/album/${album.id}`} className={`album-tile${done ? ' album-tile--done' : ''}${compact ? ' album-tile--compact' : ''}`}>
       <span className="album-tile__cover">
-        <CoverArt art={{ ...album.art, seed: album.id }} />
-        {done && <span className="album-tile__badge"><Icon name="disc" size={14} /> {t('collection.completed')}</span>}
+        <CoverArt art={{ ...album.art, seed: album.id }} sizes="(max-width: 700px) 45vw, 270px" />
+        {!real && badge}
       </span>
       <span className="album-tile__meta">
+        {real && badge}
         <span className="album-tile__title">{album.title}</span>
         <span className="album-tile__artist">{ARTIST_BY_ID[album.artist].name} · <span className="mono">{album.year}</span></span>
         <span className="album-tile__progress">

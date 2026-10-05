@@ -5747,7 +5747,9 @@ button.vinyl:hover .disc__body {
   background: #000;
 }
 
-/* Rien ne recouvre une vraie pochette : numéro et pastille passent sous l'image, le reflet holo reste sur le cadre. */
+/* Rien ne recouvre une vraie pochette : la pastille de rareté, « Nouveau » et le nombre d'exemplaires passent dans
+   le pied de carte (le numéro reste dans la fiche et la tracklist), le reflet holo reste sur le cadre, et le survol
+   n'éclaircit pas l'image. */
 .card--cover .card__top {
   display: none;
 }
@@ -5756,9 +5758,44 @@ button.vinyl:hover .disc__body {
   z-index: 5;
 }
 
-.card--cover .card__badge,
-.card--cover .card__count {
-  top: 97cqi;
+button.card.card--cover:hover {
+  filter: none;
+}
+
+.card__foot-tags {
+  display: inline-flex;
+  flex: none;
+  gap: 1.4cqi;
+}
+
+.card__tag {
+  padding: 0.4cqi 2.2cqi;
+  border-radius: 99px;
+  background: var(--stage-3);
+  color: var(--paper);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.card__tag--new {
+  background: var(--cue);
+  color: var(--ink);
+}
+
+.card__tag--count {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.vinyl__sleeve:has(.cover--real) .vinyl__wear {
+  display: none;
+}
+
+.album-tile__meta .album-tile__badge {
+  position: static;
+  align-self: flex-start;
+  margin-bottom: 2px;
 }
 
 .card--cover .card__rarity .gem {
@@ -5785,4 +5822,8 @@ button.vinyl:hover .disc__body {
   margin: 8px 0 0;
   padding-left: 18px;
   color: var(--paper-dim);
+}
+
+.auth__credit {
+  margin: -2px 0 10px;
 }

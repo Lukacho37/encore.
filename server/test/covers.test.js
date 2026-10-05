@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 process.env.NODE_ENV = 'test';
 const { openDb } = await import('../db.js');
 const { createCovers, normTitle, mapTracks } = await import('../covers.js');
+const { coversMode } = await import('../config.js');
 const { ALBUMS, ARTIST_BY_ID, TRACKS_BY_ALBUM, TRACK_BY_ID } = await import('../../shared/catalog.js');
 
 const BASE = {
@@ -217,4 +218,44 @@ test('les pochettes ne couvrent que le catalogue actuel', () => {
   assert.ok(TRACK_BY_ID['discovery:01'] && ARTIST_BY_ID['daft-punk']);
   assert.ok(albumByTitle('Discovery'));
   db.close();
+});
+
+test('crédits des plateformes : U.S.A. for Africa, duo Mark Ronson, état « introuvable » ou « en attente »', async () => {
+  const db = openDb(':memory:');
+  const deezer = async (url) => {
+    const u = new URL(url);
+    const q = u.searchParams.get('q') || '';
+    if (u.pathname === '/search/track' && q.includes('We Are the World')) {
+      return json({ data: [{ id: 1, title: 'We Are The World', link: 'https://www.deezer.test/track/1', artist: { name: 'U.S.A. for Africa' }, album: { cover_xl: 'https://cdn.deezer.test/usa.jpg', cover_big: 'https://cdn.deezer.test/usa-500.jpg' } }] });
+    }
+    if (u.pathname === '/search/track' && q.includes('Valerie')) {
+      assert.match(q, /artist:"Mark Ronson"/);
+      return json({ data: [
+        { id: 2, title: "Valerie ('68 Version)", link: 'https://www.deezer.test/track/2', artist: { name: 'Amy Winehouse' }, album: { cover_xl: 'https://cdn.deezer.test/lioness.jpg' } },
+        { id: 3, title: 'Valerie (feat. Amy Winehouse) (Version Revisited)', link: 'https://www.deezer.test/track/3', artist: { name: 'Mark Ronson' }, album: { cover_xl: 'https://cdn.deezer.test/version.jpg' } },
+      ] });
+    }
+    if (u.pathname === '/search/album' && q.includes('Thriller')) throw new Error('réseau coupé');
+    return json({ data: [] });
+  };
+  const covers = createCovers(db, { cfg: { ...BASE, spotify: null }, fetchImpl: deezer, pauseMs: 0 });
+  await covers.warm();
+  const snap = covers.snapshot();
+  assert.equal(snap.items['promo:we-are-the-world'].cover, 'https://cdn.deezer.test/usa.jpg');
+  assert.equal(snap.tracks['promo:valerie'].url, 'https://www.deezer.test/track/3');
+  const status = covers.status();
+  assert.deepEqual(status.served, { deezer: 2 });
+  // Thriller : Deezer injoignable, donc « en attente » et non « introuvable ».
+  assert.ok(!status.missing.some((m) => m.key === 'thriller'));
+  assert.equal(status.pending, 1);
+  assert.equal(status.missing.length, 34 - 2 - 1);
+  assert.match(status.lastError, /réseau coupé/);
+  db.close();
+});
+
+test('interrupteur COVERS : toutes les façons de dire « off » coupent', () => {
+  for (const v of ['off', 'OFF', ' Off ', 'false', '0', 'no', 'none']) assert.equal(coversMode(v), 'off', v);
+  assert.equal(coversMode(undefined), 'auto');
+  assert.equal(coversMode('Spotify'), 'spotify');
+  assert.equal(coversMode('n’importe quoi'), 'auto');
 });

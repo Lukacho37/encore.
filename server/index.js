@@ -11,6 +11,7 @@ app.listen(config.port, () => {
   if (!config.adminEmails.length) console.log('  Aucun admin : renseigne ADMIN_EMAILS avec ton adresse pour activer l’espace admin.');
   else console.log(`  Admin réservé à : ${config.adminEmails.join(', ')}`);
   if (covers.order.length) console.log(`  Pochettes : ${covers.order.join(' puis ')}${config.spotify ? '' : ' (ajoute SPOTIFY_CLIENT_ID et SPOTIFY_CLIENT_SECRET pour Spotify)'}`);
+  else if (config.covers === 'spotify') console.warn('  ⚠ COVERS=spotify mais SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET manquent : pochettes désactivées.');
   else console.log('  Pochettes : désactivées (visuels générés).');
   covers.start();
   console.log('');

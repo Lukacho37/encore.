@@ -35,7 +35,7 @@ export function Disc({ albumId, edition = 'black', spinning = false }) {
 }
 
 /** Pochette avec le disque qui dépasse ; il sort davantage et tourne au survol. */
-export function Vinyl({ albumId, edition = 'black', onClick, className = '', reveal = false, label }) {
+export function Vinyl({ albumId, edition = 'black', onClick, className = '', reveal = false, label, sizes = '(max-width: 700px) 200px, 260px' }) {
   const album = ALBUM_BY_ID[albumId];
   const Tag = onClick ? 'button' : 'span';
   return (
@@ -43,7 +43,7 @@ export function Vinyl({ albumId, edition = 'black', onClick, className = '', rev
       aria-label={label || album.title}>
       <span className="vinyl__disc"><Disc albumId={albumId} edition={edition} /></span>
       <span className="vinyl__sleeve">
-        <CoverArt art={{ ...album.art, seed: album.id }} />
+        <CoverArt art={{ ...album.art, seed: album.id }} sizes={sizes} />
         <span className="vinyl__wear" />
       </span>
     </Tag>
@@ -158,7 +158,7 @@ export function VinylShelf({ vinyls, upcoming = [], title, emptyText, mine }) {
             <figure key={albumId} className="vinyl-item vinyl-item--upcoming">
               <Link to={`/album/${albumId}`} className="vinyl vinyl--ghost" aria-label={album.title}>
                 <span className="vinyl__sleeve">
-                  <CoverArt art={{ ...album.art, seed: album.id }} />
+                  <CoverArt art={{ ...album.art, seed: album.id }} generated />
                   <span className="vinyl__lock"><Icon name="lock" size={16} /><span className="mono">{progress.owned}/{progress.total}</span></span>
                 </span>
               </Link>

@@ -433,6 +433,8 @@ export default {
     coversStatus: '{found}/{total} covers found · source: {p}',
     coversOff: 'Covers turned off (COVERS=off): the site shows generated artwork.',
     coversSpotifyHint: 'Without Spotify keys, covers and listening links come from Deezer. Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to switch to Spotify (see DEPLOIEMENT.md).',
+    coversNoKeys: 'COVERS=spotify, but SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET are missing: covers are off.',
+    coversPending: '{n} not searched yet (search running or platform unreachable).',
     coversMissing: '{n} not found',
     coversRefresh: 'Refresh covers',
     coversRunning: 'Searching…',

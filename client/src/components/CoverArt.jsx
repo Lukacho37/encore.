@@ -1,4 +1,4 @@
-import { memo, useId, useState } from 'react';
+import { memo, useId } from 'react';
 import { useCovers } from '../state/CoversContext.jsx';
 
 // Pochette d'un album ou d'un single.
@@ -200,15 +200,14 @@ function motif(kind, [c0, c1, c2], rand, id) {
 function CoverArt({ art, className = '', title, generated = false, sizes = '160px' }) {
   const id = useId().replace(/:/g, '');
   const covers = useCovers();
-  const [broken, setBroken] = useState(null);
   const real = generated ? null : covers.items[art.seed];
-  if (real && broken !== real.cover) {
+  if (real) {
     const srcSet = real.thumb && real.thumb !== real.cover && real.thumbW && real.coverW
       ? `${real.thumb} ${real.thumbW}w, ${real.cover} ${real.coverW}w`
       : undefined;
     return (
       <img className={`cover cover--real ${className}`} src={real.thumb || real.cover} srcSet={srcSet} sizes={srcSet ? sizes : undefined}
-        alt={title || ''} loading="lazy" decoding="async" draggable="false" onError={() => setBroken(real.cover)} />
+        alt={title || ''} loading="lazy" decoding="async" draggable="false" onError={() => covers.markBroken(art.seed)} />
     );
   }
   const rand = seededRandom(art.seed || art.motif);

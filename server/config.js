@@ -59,6 +59,8 @@ export const config = {
   // Vraies pochettes : "auto" (Spotify si les clés sont renseignées, sinon Deezer), "spotify", "deezer" ou "off".
   // Les images ne sont jamais copiées : le site affiche celle hébergée par la plateforme, avec un lien vers elle.
   covers: coversMode(env.COVERS),
+  coversRaw: env.COVERS,
+  coversInvalid: coversMode(env.COVERS) === 'off' && !/^\s*off\s*$/i.test(env.COVERS || ''),
   coversMarket: (env.COVERS_MARKET || 'FR').toUpperCase(),
   spotify: env.SPOTIFY_CLIENT_ID && env.SPOTIFY_CLIENT_SECRET
     ? { clientId: env.SPOTIFY_CLIENT_ID, clientSecret: env.SPOTIFY_CLIENT_SECRET }

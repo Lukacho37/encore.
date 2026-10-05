@@ -222,7 +222,7 @@ function deezerProvider(cfg, fetchImpl, pause) {
     // Deezer répond 200 avec un objet « error » ; le code 4 signale le dépassement de quota.
     if (data?.error) {
       if (data.error.code === 4) throw new RateLimited('deezer');
-      throw new Error(`erreur ${data.error.code || data.error.type}`);
+      throw new Error(`code ${data.error.code || data.error.type}`);
     }
     return data;
   }
@@ -302,6 +302,8 @@ export function createCovers(db, { cfg = config, fetchImpl = (...a) => fetch(...
   let lastRun = null;
   // Dernière erreur de chaque fournisseur pendant la tournée en cours (une erreur Spotify reste visible si Deezer échoue aussi).
   let lastErrors = {};
+  // Un 403 Spotify pendant la tournée (abonnement Premium manquant), même si une autre erreur Spotify suit.
+  let spotify403 = false;
 
   function isStale(row, now = Date.now()) {
     if (!row) return true;
@@ -323,6 +325,7 @@ export function createCovers(db, { cfg = config, fetchImpl = (...a) => fetch(...
         if (err instanceof RateLimited) throw err;
         reachedAll = false;
         lastErrors[id] = err.message;
+        if (id === 'spotify' && err.message === 'HTTP 403') spotify403 = true;
       }
       await pause();
     }
@@ -348,6 +351,7 @@ export function createCovers(db, { cfg = config, fetchImpl = (...a) => fetch(...
   async function run({ force = false } = {}) {
     if (!order.length) return;
     lastErrors = {};
+    spotify403 = false;
     const rows = new Map(selectAll.all().map((r) => [r.item_key, r]));
     for (const item of items) {
       const row = rows.get(item.key);
@@ -368,7 +372,7 @@ export function createCovers(db, { cfg = config, fetchImpl = (...a) => fetch(...
       })
       .catch((err) => {
         if (err instanceof RateLimited) lastErrors[err.message] = 'quota';
-        else lastErrors.serveur = err.message;
+        else lastErrors.internal = err.message;
         if (err instanceof RateLimited) setTimeout(() => warm(), RETRY_MS).unref?.();
       })
       .finally(() => {
@@ -417,7 +421,9 @@ export function createCovers(db, { cfg = config, fetchImpl = (...a) => fetch(...
       lastRun,
       lastError: Object.entries(lastErrors).map(([p, e]) => `${p}: ${e}`).join(' · ') || null,
       // Spotify répond 403 quand le propriétaire de l'application n'a pas d'abonnement Premium actif.
-      spotifyPremium: lastErrors.spotify === 'HTTP 403',
+      spotifyPremium: spotify403,
+      // Valeur de COVERS non reconnue : les pochettes sont coupées, l'admin doit le savoir.
+      modeInvalid: cfg.coversInvalid ? cfg.coversRaw : null,
     };
   }
 

@@ -5762,21 +5762,18 @@ button.card.card--cover:hover {
   filter: none;
 }
 
+/* « Nouveau » reste entier : c'est le nom de rareté qui se raccourcit (sa pastille garde la couleur). */
 .card__foot-tags {
   display: inline-flex;
-  flex: 0 1 auto;
+  flex: none;
   gap: 1.4cqi;
-  min-width: 0;
   margin-left: auto;
 }
 
-.card__foot-tags .card__tag {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
+/* Avec une étiquette, la rareté cède la place en premier (points de suspension) mais ne disparaît pas. */
 .card__foot--tags .card__rarity {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 2.4em;
 }
 
 .card__tag {
@@ -5835,6 +5832,11 @@ button.card.card--cover:hover {
 }
 
 /* Studio : le bouton « retirer » passe sous une carte à vraie pochette au lieu de mordre sur l'image. */
+/* Les cartes gardent leur format 5:7 même quand une case voisine est plus haute. */
+.showcase__slot {
+  align-items: flex-start;
+}
+
 .showcase__slot:has(.card--cover) {
   flex-direction: column;
   align-items: center;
@@ -5850,4 +5852,20 @@ button.card.card--cover:hover {
   flex: none;
   padding: 2px 8px;
   font-size: 11px;
+}
+
+/* Badge « Vinyle » dans la ligne de progression : il passe à la ligne sur les vignettes étroites. */
+.album-tile__progress:has(.album-tile__badge) {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.auth__credit a {
+  color: var(--paper-dim);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.auth__credit a:hover {
+  color: var(--paper);
 }

@@ -119,7 +119,7 @@ function Card({ trackId, variant = 'std', count = 0, ghost = false, badge, badge
         <span className={`card__foot${footTags ? ' card__foot--tags' : ''}`}>
           <span className="card__rarity" title={t(`rarity.${track.rarity}`)}>
             {realCover && <RarityGem rarity={track.rarity} size={9} />}
-            {!footTags && t(`rarity.${track.rarity}`)}
+            {t(`rarity.${track.rarity}`)}
           </span>
           {footTags && (
             <span className="card__foot-tags">

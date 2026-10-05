@@ -289,3 +289,20 @@ test('Spotify 403 reste visible même si Deezer échoue ; un fournisseur abandon
   assert.equal(after.missing.length, 34);
   db.close();
 });
+
+test('indication Premium conservée si une autre erreur Spotify suit le 403', async () => {
+  const db = openDb(':memory:');
+  let n = 0;
+  const fetchImpl = async (url) => {
+    if (url.includes('accounts.spotify.test')) return json({ access_token: 'tok', expires_in: 3600 });
+    if (url.includes('spotify.test')) return (++n < 30 ? json({}, 403) : json({}, 503));
+    return json({ data: [] });
+  };
+  const covers = createCovers(db, { cfg: BASE, fetchImpl, pauseMs: 0 });
+  await covers.warm();
+  const status = covers.status();
+  assert.equal(status.spotifyPremium, true);
+  assert.match(status.lastError, /^spotify: HTTP 503/);
+  assert.equal(status.modeInvalid, null);
+  db.close();
+});

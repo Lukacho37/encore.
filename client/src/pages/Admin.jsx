@@ -19,6 +19,7 @@ function CoversPanel({ status, onRefresh }) {
   const served = Object.entries(status.served || {}).map(([p, n]) => `${n} ${PROVIDERS[p] || p}`).join(' · ');
   let summary;
   if (status.demo) summary = <p className="small muted">{t('admin.coversDemo')}</p>;
+  else if (status.modeInvalid) summary = <p className="small">{t('admin.coversInvalid', { v: status.modeInvalid })}</p>;
   else if (status.mode === 'off') summary = <p className="small">{t('admin.coversOff')}</p>;
   else if (!active) summary = <p className="small">{t('admin.coversNoKeys')}</p>;
   else {
@@ -41,7 +42,12 @@ function CoversPanel({ status, onRefresh }) {
           <ul className="covers-missing">{status.missing.map((m) => <li key={m.key}>{m.artist} · {m.title}</li>)}</ul>
         </details>
       )}
-      {status.spotifyPremium && <p className="small">{t('admin.coversPremium')}</p>}
+      {status.spotifyPremium && (
+        <p className="small">
+          {t('admin.coversPremium')}
+          {status.providers.includes('deezer') && status.served?.deezer > 0 ? ` ${t('admin.coversPremiumDeezer')}` : ''}
+        </p>
+      )}
       {status.lastError && <p className="small muted mono">{t('admin.coversError', { e: status.lastError })}</p>}
       {active && (
         <button type="button" className="btn btn--ghost btn--sm" onClick={onRefresh} disabled={status.running}>

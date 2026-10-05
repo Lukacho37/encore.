@@ -5770,10 +5770,22 @@ button.card.card--cover:hover {
   margin-left: auto;
 }
 
-/* Avec une étiquette, la rareté cède la place en premier (points de suspension) mais ne disparaît pas. */
+/* Avec une étiquette : l'étiquette et la popularité gardent leur taille, le nom de rareté se raccourcit
+   (points de suspension) sans jamais descendre sous sa pastille plus une lettre. Sur les toutes petites cartes,
+   la popularité (visible dans la fiche) s'efface pour laisser lire la rareté et l'étiquette. */
 .card__foot--tags .card__rarity {
   flex: 0 1 auto;
-  min-width: 2.4em;
+  min-width: calc(9px + 1.4cqi + 1.8em);
+}
+
+.card__foot--tags .card__pop {
+  flex: none;
+}
+
+@container (max-width: 112px) {
+  .card__foot--tags .card__pop {
+    display: none;
+  }
 }
 
 .card__tag {

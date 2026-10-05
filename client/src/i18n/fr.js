@@ -455,6 +455,7 @@ export default {
   footer: {
     legal: 'Les pochettes affichées sont des visuels originaux générés par AlbumMania. Titres et noms d’artistes sont cités à titre d’information.',
     legalCovers: 'Pochettes et liens d’écoute fournis par {p}. Les images restent hébergées par la plateforme et appartiennent à leurs ayants droit ; sans pochette disponible, AlbumMania affiche un visuel généré. Titres et noms d’artistes sont cités à titre d’information.',
+    legalCatalog: 'Catalogue (albums, titres, artistes, pochettes et popularité) issu de l’API publique de Deezer. Chaque album et chaque morceau renvoie vers Deezer pour l’écoute ; AlbumMania ne diffuse aucun fichier audio.',
   },
   rating: {
     scaleStars: '★ /5',

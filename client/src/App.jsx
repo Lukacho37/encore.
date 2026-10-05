@@ -7,6 +7,7 @@ import { ScaleSwitch } from './components/Rating.jsx';
 import { post } from './api.js';
 import { sound } from './sound.js';
 import { PROVIDER_NAMES, useCovers } from './state/CoversContext.jsx';
+import { useApi } from './state/catalog.js';
 import Home from './pages/Home.jsx';
 import Collection from './pages/Collection.jsx';
 import AlbumPage from './pages/AlbumPage.jsx';
@@ -224,12 +225,17 @@ function ScrollToTop() {
 
 function Footer() {
   const { t } = useI18n();
+  const { status } = useGame();
   const covers = useCovers();
-  const sources = [...new Set(Object.values(covers.items).map((c) => PROVIDER_NAMES[c.provider]).filter(Boolean))];
+  // Albums importés de Deezer : leurs données et pochettes viennent de Deezer (crédit affiché pour les joueurs connectés).
+  const info = useApi(status === 'ready' ? '/catalog/info' : null).data;
+  const imported = info?.totals?.imported > 0;
+  const sources = [...new Set([...Object.values(covers.items).map((c) => PROVIDER_NAMES[c.provider]), imported && 'Deezer'].filter(Boolean))];
   return (
     <footer className="footer">
       <Logo className="logo--sm" />
       <p>{sources.length ? t('footer.legalCovers', { p: sources.join(' / ') }) : t('footer.legal')}</p>
+      {imported && <p>{t('footer.legalCatalog')}</p>}
       {__DEMO__ && <p className="footer__demo">{t('common.demoNote')}</p>}
     </footer>
   );

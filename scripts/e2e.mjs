@@ -27,9 +27,16 @@ async function run(name, viewport, fn) {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(`[${name}] ${e.message}`));
   // Le 401 sur /api/state avant connexion est attendu.
-  page.on('console', (m) => m.type() === 'error' && !m.text().includes('401') && errors.push(`[${name}] console: ${m.text()}`));
+  // Les images de pochettes bloquées par le réseau (« net::ERR_… », bac à sable sans Internet) sont ignorées :
+  // le site affiche alors le visuel généré. Les vraies erreurs HTTP du site restent comptées.
+  page.on('console', (m) => m.type() === 'error' && !m.text().includes('401') && !/Failed to load resource: net::ERR_/.test(m.text())
+    && errors.push(`[${name}] console: ${m.text()}`));
   try {
     await fn(page);
+  } catch (err) {
+    // Capture de l'écran au moment de l'échec, pour comprendre ce qui bloquait.
+    await page.screenshot({ path: `${OUT}/zz-error-${name}.png` }).catch(() => {});
+    throw err;
   } finally {
     await ctx.close();
   }
@@ -112,6 +119,28 @@ await run('desktop', { width: 1280, height: 820 }, async (page) => {
   await page.waitForSelector('.album-grid');
   await page.waitForTimeout(300);
   await shot(page, '11-collection');
+  // Recherche plein texte dans le catalogue
+  await page.fill('.collection input[type=search]', 'racine car');
+  await page.waitForFunction(() => [...document.querySelectorAll('.album-grid a')].some((a) => /Racine carrée/.test(a.textContent)), null, { timeout: 5000 });
+  await shot(page, '11c-collection-search');
+  // Mes cartes
+  await page.goto(`${BASE}/collection/cards`);
+  await page.waitForSelector('.collection .card');
+  await page.waitForTimeout(300);
+  await shot(page, '11d-collection-cards');
+
+  // Booster d'album depuis la page de l'album (gratuit pour l'admin)
+  await page.goto(`${BASE}/album/random-access-memories`);
+  await page.waitForSelector('.album-head');
+  await page.click('.album-booster__btn');
+  await page.waitForSelector('.opening');
+  await page.click('.opening__pack-btn');
+  await page.waitForSelector('.reveal-card', { timeout: 5000 });
+  await page.click('.opening__bar .btn');
+  await page.waitForSelector('.summary');
+  await page.waitForTimeout(700);
+  await shot(page, '11e-album-pack-summary');
+  await page.click('.summary__actions .btn--ghost');
 
   await page.goto(`${BASE}/album/the-college-dropout`);
   await page.waitForSelector('.album-head');
@@ -155,9 +184,13 @@ await run('desktop', { width: 1280, height: 820 }, async (page) => {
   await page.goto(`${BASE}/admin`);
   await page.waitForSelector('.table');
   await shot(page, '14-admin');
-  await page.selectOption('#admin-album', 'discovery');
-  await page.click('.admin-tools--row .btn--ghost');
-  await page.waitForTimeout(400);
+  // Recherche d'album (catalogue de 20 000 albums) puis « presque complet »
+  await page.fill('.adm-picker input', 'discovery daft');
+  await page.click('.adm-option:has-text("Discovery")');
+  await page.waitForSelector('.adm-album__actions');
+  await shot(page, '14b-admin-album');
+  await page.click('.adm-album__actions .btn:first-child');
+  await page.waitForTimeout(600);
   await page.request.post(`${BASE}/api/admin/users/1/grant`, { headers: { 'X-AlbumMania': '1', 'Content-Type': 'application/json' }, data: { royalties: 5000 } });
   await page.goto(`${BASE}/album/discovery`);
   await page.waitForSelector('.press-btn');

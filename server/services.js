@@ -3,6 +3,7 @@
 // ni toute la collection d'un joueur pour répondre à une question sur quelques cartes.
 import { config } from './config.js';
 import { tx } from './db.js';
+import { clampInt } from './catalog.js';
 import { newId, secureRandom } from './security.js';
 import {
   rollPack, rollAlbumPack, newAchievements, xpForCard, newCardRoyalties, recycleValue, pressCost, levelFromXp,
@@ -886,8 +887,8 @@ export function createServices(db, catalog) {
     const decade = /^\d{4}$/.test(String(query.decade ?? '')) ? Number(query.decade) : null;
     const artistId = idOf(query.artist);
     const sort = SORTS.has(query.sort) ? query.sort : 'popular';
-    const offset = Math.min(10_000, Math.max(0, Math.floor(Number(query.offset) || 0)));
-    const limit = Math.min(60, Math.max(1, Math.floor(Number(query.limit) || 36)));
+    const offset = clampInt(query.offset, 0, 10_000, 0);
+    const limit = clampInt(query.limit, 1, 60, 36);
     return catalog.searchAlbums({ q: text, genre, decade, artistId, sort, mine: query.mine === '1' || query.mine === 'true', offset, limit, userId });
   }
 
@@ -911,8 +912,9 @@ export function createServices(db, catalog) {
     return { artists: idList(raw, 100).map((id) => catalog.artist(id)).filter(Boolean) };
   }
 
+  // Pagination : des entiers bornés (« offset=1.5 » ou « limit=abc » ne doivent pas atteindre SQLite tels quels).
   function browsePromos(query) {
-    return catalog.promos({ offset: Math.min(100_000, Math.max(0, Number(query.offset) || 0)), limit: Math.min(120, Math.max(1, Number(query.limit) || 60)) });
+    return catalog.promos({ offset: clampInt(query.offset, 0, 100_000, 0), limit: clampInt(query.limit, 1, 120, 60) });
   }
 
   function myCards(userId, query) {
@@ -920,8 +922,8 @@ export function createServices(db, catalog) {
     return catalog.ownedTracks(userId, {
       q: typeof query.q === 'string' ? query.q.slice(0, 80) : '',
       rarity,
-      offset: Math.min(100_000, Math.max(0, Number(query.offset) || 0)),
-      limit: Math.min(120, Math.max(1, Number(query.limit) || 60)),
+      offset: clampInt(query.offset, 0, 100_000, 0),
+      limit: clampInt(query.limit, 1, 120, 60),
     });
   }
 

@@ -6,7 +6,7 @@
 // autre requête. L'interface est la même que celle du catalogue statique de la démo (shared/staticCatalog.js).
 import { config } from './config.js';
 import { ARTISTS, ALBUMS, TRACKS, decadeOf } from '../shared/catalog.js';
-import { RARITIES } from '../shared/rules.js';
+import { RARITIES, foldText } from '../shared/rules.js';
 import { generatedArt } from '../shared/art.js';
 
 const pad = (n, w = 2) => String(n).padStart(w, '0');
@@ -18,18 +18,38 @@ const parse = (s) => {
   }
 };
 
+// Numéros de catalogue : 1 à 1000 réservés à la graine (un album ajouté à shared/catalog.js prend le suivant),
+// les albums importés sont numérotés à partir de 1001.
+export const SEED_CATALOG_MAX = 1000;
+
+/** Entier borné reçu d'une requête (pagination) : SQLite refuse un LIMIT ou un OFFSET non entier. */
+export function clampInt(raw, min, max, fallback) {
+  return Math.min(max, Math.max(min, Math.floor(Number(raw) || fallback)));
+}
+
 /** Code catalogue façon maison de disques : AM-001 pour un album, AM-P03 pour une promo. */
 export function codeFor(kind, number) {
   return kind === 'promo' ? `AM-P${pad(number)}` : `AM-${pad(number, 3)}`;
 }
 
-export function createCatalog(db, { covers = () => config.covers !== 'off' } = {}) {
+/**
+ * `seedData` : la graine (par défaut celle de shared/catalog.js) ; les tests y ajoutent un album pour vérifier
+ * qu'un nouvel album de base trouve sa place à côté des albums importés.
+ */
+export function createCatalog(db, { covers = () => config.covers !== 'off', seedData = { ARTISTS, ALBUMS, TRACKS } } = {}) {
   const q = (sql) => db.prepare(sql);
   const now = () => Date.now();
+
+  // Texte replié (sans accents ni casse) pour la recherche dans ses cartes : fold(colonne) LIKE fold(mot).
+  db.function('fold', { deterministic: true }, (s) => (s == null ? null : foldText(s)));
+
+  /** Prochain numéro libre de la plage des albums importés (après 1000, réservés à la graine). */
+  const nextCatalogNumber = () => Math.max(q('SELECT MAX(catalog) AS n FROM cat_albums').get().n || 0, SEED_CATALOG_MAX) + 1;
 
   // ---------- graine ----------------------------------------------------------------
 
   function seed() {
+    const { ARTISTS, ALBUMS, TRACKS } = seedData;
     db.exec('BEGIN');
     try {
       const artist = q(`INSERT INTO cat_artists (id, name, country, genre, fans, source, created_at) VALUES (?, ?, ?, ?, 0, 'seed', ?)
@@ -39,7 +59,15 @@ export function createCatalog(db, { covers = () => config.covers !== 'off' } = {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'seed', ?)
         ON CONFLICT(id) DO UPDATE SET artist_id = excluded.artist_id, title = excluded.title, year = excluded.year, genre = excluded.genre,
           art = excluded.art, catalog = excluded.catalog, track_count = excluded.track_count`);
-      ALBUMS.forEach((a, i) => album.run(a.id, a.artist, a.title, a.year, a.genre, JSON.stringify(a.art), i + 1, a.tracks.length, now()));
+      // Le numéro d'un album de base peut être pris par un autre album (importé avant que la graine ne grandisse,
+      // ou graine réordonnée) : cet album-là part dans la plage des albums importés.
+      const holder = q('SELECT id FROM cat_albums WHERE catalog = ? AND id != ?');
+      const renumber = q('UPDATE cat_albums SET catalog = ? WHERE id = ?');
+      ALBUMS.forEach((a, i) => {
+        const taken = holder.get(i + 1, a.id);
+        if (taken) renumber.run(nextCatalogNumber(), taken.id);
+        album.run(a.id, a.artist, a.title, a.year, a.genre, JSON.stringify(a.art), i + 1, a.tracks.length, now());
+      });
       const track = q(`INSERT INTO cat_tracks (id, kind, album_id, artist_id, n, total, title, feat, year, genre, pop, rarity, promo_kind, context, art, source, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'seed', ?)
         ON CONFLICT(id) DO UPDATE SET kind = excluded.kind, album_id = excluded.album_id, artist_id = excluded.artist_id, n = excluded.n,
@@ -58,11 +86,32 @@ export function createCatalog(db, { covers = () => config.covers !== 'off' } = {
     }
   }
 
+  // L'index (unicode61) replie « é » en « e » mais pas les lettres sans décomposition (œ, ø, æ, ß, ł…) : on ajoute
+  // au texte indexé sa forme repliée, pour que « coeur » trouve « Cœur » et « royksopp » trouve « Røyksopp ».
+  const UNFOLDED = /[øæœßłđðþı]/;
+  const searchText = (s) => (UNFOLDED.test(String(s).toLowerCase()) ? `${s} ${foldText(s)}` : s);
+
   function indexAlbum(albumId) {
     const row = q('SELECT al.title, ar.name FROM cat_albums al JOIN cat_artists ar ON ar.id = al.artist_id WHERE al.id = ?').get(albumId);
     if (!row) return;
     q('DELETE FROM cat_search WHERE album_id = ?').run(albumId);
-    q('INSERT INTO cat_search (album_id, title, artist) VALUES (?, ?, ?)').run(albumId, row.title, row.name);
+    q('INSERT INTO cat_search (album_id, title, artist) VALUES (?, ?, ?)').run(albumId, searchText(row.title), searchText(row.name));
+  }
+
+  /** Une seule fois sur une base existante : réindexe les albums concernés par les lettres repliées à la main. */
+  function upgradeSearchIndex() {
+    if (q("SELECT 1 FROM kv WHERE key = 'searchFold'").get()) return;
+    db.exec('BEGIN');
+    try {
+      for (const r of q('SELECT al.id, al.title, ar.name FROM cat_albums al JOIN cat_artists ar ON ar.id = al.artist_id').all()) {
+        if (UNFOLDED.test(`${r.title} ${r.name}`.toLowerCase())) indexAlbum(r.id);
+      }
+      q("INSERT INTO kv (key, value) VALUES ('searchFold', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
   }
 
   /** Nombre de cartes par artiste (pour « Maître d'un artiste ») et numéros des promos. */
@@ -289,10 +338,15 @@ export function createCatalog(db, { covers = () => config.covers !== 'off' } = {
   const decades = () => cached('decades', () => q('SELECT (year / 10) * 10 AS decade, COUNT(*) AS albums FROM cat_albums WHERE year IS NOT NULL GROUP BY decade ORDER BY decade').all()
     .map((r) => ({ decade: r.decade, albums: r.albums })));
 
-  /** Texte de recherche plein texte : chaque mot devient un préfixe (« racine car » trouve « Racine carrée »). */
+  /**
+   * Texte de recherche plein texte : chaque mot devient un préfixe (« racine car » trouve « Racine carrée »).
+   * Les lettres de toutes les écritures sont gardées (Кино, 宇多田, Røyksopp) ; l'index (unicode61) replie lui-même
+   * les accents latins (« beyonce » trouve « Beyoncé »). Tout le reste, guillemets compris, devient une espace : la
+   * syntaxe de MATCH ne peut pas être cassée. null si rien de cherchable.
+   */
   function ftsQuery(text) {
-    const words = String(text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean).slice(0, 8);
+    const words = String(text || '').normalize('NFC').toLowerCase().replace(/[^\p{L}\p{N}\p{M}\s]/gu, ' ')
+      .split(/\s+/).filter(Boolean).slice(0, 8);
     return words.length ? words.map((w) => `"${w}"*`).join(' ') : null;
   }
 
@@ -304,6 +358,8 @@ export function createCatalog(db, { covers = () => config.covers !== 'off' } = {
     const where = [];
     const args = [];
     const fts = ftsQuery(text);
+    // Une recherche sans rien de cherchable (« !!! », des emojis) ne trouve rien, plutôt que tout le catalogue.
+    if (!fts && String(text || '').trim()) return { total: 0, items: [] };
     if (fts) {
       where.push('al.id IN (SELECT album_id FROM cat_search WHERE cat_search MATCH ?)');
       args.push(fts);
@@ -331,8 +387,8 @@ export function createCatalog(db, { covers = () => config.covers !== 'off' } = {
       popular: "CASE al.source WHEN 'seed' THEN 0 ELSE 1 END, al.fans DESC, al.title COLLATE NOCASE",
     }[sort] || 'al.fans DESC';
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    const lim = Math.max(1, Math.min(100, Number(limit) || 48));
-    const off = Math.max(0, Number(offset) || 0);
+    const lim = clampInt(limit, 1, 100, 48);
+    const off = clampInt(offset, 0, 1_000_000, 0);
     const rows = q(`SELECT al.*, ar.name AS artist_name, ar.country AS artist_country, COALESCE(p.owned, 0) AS owned
       FROM cat_albums al JOIN cat_artists ar ON ar.id = al.artist_id LEFT JOIN ${progress} p ON p.album_id = al.id
       ${whereSql} ORDER BY ${order} LIMIT ? OFFSET ?`).all(userId ?? -1, ...args, lim, off);
@@ -342,18 +398,20 @@ export function createCatalog(db, { covers = () => config.covers !== 'off' } = {
 
   /** Singles hors album (cartes promo), paginés, avec ceux que le joueur possède. */
   function promos({ offset = 0, limit = 60 } = {}) {
-    const lim = Math.max(1, Math.min(200, Number(limit) || 60));
-    const rows = q(`${TRACK_SQL} WHERE t.kind = 'promo' ORDER BY t.n LIMIT ? OFFSET ?`).all(lim, Math.max(0, Number(offset) || 0));
+    const rows = q(`${TRACK_SQL} WHERE t.kind = 'promo' ORDER BY t.n LIMIT ? OFFSET ?`).all(clampInt(limit, 1, 200, 60), clampInt(offset, 0, 1_000_000, 0));
     return { total: totals().promos, items: rows.map(trackView) };
   }
 
-  /** Cartes possédées par un joueur (choix pour le Studio), filtrables par texte et rareté, les plus rares d'abord. */
+  /**
+   * Cartes possédées par un joueur (choix pour le Studio), filtrables par texte et rareté, les plus rares d'abord.
+   * Le texte est comparé sans accents ni casse, dans toutes les écritures (« fete » trouve « Ta fête »).
+   */
   function ownedTracks(userId, { q: text, rarity, offset = 0, limit = 60 } = {}) {
     const where = ['c.user_id = ?'];
     const args = [userId];
-    const words = String(text || '').trim().split(/\s+/).filter(Boolean).slice(0, 6);
+    const words = foldText(text).trim().split(/\s+/).filter(Boolean).slice(0, 6);
     for (const w of words) {
-      where.push("(t.title LIKE ? ESCAPE '\\' OR ar.name LIKE ? ESCAPE '\\' OR COALESCE(al.title, '') LIKE ? ESCAPE '\\')");
+      where.push("(fold(t.title) LIKE ? ESCAPE '\\' OR fold(ar.name) LIKE ? ESCAPE '\\' OR fold(COALESCE(al.title, '')) LIKE ? ESCAPE '\\')");
       const like = `%${w.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
       args.push(like, like, like);
     }
@@ -363,10 +421,9 @@ export function createCatalog(db, { covers = () => config.covers !== 'off' } = {
     }
     const base = `FROM cards c JOIN cat_tracks t ON t.id = c.track_id JOIN cat_artists ar ON ar.id = t.artist_id
       LEFT JOIN cat_albums al ON al.id = t.album_id WHERE ${where.join(' AND ')}`;
-    const lim = Math.max(1, Math.min(120, Number(limit) || 60));
     const ids = q(`SELECT t.id, MAX(c.variant = 'holo') AS holo ${base} GROUP BY t.id
       ORDER BY CASE t.rarity WHEN 'promo' THEN 7 WHEN 'legendary' THEN 6 WHEN 'ultra' THEN 5 WHEN 'super' THEN 4 WHEN 'rare' THEN 3 WHEN 'uncommon' THEN 2 ELSE 1 END DESC,
-        t.pop DESC LIMIT ? OFFSET ?`).all(...args, lim, Math.max(0, Number(offset) || 0));
+        t.pop DESC LIMIT ? OFFSET ?`).all(...args, clampInt(limit, 1, 120, 60), clampInt(offset, 0, 1_000_000, 0));
     const total = q(`SELECT COUNT(DISTINCT t.id) AS n ${base}`).get(...args).n;
     const holo = new Set(ids.filter((r) => r.holo).map((r) => r.id));
     const byId = new Map(tracks(ids.map((r) => r.id)).map((t) => [t.id, t]));
@@ -396,14 +453,20 @@ export function createCatalog(db, { covers = () => config.covers !== 'off' } = {
       WHERE c.user_id = ? GROUP BY t.artist_id`).all(userId)) {
       artists[r.artist_id] = { owned: r.owned, total: r.total, pct: r.total ? r.owned / r.total : 0 };
     }
+    // Albums complétés et artistes maîtrisés : d'après les succès (jamais retirés), comme les vinyles et les badges
+    // du profil. Un import qui ajoute des albums à un artiste de la graine ne lui retire pas sa maîtrise.
+    const done = q(`SELECT
+        (SELECT COUNT(*) FROM achievements a JOIN cat_albums al ON al.id = substr(a.key, 7) WHERE a.user_id = ? AND a.key LIKE 'album:%') AS albums,
+        (SELECT COUNT(*) FROM achievements a JOIN cat_artists ar ON ar.id = substr(a.key, 8) WHERE a.user_id = ? AND a.key LIKE 'artist:%') AS artists`)
+      .get(userId, userId);
     return {
       total: { owned: unique, total: t.tracks, pct: t.tracks ? unique / t.tracks : 0 },
       promos: { owned: byRarity.promo.owned, total: t.promos, pct: t.promos ? byRarity.promo.owned / t.promos : 0 },
       byRarity,
       albums,
       artists,
-      albumsCompleted: Object.values(albums).filter((x) => x.pct === 1).length,
-      artistsMastered: Object.values(artists).filter((x) => x.pct === 1).length,
+      albumsCompleted: done.albums,
+      artistsMastered: done.artists,
       catalog: { albums: t.albums, artists: t.artists, tracks: t.tracks },
     };
   }
@@ -419,12 +482,13 @@ export function createCatalog(db, { covers = () => config.covers !== 'off' } = {
   }
 
   seed();
+  upgradeSearchIndex();
   rebuildIndex();
 
   return {
     track, tracks, album, artist, albumTracks, artistAlbums, artistTracks, albumTrackIds, artistTrackIds,
     randomTrack, randomTracks, totals, rarityTotals, genres, decades, searchAlbums, promos, stats, groupStats, ownedTracks,
-    rebuildIndex, refreshCounts, indexAlbum, decadeOf,
+    rebuildIndex, refreshCounts, indexAlbum, nextCatalogNumber, decadeOf,
     invalidate() {
       cachedTotals = null;
       aggregates = {};

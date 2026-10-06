@@ -293,7 +293,7 @@ function state() {
     achievements: Object.entries(achOf(u.id)).map(([key, at]) => ({ key, at })),
     ratings: db.ratings.filter((r) => r.userId === u.id).map((r) => ({ t: r.type, i: r.id, s: r.score })),
     pendingFriends: db.friendships.filter((f) => f.addressee === u.id && f.status === 'pending').length,
-    stats: staticCatalog.stats(ownedSet(u.id)),
+    stats: staticCatalog.stats(ownedSet(u.id), Object.keys(achOf(u.id))),
     catalog: refs({ trackIds: u.showcase.filter(Boolean), albumIds: [avatarAlbum(u.avatar)].filter(Boolean) }),
     serverTime: Date.now(),
   };
@@ -386,7 +386,7 @@ function friendsOf(uid) {
 function publicProfile(viewer, target) {
   const owned = ownedSet(target.id);
   const holo = holoSet(target.id);
-  const stats = staticCatalog.stats(owned);
+  const stats = staticCatalog.stats(owned, Object.keys(achOf(target.id)));
   let friendship = 'none';
   let requestId = null;
   if (target.id === viewer.id) friendship = 'self';
@@ -698,11 +698,9 @@ const routes = [
     return state();
   }],
 
-  // Catalogue : mêmes routes, filtres et limites que le vrai serveur.
-  ['GET', /^\/catalog\/info$/, () => {
-    me();
-    return { totals: staticCatalog.totals(), genres: staticCatalog.genres(), decades: staticCatalog.decades() };
-  }],
+  // Catalogue : mêmes routes, filtres et limites que le vrai serveur. Chiffres et cartes lisibles sans compte
+  // (l'écran de connexion affiche quelques cartes), tout le reste demande d'être connecté.
+  ['GET', /^\/catalog\/info$/, () => ({ totals: staticCatalog.totals(), genres: staticCatalog.genres(), decades: staticCatalog.decades() })],
   ['GET', /^\/catalog\/albums$/, ({ query }) => browseAlbums(me(), query)],
   ['GET', /^\/catalog\/albums\/([^/]+)$/, ({ params }) => {
     me();
@@ -720,10 +718,7 @@ const routes = [
     if (!artist) fail(404, 'unknown_artist');
     return { artist, albums: staticCatalog.artistAlbums(artist.id), promos: staticCatalog.artistTracks(artist.id).filter((t) => t.kind === 'promo') };
   }],
-  ['GET', /^\/catalog\/tracks$/, ({ query }) => {
-    me();
-    return { tracks: staticCatalog.tracks(idList(query.get('ids'), 200)) };
-  }],
+  ['GET', /^\/catalog\/tracks$/, ({ query }) => ({ tracks: staticCatalog.tracks(idList(query.get('ids'), 200)) })],
   ['GET', /^\/catalog\/promos$/, ({ query }) => {
     me();
     return staticCatalog.promos({ offset: clampInt(query.get('offset'), 0, 100_000, 0), limit: clampInt(query.get('limit'), 1, 120, 60) });

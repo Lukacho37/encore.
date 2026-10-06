@@ -20,8 +20,10 @@ app.listen(config.port, (err) => {
   else console.log('  Pochettes : désactivées (visuels générés).');
   covers.start();
   const cat = importer.status();
-  if (cat.mode === 'off') console.log(`  Catalogue : ${cat.totalAlbums} albums (import automatique coupé, CATALOG_IMPORT=off).`);
-  else if (cat.albums >= cat.target) console.log(`  Catalogue : ${cat.totalAlbums} albums (objectif de ${cat.target} albums importés atteint).`);
+  if (config.catalogImportInvalid) console.warn(`  ⚠ CATALOG_IMPORT="${process.env.CATALOG_IMPORT}" non reconnu : import automatique coupé (valeurs possibles : deezer, off).`);
+  if (cat.mode === 'off') console.log(`  Catalogue : ${cat.totalAlbums} albums (import automatique coupé, CATALOG_IMPORT=${config.catalogImportInvalid ? 'non reconnu' : 'off'}).`);
+  else if (cat.paused) console.log(`  Catalogue : ${cat.totalAlbums} albums, import Deezer en pause (bouton « Lancer » de l'espace admin pour reprendre).`);
+  else if (cat.albums >= cat.target) console.log(`  Catalogue : ${cat.totalAlbums} albums (objectif de ${cat.target} albums importés atteint ; nouvelles sorties vérifiées chaque jour).`);
   else console.log(`  Catalogue : ${cat.totalAlbums} albums, import Deezer en cours vers ${cat.target} albums (suivi dans l'espace admin).`);
   importer.schedule();
   console.log('');

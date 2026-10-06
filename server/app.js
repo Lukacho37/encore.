@@ -60,17 +60,24 @@ export function createApp({ dbFile } = {}) {
 
   // Navigation dans le catalogue : beaucoup de petites requêtes (défilement, recherche), limite à part.
   const browseLimit = rateLimit({ windowMs: 60_000, max: config.isTest ? 10_000 : 600, key: (req) => `b${req.user?.id}` });
+  // Sans compte, limite par adresse IP (plus basse : l'écran de connexion n'affiche que quelques cartes).
+  const guestBrowseLimit = rateLimit({ windowMs: 60_000, max: config.isTest ? 10_000 : 120, key: (req) => `g${req.ip}` });
+  const openBrowse = (req, res, next) => (req.user ? browseLimit : guestBrowseLimit)(req, res, next);
+
+  // Cartes et chiffres du catalogue : lisibles sans compte (l'éventail de cartes de l'écran de connexion),
+  // rien de propre à un joueur. Tout le reste de /api/catalog demande d'être connecté.
+  app.get('/api/catalog/tracks', openBrowse, (req, res) => res.json(services.tracksByIds(req.query.ids)));
+  app.get('/api/catalog/info', openBrowse, (_req, res) => res.json({ totals: catalog.totals(), genres: catalog.genres(), decades: catalog.decades() }));
+
   const browse = express.Router();
   browse.use(requireUser, browseLimit);
   browse.get('/albums', (req, res) => res.json(services.browseAlbums(req.user.id, req.query)));
   browse.get('/albums/:id', (req, res) => res.json(services.albumDetail(req.params.id)));
   browse.get('/artists', (req, res) => res.json(services.artistsByIds(req.query.ids)));
   browse.get('/artists/:id', (req, res) => res.json(services.artistDetail(req.params.id)));
-  browse.get('/tracks', (req, res) => res.json(services.tracksByIds(req.query.ids)));
   browse.get('/promos', (req, res) => res.json(services.browsePromos(req.query)));
   browse.get('/mine', (req, res) => res.json(services.myCards(req.user.id, req.query)));
   browse.get('/groups', (req, res) => res.json(services.groups(req.user.id, req.query.by)));
-  browse.get('/info', (_req, res) => res.json({ totals: catalog.totals(), genres: catalog.genres(), decades: catalog.decades() }));
   app.use('/api/catalog', browse);
 
   api.use(requireUser, actionLimit);

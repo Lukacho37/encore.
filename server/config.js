@@ -26,6 +26,14 @@ export function coversMode(v) {
   return ['auto', 'spotify', 'deezer'].includes(mode) ? mode : 'off';
 }
 
+// Import du catalogue : il échoue fermé, comme les pochettes. Absent = "deezer" (sauf pendant les tests) ; toute autre
+// valeur que "deezer" (« off », « non », une faute de frappe…) coupe l'import automatique.
+export function catalogImportMode(v, isTest = false) {
+  const mode = String(v ?? '').trim().toLowerCase();
+  if (!mode) return isTest ? 'off' : 'deezer';
+  return mode === 'deezer' ? 'deezer' : 'off';
+}
+
 export const config = {
   isProd,
   isTest: env.NODE_ENV === 'test',
@@ -66,7 +74,8 @@ export const config = {
     ? { clientId: env.SPOTIFY_CLIENT_ID, clientSecret: env.SPOTIFY_CLIENT_SECRET }
     : null,
   // Grand catalogue importé depuis Deezer : "deezer" (par défaut) ou "off" (seulement les 20 albums de base).
-  catalogImport: (env.CATALOG_IMPORT || (env.NODE_ENV === 'test' ? 'off' : 'deezer')).trim().toLowerCase() === 'off' ? 'off' : 'deezer',
+  catalogImport: catalogImportMode(env.CATALOG_IMPORT, env.NODE_ENV === 'test'),
+  catalogImportInvalid: !!String(env.CATALOG_IMPORT ?? '').trim() && !/^\s*(deezer|off)\s*$/i.test(env.CATALOG_IMPORT),
   catalogTarget: Math.max(0, Number(env.CATALOG_TARGET) || 20000),
   catalogMinArtistFans: Number(env.CATALOG_MIN_ARTIST_FANS) || 15000,
   catalogMinAlbumFans: Number(env.CATALOG_MIN_ALBUM_FANS) || 500,

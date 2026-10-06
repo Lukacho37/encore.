@@ -9,8 +9,9 @@ const { createCatalog } = await import('../catalog.js');
 const { createImporter } = await import('../importer.js');
 const { createServices } = await import('../services.js');
 const { makeFakeDeezer } = await import('./fakeDeezer.js');
-const { rollPack, ECONOMY, RARITIES } = await import('../../shared/rules.js');
+const { rollPack, rollAlbumPack, ECONOMY, RARITIES } = await import('../../shared/rules.js');
 const { staticCatalog } = await import('../../shared/staticCatalog.js');
+const { ARTISTS, ALBUMS, TRACKS } = await import('../../shared/catalog.js');
 
 const CFG = {
   catalogImport: 'deezer',
@@ -190,4 +191,177 @@ test('droits d’auteur : chaque nouvelle carte rapporte des royalties, pas les 
   const missing = catalog.albumTrackIds(imported()[7].id).find((id) => !services.state(uid).cards.some((c) => c.t === id));
   db.prepare('UPDATE users SET royalties = 10000 WHERE id = ?').run(uid);
   assert.equal(services.pressCard(uid, missing).cardRoyalties, 0);
+});
+
+// ---------- recherche, pagination, booster d'album, succès, numéros de catalogue ----------
+
+/** Base neuve avec la seule graine (quelques millisecondes), pour les tests qui modifient le catalogue. */
+function seedWorld(options = {}) {
+  const wdb = openDb(':memory:');
+  const wcatalog = createCatalog(wdb, { covers: () => true, ...options });
+  return { wdb, wcatalog, wservices: createServices(wdb, wcatalog) };
+}
+
+/** Ajoute un album importé (artiste, 4 pistes, index de recherche), comme le ferait l'import. */
+function addImportedAlbum(wdb, wcatalog, { id, artistId, artist, title, catalogNumber }) {
+  const now = Date.now();
+  wdb.prepare("INSERT OR IGNORE INTO cat_artists (id, name, source, created_at) VALUES (?, ?, 'deezer', ?)").run(artistId, artist, now);
+  wdb.prepare(`INSERT INTO cat_albums (id, artist_id, title, year, genre, catalog, track_count, source, created_at)
+    VALUES (?, ?, ?, 2020, 'pop', ?, 4, 'deezer', ?)`).run(id, artistId, title, catalogNumber ?? wcatalog.nextCatalogNumber(), now);
+  for (let i = 1; i <= 4; i++) {
+    wdb.prepare(`INSERT INTO cat_tracks (id, kind, album_id, artist_id, n, total, title, year, genre, pop, rarity, source, created_at)
+      VALUES (?, 'album', ?, ?, ?, 4, ?, 2020, 'pop', 50, 'common', 'deezer', ?)`).run(`${id}:0${i}`, id, artistId, i, `${title} ${i}`, now);
+  }
+  wcatalog.indexAlbum(id);
+}
+
+test('recherche d’albums dans toutes les écritures, avec ou sans accents', () => {
+  const { wdb, wcatalog } = seedWorld();
+  const albums = [
+    ['t1', 'Røyksopp', 'Melody A.M.'], ['t2', 'Cœur de pirate', 'Blonde'], ['t3', 'Кино', 'Группа крови'],
+    ['t4', '宇多田ヒカル', 'First Love'], ['t5', 'Beyoncé', 'Lemonade'], ['t6', 'Sigur Rós', 'Ágætis byrjun'],
+  ];
+  for (const [id, artist, title] of albums) addImportedAlbum(wdb, wcatalog, { id, artistId: `a-${id}`, artist, title });
+  const ids = (q) => wcatalog.searchAlbums({ q }).items.map((a) => a.id);
+  for (const [q, id] of [
+    ['Røyksopp', 't1'], ['royksopp', 't1'], ['RØYK', 't1'], ['Cœur', 't2'], ['coeur de', 't2'], ['Кино', 't3'], ['кино', 't3'],
+    ['группа', 't3'], ['宇多田', 't4'], ['beyonce', 't5'], ['BEYONCÉ', 't5'], ['lemon beyon', 't5'], ['sigur ros', 't6'], ['agaetis', 't6'],
+  ]) assert.deepEqual(ids(q), [id], q);
+  // Rien de cherchable : aucun résultat, jamais tout le catalogue.
+  for (const q of ['!!!', '😀', '"', '« »', '*']) assert.deepEqual(wcatalog.searchAlbums({ q }), { total: 0, items: [] }, q);
+  // Guillemets et opérateurs FTS dans un mot : pas d'erreur de syntaxe.
+  for (const q of ['a"b', 'NEAR(x y)', 'title:blonde', 'pirate*', '^blonde', 'AND OR NOT']) assert.doesNotThrow(() => wcatalog.searchAlbums({ q }), q);
+  assert.deepEqual(ids('"Blonde"'), ['t2']);
+  // Recherche vide (ou faite d'espaces) : pas de filtre.
+  assert.equal(wcatalog.searchAlbums({ q: '   ' }).total, wcatalog.totals().albums);
+});
+
+test('index de recherche d’une version précédente : mis à niveau une seule fois au démarrage', () => {
+  const { wdb, wcatalog } = seedWorld();
+  addImportedAlbum(wdb, wcatalog, { id: 'old1', artistId: 'a-old1', artist: 'Cœur de pirate', title: 'Roses' });
+  // Ligne indexée comme avant (sans forme repliée) et marqueur de mise à niveau absent.
+  wdb.prepare("UPDATE cat_search SET artist = 'Cœur de pirate' WHERE album_id = 'old1'").run();
+  wdb.prepare("DELETE FROM kv WHERE key = 'searchFold'").run();
+  assert.equal(wcatalog.searchAlbums({ q: 'coeur' }).total, 0);
+  const again = createCatalog(wdb, { covers: () => true });
+  assert.deepEqual(again.searchAlbums({ q: 'coeur' }).items.map((a) => a.id), ['old1']);
+  assert.ok(wdb.prepare("SELECT 1 FROM kv WHERE key = 'searchFold'").get());
+});
+
+test('mes cartes : recherche sans accents ni casse', () => {
+  const uid = makeUser();
+  const ins = db.prepare("INSERT OR IGNORE INTO cards (user_id, track_id, variant, count, first_at) VALUES (?, ?, 'std', 1, 0)");
+  for (const id of catalog.albumTrackIds('racine-carree')) ins.run(uid, id);
+  const fete = catalog.albumTracks('racine-carree').find((t) => t.title === 'Ta fête');
+  assert.ok(fete, 'la graine contient « Ta fête »');
+  for (const q of ['fete', 'FÊTE', 'ta Fete', 'stromae fête']) {
+    assert.deepEqual(services.myCards(uid, { q }).items.map((t) => t.id), [fete.id], q);
+  }
+  const all = catalog.albumTrackIds('racine-carree').length;
+  assert.equal(services.myCards(uid, { q: 'carree' }).total, all, 'titre de l’album, sans accent');
+  assert.equal(services.myCards(uid, { q: 'RACINE CARRÉE' }).total, all);
+  // Caractères spéciaux de LIKE : cherchés tels quels.
+  assert.equal(services.myCards(uid, { q: '%' }).total, 0);
+  assert.equal(services.myCards(uid, { q: '_' }).total, 0);
+});
+
+test('pagination : offset et limit non entiers arrondis au lieu d’une erreur SQLite', () => {
+  const uid = makeUser();
+  db.prepare("INSERT OR IGNORE INTO cards (user_id, track_id, variant, count, first_at) VALUES (?, 'discovery:01', 'std', 1, 0), (?, 'discovery:02', 'std', 1, 0)").run(uid, uid);
+  const promos = services.browsePromos({ offset: '1.5', limit: '2.5' });
+  assert.deepEqual(promos.items.map((t) => t.id), services.browsePromos({ offset: '1', limit: '2' }).items.map((t) => t.id));
+  assert.equal(services.browsePromos({ offset: 'abc', limit: 'abc' }).items.length, Math.min(60, promos.total));
+  assert.equal(services.myCards(uid, { offset: '0.5', limit: '1.7' }).items.length, 1);
+  assert.equal(services.myCards(uid, { offset: '1e400', limit: '-4' }).items.length, 0);
+  assert.equal(services.browseAlbums(uid, { offset: '2.7', limit: '3.2' }).items.length, 3);
+  // Directement au catalogue aussi.
+  assert.equal(catalog.searchAlbums({ offset: 1.5, limit: 2.5 }).items.length, 2);
+  assert.equal(catalog.promos({ offset: 0.5, limit: 1.5 }).items.length, 1);
+  assert.equal(catalog.ownedTracks(uid, { offset: 0.2, limit: 1.9 }).items.length, 1);
+});
+
+test('booster d’album : les cartes manquantes sortent toutes avant une carte déjà possédée', () => {
+  const album = imported().find((a) => a.track_count >= 9);
+  const ids = catalog.albumTrackIds(album.id);
+  const check = (cat, albumId, list, missingCount) => {
+    const owned = new Set(list.slice(missingCount));
+    const missing = list.slice(0, missingCount);
+    for (let i = 0; i < 60; i++) {
+      const cards = rollAlbumPack(Math.random, cat, albumId, owned);
+      const got = cards.map((c) => c.trackId);
+      assert.equal(cards.length, 5);
+      assert.equal(new Set(got).size, 5, 'cartes différentes');
+      const fresh = got.filter((id) => !owned.has(id));
+      assert.equal(fresh.length, Math.min(5, missingCount), `manquantes d’abord (${missingCount} manquantes) : ${got}`);
+      if (missingCount <= 5) assert.ok(missing.every((id) => got.includes(id)));
+    }
+  };
+  for (const k of [9, 5, 3, 1, 0]) check(catalog, album.id, ids, k);
+  // Démo : même règle partagée sur le catalogue statique.
+  for (const k of [7, 2]) check(staticCatalog, 'discovery', staticCatalog.albumTrackIds('discovery'), k);
+  // Album de moins de 5 cartes : toutes y sont, le reste est tiré dans l'album.
+  const tiny = { albumTracks: () => [{ id: 'a', rarity: 'common' }, { id: 'b', rarity: 'rare' }, { id: 'c', rarity: 'legendary' }] };
+  const cards = rollAlbumPack(Math.random, tiny, 'x', new Set(['a']));
+  assert.equal(cards.length, 5);
+  assert.deepEqual([...new Set(cards.map((c) => c.trackId))].sort(), ['a', 'b', 'c']);
+
+  // Par le serveur : deux cartes manquantes, toutes deux dans le booster payé.
+  const uid = makeUser({ royalties: ECONOMY.albumPackPrice });
+  const ins = db.prepare("INSERT INTO cards (user_id, track_id, variant, count, first_at) VALUES (?, ?, 'std', 1, 0)");
+  for (const id of ids.slice(2)) ins.run(uid, id);
+  const res = services.openAlbumPack(uid, album.id);
+  assert.deepEqual(res.cards.filter((c) => c.newTrack).map((c) => c.trackId).sort(), ids.slice(0, 2).sort());
+  assert.ok(res.achievements.some((a) => a.key === `album:${album.id}`), 'album complété');
+});
+
+test('artistes maîtrisés et albums complétés comptés d’après les succès, même après un import', () => {
+  const { wdb, wcatalog, wservices } = seedWorld();
+  const now = Date.now();
+  const uid = Number(wdb.prepare(`INSERT INTO users (email, username, password_hash, email_verified_at, packs_at, created_at)
+    VALUES ('m@example.com', 'maitre', 'x', ?, ?, ?)`).run(now, now, now).lastInsertRowid);
+  wservices.adminCompleteCollection(uid, 'kind-of-blue');
+  let st = wcatalog.stats(uid);
+  assert.equal(st.albumsCompleted, 1);
+  assert.equal(st.artistsMastered, 1);
+  // L'import ajoute un album à Miles Davis (artiste de la graine) : sa maîtrise et son badge restent.
+  addImportedAlbum(wdb, wcatalog, { id: 'dz-miles', artistId: 'miles-davis', artist: 'Miles Davis', title: 'Bitches Brew' });
+  wcatalog.refreshCounts();
+  wcatalog.rebuildIndex();
+  st = wcatalog.stats(uid);
+  assert.ok(st.artists['miles-davis'].pct < 1);
+  assert.equal(st.artistsMastered, 1);
+  assert.equal(st.albumsCompleted, 1);
+  const profile = wservices.publicProfile(uid, 'maitre');
+  assert.equal(profile.stats.artistsMastered, profile.masteredArtists.length);
+  assert.equal(profile.stats.albumsCompleted, profile.vinyls.length);
+  // Démo : même calcul d'après les succès.
+  const owned = new Set(staticCatalog.albumTrackIds('kind-of-blue'));
+  const demo = staticCatalog.stats(owned, ['album:kind-of-blue', 'artist:miles-davis', 'album:inconnu']);
+  assert.equal(demo.albumsCompleted, 1);
+  assert.equal(demo.artistsMastered, 1);
+  assert.equal(staticCatalog.stats(owned, []).artistsMastered, 0);
+});
+
+test('numéros de catalogue : un nouvel album de base ne heurte jamais un album importé', () => {
+  const { wdb, wcatalog } = seedWorld();
+  // Albums importés avec l'ancienne numérotation (juste après la graine : 21, 22), et un nouveau (≥ 1001).
+  addImportedAlbum(wdb, wcatalog, { id: 'dz21', artistId: 'dz-a', artist: 'Importé', title: 'Vingt et un', catalogNumber: 21 });
+  addImportedAlbum(wdb, wcatalog, { id: 'dz22', artistId: 'dz-a', artist: 'Importé', title: 'Vingt-deux', catalogNumber: 22 });
+  addImportedAlbum(wdb, wcatalog, { id: 'dz-new', artistId: 'dz-a', artist: 'Importé', title: 'Nouveau' });
+  assert.equal(wcatalog.album('dz-new').code, 'AM-1001');
+  // La graine gagne un 21e album (comme le décrit le README) : le démarrage ne plante pas.
+  const base = ALBUMS[0];
+  const extra = { ...base, id: 'nouvel-album', title: 'Nouvel album' };
+  const extraTracks = TRACKS.filter((t) => t.albumId === base.id).map((t) => ({ ...t, id: t.id.replace(base.id, extra.id), albumId: extra.id }));
+  const grown = createCatalog(wdb, { covers: () => true, seedData: { ARTISTS, ALBUMS: [...ALBUMS, extra], TRACKS: [...TRACKS, ...extraTracks] } });
+  assert.equal(grown.album('nouvel-album').code, 'AM-021');
+  assert.ok(Number(grown.album('dz21').code.slice(3)) > 1001, grown.album('dz21').code);
+  assert.equal(grown.album('dz22').code, 'AM-022');
+  assert.equal(grown.albumTracks('dz21').length, 4, 'l’album déplacé garde ses cartes');
+  const numbers = wdb.prepare('SELECT catalog FROM cat_albums').all().map((r) => r.catalog);
+  assert.equal(new Set(numbers).size, numbers.length, 'numéros uniques');
+  // Graine réordonnée : les albums de base échangent leur numéro sans conflit.
+  const swapped = createCatalog(wdb, { covers: () => true, seedData: { ARTISTS, ALBUMS: [ALBUMS[1], ALBUMS[0], ...ALBUMS.slice(2)], TRACKS } });
+  assert.equal(swapped.album(ALBUMS[1].id).code, 'AM-001');
+  assert.equal(swapped.album(ALBUMS[0].id).code, 'AM-002');
 });

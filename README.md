@@ -65,13 +65,13 @@ npm start          # sert le site et l'API sur le port $PORT
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | Envoi des e-mails (Brevo, Resend, Mailgun, OVH…) |
 | `DATABASE_FILE` | Fichier SQLite, à placer sur un **disque persistant** |
 | `TRUST_PROXY=true` | Derrière un reverse proxy (Render, Railway, Nginx…) |
-| `CATALOG_IMPORT`, `CATALOG_TARGET` | Import automatique du catalogue depuis Deezer (`deezer` par défaut, `off` pour s'en tenir aux 20 albums de base) et nombre d'albums visé (20000) |
+| `CATALOG_IMPORT`, `CATALOG_TARGET` | Import automatique du catalogue depuis Deezer (`deezer` par défaut ; `off`, ou toute autre valeur, pour s'en tenir aux 20 albums de base) et nombre d'albums visé (20000) |
 
 Fichiers fournis : `render.yaml` (blueprint Render) et `Dockerfile` (Railway, Fly.io, VPS).
 
 ## Régler le jeu
 
-- **Catalogue importé** : `server/importer.js` (genres suivis, filtres sur les titres, nombre d'albums par artiste, paliers de rareté `RANK_TIERS` en percentiles de popularité Deezer). Variables `CATALOG_TARGET`, `CATALOG_MIN_ARTIST_FANS`, `CATALOG_MIN_ALBUM_FANS`, `CATALOG_MAX_ALBUMS_PER_ARTIST`.
+- **Catalogue importé** : `server/importer.js` (genres suivis, filtres sur les titres, nombre d'albums par artiste, paliers de rareté `RANK_TIERS` en percentiles de popularité Deezer, vérification quotidienne des nouvelles sorties). Variables `CATALOG_TARGET`, `CATALOG_MIN_ARTIST_FANS`, `CATALOG_MIN_ALBUM_FANS`, `CATALOG_MAX_ALBUMS_PER_ARTIST`. L'import reprend après un redémarrage ; si Deezer tombe en panne ou bloque le serveur, il s'arrête sans rien perdre et réessaie 10 minutes plus tard ; une pause demandée dans l'espace admin tient jusqu'au bouton « Lancer ».
 - **Albums de base** : `shared/catalog.js` (insérés en base à chaque démarrage). Ajouter un album = ajouter un objet avec sa tracklist et l'indice de popularité (0-100) de chaque piste :
 
   ```js
@@ -87,6 +87,8 @@ Fichiers fournis : `render.yaml` (blueprint Render) et `Dockerfile` (Railway, Fl
     ],
   },
   ```
+
+  Les albums de base gardent les numéros de catalogue 1 à 1000 (AM-001, AM-002…) ; les albums importés sont numérotés à partir de AM-1001, un nouvel album de base ne heurte donc jamais un album importé.
 
   La rareté se calcule toute seule : commune ≤ 34 · peu commune 35-54 · rare 55-69 · super rare 70-81 · ultra rare 82-91 · légendaire ≥ 92 (seuils dans `POP_TIERS`). Les singles hors album vont dans `PROMOS`. Motifs de pochette disponibles : `bars`, `rings`, `sun`, `grid`, `shards`, `split`, `curtain`, `halftone`, `spotlight`, `waves`, `dots`, `stripes`, `orbit`, `arcs`, `burst`, `diamond`, `checker`.
 - **Équilibrage** : `shared/rules.js` (probabilités par emplacement, chance de holo, valeur des doublons, coût du pressage, prix du booster, récompenses d'album et du blind test).

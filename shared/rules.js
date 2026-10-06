@@ -35,7 +35,7 @@ export const HOLO_CHANCE = 0.05;
 // Booster gratuit : chaque emplacement a cette chance de piocher dans un album que le joueur a commencé
 // (sinon, avec 20 000 albums, compléter un album par hasard serait presque impossible).
 export const FOCUS_CHANCE = 0.35;
-// Booster d'album : poids de tirage par rareté (une carte manquante compte triple).
+// Booster d'album : poids de tirage par rareté (les cartes manquantes passent toujours avant celles déjà possédées).
 export const ALBUM_PACK_WEIGHTS = { common: 8, uncommon: 6, rare: 4, super: 2.5, ultra: 1.5, legendary: 1, promo: 1 };
 export const HOLO_CHANCE_TOP = 0.12; // légendaires et promos
 
@@ -115,30 +115,36 @@ export function rollPack(rng, catalog, { focusAlbumIds = [] } = {}) {
   return cards.sort(byRank);
 }
 
+/** Une carte au hasard dans une liste, pondérée par rareté (booster d'album). */
+function pickByRarity(list, rng) {
+  const weights = list.map((t) => ALBUM_PACK_WEIGHTS[t.rarity] || 1);
+  let roll = rng() * weights.reduce((a, b) => a + b, 0);
+  for (let k = 0; k < list.length; k++) {
+    roll -= weights[k];
+    if (roll < 0) return list[k];
+  }
+  return list[list.length - 1];
+}
+
 /**
- * Booster d'album : 5 cartes de l'album choisi, différentes tant que l'album en a assez, tirées en priorité
- * parmi celles que le joueur n'a pas (poids ×3) et pondérées par rareté.
+ * Booster d'album : 5 cartes de l'album choisi, différentes tant que l'album en a assez, pondérées par rareté.
+ * Les cartes que le joueur n'a pas sortent d'abord : une carte déjà possédée ne complète le booster que lorsqu'il
+ * ne reste plus aucune carte manquante à tirer.
  */
 export function rollAlbumPack(rng, catalog, albumId, owned = new Set()) {
   const pool = catalog.albumTracks(albumId);
   if (!pool.length) return [];
+  const missing = pool.filter((t) => !owned.has(t.id));
+  const have = pool.filter((t) => owned.has(t.id));
   const cards = [];
   const used = new Set();
   for (let i = 0; i < PACK_SIZE; i++) {
-    const candidates = pool.length - used.size >= 1 ? pool.filter((t) => !used.has(t.id)) : pool;
-    const weights = candidates.map((t) => (ALBUM_PACK_WEIGHTS[t.rarity] || 1) * (owned.has(t.id) ? 1 : 3));
-    const total = weights.reduce((a, b) => a + b, 0);
-    let roll = rng() * total;
-    let pick = candidates[candidates.length - 1];
-    for (let k = 0; k < candidates.length; k++) {
-      roll -= weights[k];
-      if (roll < 0) {
-        pick = candidates[k];
-        break;
-      }
-    }
+    let candidates = missing.filter((t) => !used.has(t.id));
+    if (!candidates.length) candidates = have.filter((t) => !used.has(t.id));
+    // Album de moins de 5 cartes : toutes y sont déjà, le reste du booster est tiré dans tout l'album.
+    if (!candidates.length) candidates = pool;
+    const pick = pickByRarity(candidates, rng);
     used.add(pick.id);
-    if (used.size >= pool.length) used.clear();
     cards.push({ trackId: pick.id, rarity: pick.rarity, variant: holoRoll(pick.rarity, rng) ? 'holo' : 'std' });
   }
   return cards.sort(byRank);
@@ -267,6 +273,20 @@ export function blindtestPoints(correct, elapsedMs) {
 
 export function blindtestReward(correctCount) {
   return BLINDTEST.rewards[correctCount] || 0;
+}
+
+// --- Recherche -------------------------------------------------------------
+
+// Lettres sans décomposition Unicode (ø n'est pas « o + accent ») : repliées à la main.
+const FOLD_LETTERS = { ø: 'o', æ: 'ae', œ: 'oe', ß: 'ss', ł: 'l', đ: 'd', ð: 'd', þ: 'th', ı: 'i' };
+
+/**
+ * Texte replié pour comparer sans tenir compte des accents ni de la casse, dans toutes les écritures :
+ * « FÊTE » et « fete » donnent la même chose, comme « Røyksopp » et « royksopp ». Sert à la recherche dans ses cartes
+ * (fonction SQL fold() du serveur) et dans le catalogue statique de la démo.
+ */
+export function foldText(s) {
+  return String(s ?? '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[øæœßłđðþı]/g, (c) => FOLD_LETTERS[c]);
 }
 
 // --- Comptes ---------------------------------------------------------------

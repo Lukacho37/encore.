@@ -49,9 +49,18 @@ Rien à faire : au premier démarrage, le serveur commence à importer des album
 - il ne garde que les **albums studio** (pas de live, de compilation ni de best-of ; une seule version quand il existe une réédition « Deluxe ») des artistes suivis par au moins 15 000 fans ;
 - chaque album importé arrive avec sa tracklist, sa pochette, ses liens Deezer et un **indice de popularité** par morceau, d'où découle la rareté (les 0,5 % de morceaux les plus écoutés sont légendaires, les 60 % les moins écoutés sont communs) ; les singles hors album deviennent des cartes **Promo**.
 
-Compte **environ 3 heures** pour les 20 000 albums (le serveur ménage l'API de Deezer). Le jeu est jouable pendant ce temps : les nouveaux albums apparaissent au fur et à mesure dans la collection et les boosters. L'import reprend où il en était après un redémarrage, puis le serveur vérifie une fois par jour les nouvelles sorties.
+Compte **environ 3 heures** pour les 20 000 albums (le serveur ménage l'API de Deezer). Le jeu est jouable pendant ce temps : les nouveaux albums apparaissent au fur et à mesure dans la collection (tout de suite) et dans les boosters (dans le quart d'heure qui suit). L'import reprend où il en était après un redémarrage.
 
-Dans l'espace **Admin**, le bloc **Catalogue** montre l'avancement (albums importés, artistes en file, dernière erreur) avec des boutons pour mettre en pause ou relancer. Réglages possibles dans **Environment** : `CATALOG_TARGET` (nombre d'albums, 20000 par défaut) et `CATALOG_IMPORT=off` pour s'en tenir aux 20 albums de base.
+Ensuite, une fois par jour, le serveur vérifie les **nouvelles sorties** des artistes déjà importés (300 artistes par jour, chacun revu au plus une fois par semaine, les plus suivis d'abord) : un nouvel album studio entre au catalogue s'il fait partie des 10 albums les plus écoutés de l'artiste (`CATALOG_MAX_ALBUMS_PER_ARTIST`), même une fois les 20 000 albums atteints.
+
+Si Deezer tombe en panne ou bloque le serveur (erreurs 403, 5xx, quota, réseau coupé), l'import s'arrête sans rien perdre : les artistes restants gardent leur place dans la file, et le serveur réessaie toutes les 10 minutes. Un album introuvable chez Deezer est simplement passé.
+
+Dans l'espace **Admin**, le bloc **Catalogue** montre l'avancement (albums importés, artistes en file, dernière erreur) avec deux boutons :
+
+- **Mettre en pause** : l'import s'arrête après l'album en cours (l'artiste en cours reprendra là où il en était). La pause tient même après un redémarrage du serveur : plus rien ne part, ni l'import ni la vérification quotidienne, jusqu'au bouton suivant.
+- **Lancer / reprendre l'import** : lève la pause et relance l'import (ou la vérification des nouvelles sorties si elle est due). Il fonctionne aussi avec `CATALOG_IMPORT=off`, pour un import ponctuel.
+
+Réglages possibles dans **Environment** : `CATALOG_TARGET` (nombre d'albums, 20000 par défaut) et `CATALOG_IMPORT` : `deezer` (par défaut) ou `off` pour s'en tenir aux 20 albums de base. Toute autre valeur (faute de frappe comprise) coupe aussi l'import, avec un avertissement dans le journal au démarrage.
 
 Avec autant d'albums, deux choses aident les joueurs à en finir un : une partie de chaque booster gratuit est tirée dans les **albums qu'ils ont commencés**, et chaque page d'album propose un **booster d'album** (5 cartes de cet album, celles qui manquent d'abord, contre 300 royalties).
 

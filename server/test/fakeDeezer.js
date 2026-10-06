@@ -1,6 +1,8 @@
 // Faux Deezer déterministe pour tester l'import du catalogue sans Internet.
 // Chaque artiste a des albums studio, une réédition deluxe en double, un live, une compilation et deux singles
-// (l'un déjà présent sur un album, l'autre hors album).
+// (l'un déjà présent sur un album, l'autre hors album). Comme la vraie API, les listes sont paginées (limit, index,
+// next) et /search/artist cherche par nom. embedLimit : la liste de pistes intégrée à /album/{id} s'arrête à N pistes
+// (le reste se lit dans /album/{id}/tracks). addCustomArtist() ajoute un artiste sur mesure pour un test.
 import { GENRE_MAP } from '../importer.js';
 
 const GENRE_IDS = Object.keys(GENRE_MAP).map(Number);
@@ -15,7 +17,7 @@ function rng(seed) {
   };
 }
 
-export function makeFakeDeezer({ artists = 60, albumsPerArtist = 4, quotaEvery = 0 } = {}) {
+export function makeFakeDeezer({ artists = 60, albumsPerArtist = 4, quotaEvery = 0, embedLimit = Infinity } = {}) {
   const world = { artists: new Map(), albums: new Map() };
   const covers = (id) => ({
     cover_big: `https://cdn.deezer.test/${id}/500.jpg`,
@@ -62,6 +64,28 @@ export function makeFakeDeezer({ artists = 60, albumsPerArtist = 4, quotaEvery =
     world.artists.set(id, { id, name, nb_fan: fans, genreId, albums: list });
   };
 
+  /**
+   * Artiste sur mesure : albums = [{ title, tracks (nombre ou liste de titres), fans, record_type, release_date, id }].
+   * Les identifiants des albums valent id * 1000 + k (sauf id donné), ceux des pistes album * 100 + i.
+   */
+  const addCustomArtist = ({ id, name, fans, genreId = 132, albums = [] }) => {
+    const list = albums.map((a, k) => {
+      const albumId = a.id ?? id * 1000 + k;
+      const titles = Array.isArray(a.tracks) ? a.tracks : Array.from({ length: a.tracks ?? 10 }, (_, i) => `${a.title} ${i + 1}`);
+      const tracks = titles.map((t, i) => ({
+        id: albumId * 100 + i, title: t, title_short: t, rank: 1000 + ((albumId * 7919 + i * 104729) % 990_000),
+        link: `https://www.deezer.test/track/${albumId * 100 + i}`,
+      }));
+      world.albums.set(albumId, {
+        id: albumId, title: a.title, record_type: a.record_type || 'album', fans: a.fans ?? 5000, genre_id: genreId,
+        release_date: a.release_date || '2015-01-01', link: `https://www.deezer.test/album/${albumId}`, ...covers(albumId), tracks,
+      });
+      return albumId;
+    });
+    world.artists.set(id, { id, name, nb_fan: fans, genreId, albums: list });
+    return world.artists.get(id);
+  };
+
   for (let i = 0; i < artists; i++) {
     const id = 1000 + i;
     addArtist(id, `Artist ${id}`, Math.round(3_000_000 / (i + 1)) + 1000, GENRE_IDS[i % GENRE_IDS.length]);
@@ -73,6 +97,18 @@ export function makeFakeDeezer({ artists = 60, albumsPerArtist = 4, quotaEvery =
   firstDp.title = 'Discovery';
 
   const json = (data, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => data });
+  /** Une page d'une liste, comme Deezer : { data, total, next } (next absent sur la dernière page). */
+  const page = (u, all, defaultLimit = 25) => {
+    const limit = Math.max(1, Number(u.searchParams.get('limit')) || defaultLimit);
+    const index = Math.max(0, Number(u.searchParams.get('index')) || 0);
+    const out = { data: all.slice(index, index + limit), total: all.length };
+    if (index + limit < all.length) {
+      const nextUrl = new URL(u);
+      nextUrl.searchParams.set('index', String(index + limit));
+      out.next = nextUrl.href;
+    }
+    return out;
+  };
   const calls = [];
   let n = 0;
 
@@ -89,13 +125,20 @@ export function makeFakeDeezer({ artists = 60, albumsPerArtist = 4, quotaEvery =
       return json({ data: list.map((a) => ({ id: a.id, name: a.name })) });
     }
     if ((m = /^\/genre\/(\d+)\/artists$/.exec(path))) return json({ data: [] });
+    if (path === '/search/artist') {
+      const want = String(u.searchParams.get('q') || '').toLowerCase();
+      const found = [...world.artists.values()].filter((a) => a.name.toLowerCase().includes(want));
+      return json(page(u, found.map((a) => ({ id: a.id, name: a.name, nb_fan: a.nb_fan }))));
+    }
     if ((m = /^\/artist\/(\d+)$/.exec(path))) {
       const a = world.artists.get(Number(m[1]));
       return a ? json({ id: a.id, name: a.name, nb_fan: a.nb_fan }) : json({ error: { code: 800, message: 'no data' } });
     }
     if ((m = /^\/artist\/(\d+)\/albums$/.exec(path))) {
       const a = world.artists.get(Number(m[1]));
-      return json({ data: (a?.albums || []).map((id) => { const al = world.albums.get(id); return { id: al.id, title: al.title, record_type: al.record_type, fans: al.fans, genre_id: al.genre_id, release_date: al.release_date, link: al.link, cover_big: al.cover_big, cover_xl: al.cover_xl }; }) });
+      if (!a) return json({ error: { code: 800, message: 'no data' } });
+      const all = a.albums.map((id) => { const al = world.albums.get(id); return { id: al.id, title: al.title, record_type: al.record_type, fans: al.fans, genre_id: al.genre_id, release_date: al.release_date, link: al.link, cover_big: al.cover_big, cover_xl: al.cover_xl }; });
+      return json(page(u, all));
     }
     if ((m = /^\/artist\/(\d+)\/related$/.exec(path))) {
       const id = Number(m[1]);
@@ -105,14 +148,15 @@ export function makeFakeDeezer({ artists = 60, albumsPerArtist = 4, quotaEvery =
     if ((m = /^\/album\/(\d+)$/.exec(path))) {
       const al = world.albums.get(Number(m[1]));
       if (!al) return json({ error: { code: 800, message: 'no data' } });
-      return json({ ...al, nb_tracks: al.tracks.length, tracks: { data: al.tracks } });
+      return json({ ...al, nb_tracks: al.tracks.length, tracks: { data: al.tracks.slice(0, embedLimit) } });
     }
     if ((m = /^\/album\/(\d+)\/tracks$/.exec(path))) {
       const al = world.albums.get(Number(m[1]));
-      return json({ data: al?.tracks || [] });
+      if (!al) return json({ error: { code: 800, message: 'no data' } });
+      return json(page(u, al.tracks));
     }
     return json({ error: { code: 800, message: `unknown ${path}` } });
   }
 
-  return { fetchImpl, world, calls };
+  return { fetchImpl, world, calls, addCustomArtist };
 }

@@ -360,3 +360,35 @@ test('modération : supprimer une critique garde la note', async () => {
   assert.equal(mine.score, 7);
   assert.equal(mine.review, null);
 });
+
+test('catalogue sans compte : cartes et chiffres lisibles (écran de connexion), le reste demande un compte', async () => {
+  const guest = client();
+  const tracks = await guest('GET', `/api/catalog/tracks?ids=${encodeURIComponent('discovery:01')},promo:hey-jude`);
+  assert.equal(tracks.status, 200, JSON.stringify(tracks.body));
+  assert.deepEqual(tracks.body.tracks.map((t) => t.id).sort(), ['discovery:01', 'promo:hey-jude']);
+  assert.ok(tracks.body.tracks.every((t) => t.title && t.art && t.code));
+  const info = await guest('GET', '/api/catalog/info');
+  assert.equal(info.status, 200);
+  assert.ok(info.body.totals.albums >= 20 && info.body.genres.length > 0);
+  for (const path of ['/api/catalog/mine', '/api/catalog/albums', '/api/catalog/albums/discovery', '/api/catalog/artists?ids=daft-punk',
+    '/api/catalog/artists/daft-punk', '/api/catalog/promos', '/api/catalog/groups?by=genre']) {
+    assert.equal((await guest('GET', path)).status, 401, path);
+  }
+  // Connecté : mêmes routes, toujours accessibles.
+  const call = client();
+  await call('POST', '/api/auth/login', { identifier: 'bob', password: 'motdepasse123' });
+  assert.equal((await call('GET', '/api/catalog/tracks?ids=discovery:01')).body.tracks[0].id, 'discovery:01');
+  assert.equal((await call('GET', '/api/catalog/mine')).status, 200);
+});
+
+test('catalogue : pagination non entière acceptée (pas d’erreur 500)', async () => {
+  const call = client();
+  await call('POST', '/api/auth/login', { identifier: 'bob', password: 'motdepasse123' });
+  for (const path of ['/api/catalog/promos?offset=1.5&limit=2.5', '/api/catalog/promos?limit=abc', '/api/catalog/mine?offset=1.5&limit=1.5',
+    '/api/catalog/mine?limit=abc&offset=-2', '/api/catalog/albums?offset=0.5&limit=4.9', '/api/catalog/albums?q=!!!']) {
+    const r = await call('GET', path);
+    assert.equal(r.status, 200, `${path} ${JSON.stringify(r.body)}`);
+  }
+  assert.equal((await call('GET', '/api/catalog/promos?offset=1.5&limit=2.5')).body.items.length, 2);
+  assert.deepEqual((await call('GET', '/api/catalog/albums?q=!!!')).body, { total: 0, items: [] });
+});

@@ -4,9 +4,7 @@ import {
   TRACKS, TRACK_BY_ID, ALBUMS, ALBUM_BY_ID, ARTISTS, ARTIST_BY_ID, TRACKS_BY_ALBUM, TRACKS_BY_ARTIST, ALBUMS_BY_ARTIST,
   PROMO_TRACKS, decadeOf, artFor, catalogCode,
 } from './catalog.js';
-import { RARITIES } from './rules.js';
-
-const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+import { RARITIES, foldText as norm } from './rules.js';
 
 function trackView(t) {
   if (!t) return null;
@@ -150,8 +148,12 @@ export const staticCatalog = {
     return { total: PROMO_TRACKS.length, items: PROMO_TRACKS.slice(offset, offset + limit).map(trackView) };
   },
 
-  /** Statistiques de collection (même forme que celles du serveur : seuls les albums et artistes commencés). */
-  stats(owned) {
+  /**
+   * Statistiques de collection (même forme que celles du serveur : seuls les albums et artistes commencés).
+   * `achievements` : clés des succès du joueur ; comme sur le serveur, albums complétés et artistes maîtrisés se
+   * comptent d'après les succès obtenus (jamais retirés), sinon d'après les cartes possédées.
+   */
+  stats(owned, achievements = null) {
     const byRarity = Object.fromEntries(RARITIES.map((r) => [r, ratio(TRACKS.filter((t) => t.rarity === r), owned)]));
     const albums = {};
     for (const a of ALBUMS) {
@@ -163,14 +165,19 @@ export const staticCatalog = {
       const r = ratio(TRACKS_BY_ARTIST[a.id], owned);
       if (r.owned) artists[a.id] = r;
     }
+    const keys = achievements ? [...new Set(achievements)] : null;
     return {
       total: ratio(TRACKS, owned),
       promos: ratio(PROMO_TRACKS, owned),
       byRarity,
       albums,
       artists,
-      albumsCompleted: Object.values(albums).filter((x) => x.pct === 1).length,
-      artistsMastered: Object.values(artists).filter((x) => x.pct === 1).length,
+      albumsCompleted: keys
+        ? keys.filter((k) => k.startsWith('album:') && ALBUM_BY_ID[own(k.slice(6))]).length
+        : Object.values(albums).filter((x) => x.pct === 1).length,
+      artistsMastered: keys
+        ? keys.filter((k) => k.startsWith('artist:') && ARTIST_BY_ID[own(k.slice(7))]).length
+        : Object.values(artists).filter((x) => x.pct === 1).length,
       catalog: { albums: ALBUMS.length, artists: ARTISTS.length, tracks: TRACKS.length },
     };
   },

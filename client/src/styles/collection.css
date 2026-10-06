@@ -197,6 +197,13 @@
   height: 14px;
 }
 
+/* Listes rechargées sur place (retour après un booster) : un album qui remonte dans le tri ne doit pas
+   entraîner la page avec lui (ancrage du défilement du navigateur), la position reste celle d'avant. */
+.collection .album-grid,
+.collection .card-grid {
+  overflow-anchor: none;
+}
+
 /* liste en cours de remplacement (nouveaux filtres) */
 .is-stale {
   opacity: 0.45;

@@ -4,25 +4,62 @@ import { get, post } from '../api.js';
 import { useI18n, LANGS } from '../i18n/index.jsx';
 import { useGame } from '../state/GameContext.jsx';
 import { Icon, Logo, Spinner, useToast } from '../components/ui.jsx';
-import Card from '../components/Card.jsx';
+import Card, { CardBack } from '../components/Card.jsx';
 import { validateUsername, PASSWORD_MIN } from '@shared/rules.js';
 import { PROVIDER_NAMES, useCovers } from '../state/CoversContext.jsx';
+import { requestTracks, useTracks } from '../state/catalog.js';
 
-const FAN = ['the-college-dropout', 'promo:hey-jude', 'discovery'];
+// Éventail de l'écran de connexion : trois cartes du catalogue, lisibles sans compte (GET /api/catalog/tracks).
+const FAN = [
+  { trackId: 'the-college-dropout:07', seed: 'the-college-dropout', back: 'legendary' },
+  { trackId: 'promo:hey-jude', seed: 'promo:hey-jude', variant: 'holo', back: 'promo' },
+  { trackId: 'discovery:01', seed: 'discovery', back: 'ultra' },
+];
+const FAN_IDS = FAN.map((c) => c.trackId);
+// Au-delà de ce délai sans les cartes (réseau lent, serveur injoignable), l'éventail montre leur dos.
+const FAN_WAIT = 1200;
+
+/**
+ * Cartes demandées dès l'affichage de la page. Pendant le chargement, l'emplacement reste vide (sa hauteur est
+ * gardée) ; si les cartes n'arrivent pas, on montre leur dos plutôt que des cartes vides.
+ * Renvoie true quand les vraies cartes sont affichées.
+ */
+function useFan() {
+  const tracks = useTracks(FAN_IDS);
+  const ready = tracks.every(Boolean);
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    const settle = () => {
+      if (alive) setSettled(true);
+    };
+    requestTracks(FAN_IDS).then(settle);
+    const timer = setTimeout(settle, FAN_WAIT);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, []);
+  return { ready, backs: !ready && settled };
+}
 
 function AuthLayout({ children }) {
   const { t, lang, setLang } = useI18n();
   const covers = useCovers();
-  const shown = FAN.map((seed) => covers.items[seed]).filter(Boolean);
+  const fan = useFan();
+  // Crédit des pochettes affichées : seulement quand les vraies cartes sont là.
+  const shown = fan.ready ? FAN.map((c) => covers.items[c.seed]).filter(Boolean) : [];
   const sources = shown.filter((item, i) => shown.findIndex((x) => x.provider === item.provider) === i);
   return (
     <div className="auth">
       <aside className="auth__stage">
         <Link to="/login" className="auth__logo" aria-label="AlbumMania"><Logo className="logo--lg" /></Link>
         <div className="auth__fan" aria-hidden="true">
-          <Card trackId="the-college-dropout:07" className="auth__fan-card auth__fan-card--1" />
-          <Card trackId="promo:hey-jude" variant="holo" className="auth__fan-card auth__fan-card--2" />
-          <Card trackId="discovery:01" className="auth__fan-card auth__fan-card--3" />
+          {FAN.map((c, i) => {
+            const className = `auth__fan-card auth__fan-card--${i + 1}`;
+            if (fan.ready) return <Card key={c.trackId} trackId={c.trackId} variant={c.variant} className={className} />;
+            return fan.backs ? <CardBack key={c.trackId} rarity={c.back} className={className} /> : null;
+          })}
         </div>
         {sources.length > 0 && (
           <p className="auth__credit small muted">

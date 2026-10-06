@@ -1,8 +1,8 @@
 // Page « Ma collection » : progression globale, puis un onglet par façon de parcourir la collection.
 // Avec 20 000 albums au catalogue, rien n'est chargé d'un bloc : chaque liste interroge l'API page par page,
 // avec recherche et filtres gardés dans l'adresse (le bouton précédent les retrouve).
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigationType, useParams, useSearchParams } from 'react-router';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigationType, useParams, useSearchParams } from 'react-router';
 import { get } from '../api.js';
 import { useGame } from '../state/GameContext.jsx';
 import { useI18n } from '../i18n/index.jsx';
@@ -115,32 +115,73 @@ function useSearchText(params, update) {
   return [text, setText];
 }
 
-// Position de défilement de chaque onglet, rendue au retour par le bouton précédent (fiche album, artiste…).
+// Position de défilement de chaque entrée de l'historique (et de chaque onglet), rendue au retour par le bouton
+// précédent (fiche album, artiste…).
 const scrolls = new Map();
 
-function useScrollMemory(id, ready) {
+function rememberScroll(key, y) {
+  scrolls.delete(key);
+  scrolls.set(key, y);
+  if (scrolls.size > 100) scrolls.delete(scrolls.keys().next().value);
+}
+
+/**
+ * Garde la position de défilement de l'onglet `id` pour l'entrée d'historique en cours, et la rend au retour.
+ * `restorable` : les éléments affichés au départ sont ceux d'avant (liste retrouvée en mémoire) ; sinon on ne
+ * touche pas à la position.
+ */
+function useScrollMemory(id, restorable) {
+  const location = useLocation();
   const navType = useNavigationType();
-  const [saved] = useState(() => (navType === 'POP' ? scrolls.get(id) : undefined));
+  const key = `${id}|${location.key}`;
+  // Lue au premier affichage, avant que les effets n'enregistrent quoi que ce soit.
+  const [saved] = useState(() => (navType === 'POP' && restorable ? scrolls.get(key) : undefined));
+  const pending = useRef(saved != null); // position à rendre : on n'enregistre rien avant
+
+  // Enregistrement pendant le défilement (une fois par image au plus) et au moment de quitter l'entrée.
+  // Le nettoyage d'un effet de mise en page passe avant que la page suivante ne remplace celle-ci dans le DOM :
+  // window.scrollY est encore celui de la collection (un effet ordinaire lirait celui de la page suivante).
+  useLayoutEffect(() => {
+    let raf = 0;
+    const save = () => {
+      raf = 0;
+      if (!pending.current) rememberScroll(key, window.scrollY);
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(save);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      cancelAnimationFrame(raf);
+      if (!pending.current) rememberScroll(key, window.scrollY);
+    };
+  }, [key]);
+
+  // Retour : la liste est déjà affichée, le navigateur remet souvent lui-même la bonne position juste après.
+  // On attend l'image suivante et on ne corrige que si elle diffère (retour en haut de page de l'application,
+  // navigateur qui l'a appliquée avant que la liste ne soit là).
   useEffect(() => {
-    if (!ready || !saved) return undefined;
-    // Après le retour en haut de page que fait l'application à chaque changement d'adresse.
+    if (!pending.current) return undefined;
     const raf = requestAnimationFrame(() => {
-      window.scrollTo(0, saved);
+      pending.current = false;
+      if (Math.abs(window.scrollY - saved) > 1) window.scrollTo(0, saved);
     });
     return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  useEffect(() => () => {
-    scrolls.set(id, window.scrollY);
-  }, [id]);
+  }, [saved]);
 }
 
 // ----- listes paginées ----------------------------------------------------------------------
 
 // Dernier état de chaque liste : en revenant sur l'onglet, les pages déjà chargées réapparaissent sans requête,
-// tant que la collection n'a pas changé entre-temps (signature).
+// tant que la collection n'a pas changé entre-temps (signature). Si elle a changé (booster ouvert sur une fiche
+// album…), la liste d'avant reste affichée le temps de recharger d'un coup ses pages (jusqu'à RELOAD_PAGES) :
+// la page garde sa hauteur et le bouton précédent retrouve la position de défilement.
 const snapshots = new Map();
+const RELOAD_PAGES = 5;
 const EMPTY_LIST = { key: null, items: [], total: null, end: false, sig: null, loading: true, error: null };
+
+const pageUrl = (key, offset, limit) => `${key}${key.includes('?') ? '&' : '?'}offset=${offset}&limit=${limit}`;
 
 /**
  * Liste paginée d'une adresse de l'API (`key`, filtres compris) : { items, total, more, … }.
@@ -149,7 +190,9 @@ const EMPTY_LIST = { key: null, items: [], total: null, end: false, sig: null, l
 function usePagedList(id, key, pageSize, register, signature) {
   const [initial] = useState(() => {
     const snap = snapshots.get(id);
-    return snap && snap.key === key && snap.sig === signature ? { ...snap, loading: false, error: null } : null;
+    if (!snap || snap.key !== key) return null;
+    if (snap.sig === signature) return { ...snap, loading: false, error: null };
+    return snap.items.length <= pageSize * RELOAD_PAGES ? { ...snap, loading: true, error: null } : null;
   });
   const [state, setState] = useState(initial || EMPTY_LIST);
   const req = useRef(0);
@@ -163,7 +206,7 @@ function usePagedList(id, key, pageSize, register, signature) {
   const load = useCallback((offset) => {
     const ticket = ++req.current;
     setState((s) => ({ ...s, loading: true, error: null }));
-    get(`${key}${key.includes('?') ? '&' : '?'}offset=${offset}&limit=${pageSize}`)
+    get(pageUrl(key, offset, pageSize))
       .then((res) => {
         if (ticket !== req.current) return; // réponse d'une recherche dépassée
         const list = Array.isArray(res?.items) ? res.items : [];
@@ -188,16 +231,58 @@ function usePagedList(id, key, pageSize, register, signature) {
       });
   }, [key, pageSize, register]);
 
+  // Recharge les `count` premiers éléments en une fois ; la liste affichée reste en place jusqu'à la réponse.
+  const reloadAll = useCallback((count) => {
+    const ticket = ++req.current;
+    const offsets = [];
+    for (let offset = 0; offset < count; offset += pageSize) offsets.push(offset);
+    setState((s) => ({ ...s, loading: true, error: null }));
+    Promise.all(offsets.map((offset) => get(pageUrl(key, offset, pageSize))))
+      .then((pages) => {
+        if (ticket !== req.current) return;
+        const seen = new Set();
+        const items = [];
+        for (const res of pages) {
+          const list = Array.isArray(res?.items) ? res.items : [];
+          register(list);
+          for (const x of list) {
+            if (seen.has(x.id)) continue;
+            seen.add(x.id);
+            items.push(x);
+          }
+        }
+        const last = pages[pages.length - 1];
+        const lastCount = Array.isArray(last?.items) ? last.items.length : 0;
+        setState({
+          key,
+          items,
+          total: Number.isFinite(last?.total) ? last.total : items.length,
+          end: lastCount < pageSize,
+          sig: sig.current,
+          loading: false,
+          error: null,
+        });
+      })
+      .catch(() => {
+        // La liste d'avant reste affichée ; elle sera rechargée à la prochaine visite.
+        if (ticket === req.current) setState((s) => ({ ...s, loading: false }));
+      });
+  }, [key, pageSize, register]);
+
   useEffect(() => {
     const s = latest.current;
     if (s.key === key && s.items.length && !s.error) {
+      if (s.sig !== sig.current) {
+        reloadAll(s.items.length);
+        return;
+      }
       // Liste déjà là : une réponse encore en route pour d'autres filtres ne doit plus s'afficher.
       req.current += 1;
       if (s.loading) setState((prev) => ({ ...prev, loading: false }));
       return;
     }
     load(0);
-  }, [key, load]);
+  }, [key, load, reloadAll]);
 
   useEffect(() => () => {
     const s = latest.current;

@@ -63,6 +63,9 @@ async function signup(page, email, username) {
 await run('desktop', { width: 1280, height: 820 }, async (page) => {
   await page.goto(`${BASE}/login`);
   await page.waitForSelector('.auth__form');
+  // L'éventail de cartes se charge sans compte (GET /api/catalog/tracks est public).
+  await page.waitForFunction(() => document.querySelectorAll('.auth__fan .card:not(.card-back):not(.card--loading)').length === 3, null, { timeout: 5000 })
+    .catch(() => errors.push('[desktop] login fan: catalog cards not shown to guests'));
   await page.waitForTimeout(400);
   await shot(page, '01-login');
 
@@ -119,6 +122,17 @@ await run('desktop', { width: 1280, height: 820 }, async (page) => {
   await page.waitForSelector('.album-grid');
   await page.waitForTimeout(300);
   await shot(page, '11-collection');
+  // Retour depuis une fiche album : la collection revient à la même position de défilement.
+  await page.evaluate(() => [...document.querySelectorAll('.album-grid a.album-tile')].at(-1).scrollIntoView({ block: 'center' }));
+  await page.waitForTimeout(300);
+  const scrollBefore = await page.evaluate(() => Math.round(window.scrollY));
+  await page.locator('.album-grid a.album-tile').last().click();
+  await page.waitForSelector('.album-head');
+  await page.goBack();
+  await page.waitForSelector('.album-grid a.album-tile');
+  await page.waitForTimeout(500);
+  const scrollAfter = await page.evaluate(() => Math.round(window.scrollY));
+  if (scrollBefore > 100 && Math.abs(scrollAfter - scrollBefore) > 2) errors.push(`[desktop] collection scroll not restored after back (${scrollBefore} -> ${scrollAfter})`);
   // Recherche plein texte dans le catalogue
   await page.fill('.collection input[type=search]', 'racine car');
   await page.waitForFunction(() => [...document.querySelectorAll('.album-grid a')].some((a) => /Racine carrée/.test(a.textContent)), null, { timeout: 5000 });

@@ -2,6 +2,25 @@
 /* Ce fichier est chargé avant app.css : les règles qui précisent une classe d'app.css montent d'un cran
    en spécificité (ex. .album-page .album-head). */
 
+/* ---------- en-têtes d'album et d'artiste, fiche carte : textes très longs ---------- */
+
+/* Titres et noms importés de Deezer : un seul mot très long (« Pneumonoultramicroscopic… ») passe à la ligne au
+   lieu d'élargir la page (sinon, sur téléphone, la barre d'onglets et l'écran d'ouverture du booster sont décalés).
+   Hérité par tout l'en-tête : titre, artiste, et les phrases qui reprennent le nom. */
+.album-page .album-head__info,
+.artist-page .artist-head__info,
+.card-detail .card-detail__info {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  /* Une seule colonne sur téléphone : jamais plus large que l'écran, quel que soit son contenu. */
+  .album-page .album-head,
+  .artist-page .artist-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* ---------- emplacements de chargement ---------- */
 
 .album-skel {

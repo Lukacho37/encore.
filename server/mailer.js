@@ -68,15 +68,21 @@ export function createMailer(db) {
       await transport.sendMail({ from: config.mailFrom, to, subject, text, html });
       return;
     }
-    // Aucun serveur SMTP configuré : l'e-mail est conservé dans la boîte de test (/dev/mailbox).
-    db.prepare('INSERT INTO dev_emails (to_addr, subject, text, html, created_at) VALUES (?, ?, ?, ?, ?)').run(
-      to, subject, text, html, Date.now(),
-    );
-    if (!config.isTest) console.log(`\n✉️  [boîte de test] ${subject} → ${to}\n${text}\n`);
+    // Aucun serveur SMTP configuré : l'e-mail est conservé dans la boîte de test (/dev/mailbox) quand elle est ouverte
+    // (DEV_MAILBOX=1 sur une adresse locale) ou pendant les tests ; sinon il n'est qu'écrit dans le journal du serveur.
+    if (devMailbox || config.isTest) {
+      db.prepare('INSERT INTO dev_emails (to_addr, subject, text, html, created_at) VALUES (?, ?, ?, ?, ?)').run(
+        to, subject, text, html, Date.now(),
+      );
+    }
+    if (!config.isTest) console.log(`\n✉️  [${devMailbox ? 'boîte de test' : 'e-mail non envoyé, aucun SMTP'}] ${subject} → ${to}\n${text}\n`);
   }
 
+  // Boîte de test : jamais avec un vrai serveur SMTP, seulement avec DEV_MAILBOX=1 sur une adresse locale.
+  const devMailbox = !transport && config.devMailbox;
+
   return {
-    devMailbox: !transport && !config.isProd,
+    devMailbox,
     async sendVerification(user, token) {
       const link = `${config.appUrl}/verify?token=${encodeURIComponent(token)}`;
       await deliver({ to: user.email, ...render('verify', user.lang, user.username, link) });

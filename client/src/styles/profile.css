@@ -28,15 +28,15 @@
 /* ---------- filtres par rareté ---------- */
 
 .chips.pf-chips {
-  gap: 6px;
+  gap: var(--s-6);
 }
 
 .pf-chips .chip-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--s-6);
   min-height: 32px;
-  padding: 0 12px;
+  padding: 0 var(--s-12);
 }
 
 /* Sur téléphone, les raretés défilent sur une ligne au lieu d'occuper quatre lignes. */
@@ -45,7 +45,7 @@
     flex-wrap: nowrap;
     overflow-x: auto;
     margin: 0 -4px;
-    padding: 2px 4px 4px;
+    padding: var(--s-2) var(--s-4) var(--s-4);
     scrollbar-width: none;
   }
 
@@ -59,7 +59,7 @@
 }
 
 .pf-chip__n {
-  font: 500 11px var(--font-mono);
+  font: var(--fw-medium) var(--fs-12) var(--font-mono);
   font-variant-numeric: tabular-nums;
   opacity: 0.7;
 }
@@ -82,13 +82,13 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  margin-top: 4px;
+  gap: var(--s-10);
+  margin-top: var(--s-4);
   text-align: center;
 }
 
 .pf-more .btn {
-  gap: 8px;
+  gap: var(--s-8);
 }
 
 .pf-more .spinner {
@@ -98,14 +98,14 @@
 
 .pf-more__n {
   color: var(--haze);
-  font: 500 12px var(--font-mono);
+  font: var(--fw-medium) var(--fs-12) var(--font-mono);
 }
 
 .empty.pf-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: var(--s-10);
 }
 
 .pf-empty p {
@@ -115,8 +115,6 @@
 .cover-pick.pf-cover-skel,
 .is-loading .rated-skel {
   display: block;
-  background: linear-gradient(110deg, #1a1522 30%, #2a2233 50%, #1a1522 70%) 0 0 / 300% 100%;
-  animation: card-loading 1.4s linear infinite;
 }
 
 .cover-pick.pf-cover-skel {
@@ -127,18 +125,11 @@
   color: var(--haze);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .cover-pick.pf-cover-skel,
-  .is-loading .rated-skel {
-    animation: none;
-  }
-}
-
 /* ---------- photo de profil ---------- */
 
 .pf-eyebrow-n {
   color: var(--haze);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   letter-spacing: normal;
   text-transform: none;
 }
@@ -148,7 +139,7 @@
   position: sticky;
   bottom: -22px;
   margin: 0 -22px -22px;
-  padding: 16px 22px 22px;
+  padding: var(--s-16) 22px 22px;
   background: linear-gradient(to bottom, transparent, var(--stage) 40%);
 }
 
@@ -165,20 +156,20 @@
 
 .masters .pf-masters__toggle {
   align-self: center;
-  font-size: 12px;
+  font-size: var(--fs-12);
 }
 
 .pf-shelf-foot {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  margin: 14px 0 4px;
+  gap: var(--s-8);
+  margin: var(--s-14) 0 var(--s-4);
   text-align: center;
 }
 
 .pf-shelf-foot .btn {
-  gap: 8px;
+  gap: var(--s-8);
 }
 
 .pf-shelf-foot p {

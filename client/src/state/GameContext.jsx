@@ -1,10 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { get, post, ApiError } from '../api.js';
+import { get, post, ApiError, onApiResponse } from '../api.js';
 import { recycleValue } from '@shared/rules.js';
 import { useI18n } from '../i18n/index.jsx';
 import { clearApiCache } from './catalog.js';
+import { fullState, mergePartial, mergeResponse } from './mergeState.js';
 
 const EMPTY_RATIO = { owned: 0, total: 0, pct: 0 };
+const NO_COUNTS = { pendingFriends: 0, unread: 0 };
 
 const GameContext = createContext(null);
 
@@ -20,23 +22,59 @@ function indexCards(cards) {
   return map;
 }
 
+/** Les progressions gardées en cache (collection, albums commencés) ne sont plus à jour. */
+function dropCollectionCaches() {
+  clearApiCache('/catalog/mine');
+  clearApiCache('/catalog/groups');
+  clearApiCache('/catalog/albums?');
+}
+
 export function GameProvider({ children }) {
   const { lang, setLang } = useI18n();
   const [status, setStatus] = useState('loading'); // loading | guest | ready
   const [data, setData] = useState(null);
   const offset = useRef(0);
   const syncedLang = useRef(null);
+  // États déjà fusionnés (par la réponse de l'API) : un applyState(res.state) qui suit est sans effet.
+  const applied = useRef(new WeakSet());
+  const refreshRef = useRef(null);
 
+  /** Fusionne une réponse de l'API (état complet, ou partiel + deltas). */
+  const mergeApiResponse = useCallback((res) => {
+    const state = res?.state;
+    if (!state || typeof state !== 'object' || applied.current.has(state)) return;
+    applied.current.add(state);
+    if (Number.isFinite(state.serverTime)) offset.current = state.serverTime - Date.now();
+    if (!state.partial || res.cards || res.albumDeltas) dropCollectionCaches();
+    let reload = false;
+    setData((current) => {
+      const next = mergeResponse(current, res);
+      if (next === null) reload = true;
+      return next ?? current;
+    });
+    if (!state.partial) setStatus('ready');
+    // État partiel sans état de départ : on recharge l'état complet.
+    if (reload) refreshRef.current?.();
+  }, []);
+
+  /**
+   * Applique un état reçu à part (connexion, ou `res.state` d'une réponse déjà fusionnée : sans effet en double).
+   * Un état complet remplace tout ; un état partiel ne met à jour que le joueur, ses boosters et ses pastilles.
+   */
   const applyState = useCallback((state) => {
-    if (!state) return;
-    offset.current = state.serverTime - Date.now();
-    // Les progressions gardées en cache (collection, albums commencés) ne sont plus à jour.
-    clearApiCache('/catalog/mine');
-    clearApiCache('/catalog/groups');
-    clearApiCache('/catalog/albums?');
-    setData(state);
+    if (!state || typeof state !== 'object' || applied.current.has(state)) return;
+    applied.current.add(state);
+    if (Number.isFinite(state.serverTime)) offset.current = state.serverTime - Date.now();
+    if (state.partial) {
+      setData((current) => (current ? mergePartial(current, state) : current));
+      return;
+    }
+    dropCollectionCaches();
+    setData(fullState(state));
     setStatus('ready');
   }, []);
+
+  useEffect(() => onApiResponse((res) => mergeApiResponse(res)), [mergeApiResponse]);
 
   const refresh = useCallback(async () => {
     try {
@@ -50,6 +88,7 @@ export function GameProvider({ children }) {
       }
     }
   }, [applyState, status]);
+  refreshRef.current = refresh;
 
   useEffect(() => {
     refresh();
@@ -82,6 +121,8 @@ export function GameProvider({ children }) {
     const owned = indexCards(data.cards);
     const ownedSet = new Set(owned.keys());
     const achievements = new Map(data.achievements.map((a) => [a.key, a.at]));
+    // « Pressage n° » de chaque album complété : clé du succès -> rang du joueur parmi ceux qui l'ont complété.
+    const ranks = new Map(data.achievements.filter((a) => a.rank != null).map((a) => [a.key, a.rank]));
     const duplicates = data.cards.reduce((n, c) => n + Math.max(0, c.c - 1), 0);
     // Valeur des doublons en royalties (chaque ligne de carte porte sa rareté).
     const duplicatesValue = data.cards.reduce((n, c) => n + Math.max(0, c.c - 1) * recycleValue(c.r, c.v), 0);
@@ -91,24 +132,31 @@ export function GameProvider({ children }) {
     const stats = data.stats;
     const albumProgress = (albumId, total = 0) => stats.albums[albumId] || { ...EMPTY_RATIO, total };
     const artistProgress = (artistId, total = 0) => stats.artists[artistId] || { ...EMPTY_RATIO, total };
-    return { owned, ownedSet, achievements, stats, albumProgress, artistProgress, duplicates, duplicatesValue, ratings };
+    return { owned, ownedSet, achievements, ranks, stats, albumProgress, artistProgress, duplicates, duplicatesValue, ratings };
   }, [data]);
 
   const value = useMemo(
-    () => ({
-      status,
-      user: data?.user ?? null,
-      packs: data?.packs ?? null,
-      cards: data?.cards ?? [],
-      pendingFriends: data?.pendingFriends ?? 0,
-      isAdmin: data?.user?.role === 'admin',
-      ratingScale: data?.user?.ratingScale || 'stars',
-      now: () => Date.now() + offset.current,
-      ...derived,
-      applyState,
-      refresh,
-      logout,
-    }),
+    () => {
+      const counts = data?.counts ?? NO_COUNTS;
+      return {
+        status,
+        user: data?.user ?? null,
+        packs: data?.packs ?? null,
+        cards: data?.cards ?? [],
+        // Pastilles : demandes d'ami reçues, notifications non lues (PLAN.md 9.2).
+        counts,
+        // Ancien nom de counts.pendingFriends, gardé pour les pages existantes.
+        pendingFriends: counts.pendingFriends ?? 0,
+        prefs: data?.user?.prefs ?? { listen: 'deezer', emailDigest: false },
+        isAdmin: data?.user?.role === 'admin',
+        ratingScale: data?.user?.ratingScale || 'stars',
+        now: () => Date.now() + offset.current,
+        ...derived,
+        applyState,
+        refresh,
+        logout,
+      };
+    },
     [status, data, derived, applyState, refresh, logout],
   );
 

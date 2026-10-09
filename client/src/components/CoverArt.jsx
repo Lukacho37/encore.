@@ -2,9 +2,17 @@ import { memo, useId } from 'react';
 import { useCovers, realCover } from '../state/CoversContext.jsx';
 
 // Pochette d'un album ou d'un single.
-// - Vraie pochette quand le serveur en a trouvé une (Spotify ou Deezer) : l'image reste hébergée par la
-//   plateforme, affichée telle quelle, sans recadrage ni filtre.
+// - Vraie pochette quand le serveur en a trouvé une (Deezer) : l'image reste hébergée par la plateforme, affichée
+//   telle quelle, sans recadrage ni filtre.
 // - Sinon, visuel original généré à partir d'une palette et d'un motif propres à chaque album.
+//
+// Règles des pochettes (PLAN.md 7.1, à respecter partout où une vraie pochette s'affiche) :
+// - l'image est liée depuis le CDN de la plateforme, jamais téléchargée, mise en cache, relayée ni réhébergée par
+//   le serveur ; elle sert seulement à identifier l'album (pages album et morceau, vignettes, listes, recherche, fil) ;
+// - redimensionnement seulement : pas de recadrage au-delà d'une source carrée, pas de filtre, pas de fondu, rien posé
+//   sur l'image (reflet holo, pastilles de rareté, « Nouveau », ruban PROMO vont sur le cadre de la carte) ;
+// - jamais comme avatar, cosmétique, badge ou récompense : ces usages prennent le visuel généré (`generated`) ;
+// - pochette retirée par l'admin (`art.coverBlocked`, demande de retrait) : visuel généré partout à la fois.
 
 function seededRandom(seed) {
   let h = 1779033703 ^ seed.length;
@@ -197,10 +205,19 @@ function motif(kind, [c0, c1, c2], rand, id) {
   return els;
 }
 
+/**
+ * Vraie pochette affichée pour ce visuel, ou null (visuel généré) : celle de realCover(), sauf si l'admin l'a retirée
+ * (`art.coverBlocked`). Les composants qui changent de mise en page selon la pochette (carte, vignette) passent par ici.
+ */
+export function shownCover(art, covers) {
+  if (!art || art.coverBlocked) return null;
+  return realCover(art, covers);
+}
+
 function CoverArt({ art, className = '', title, generated = false, sizes = '160px' }) {
   const id = useId().replace(/:/g, '');
   const covers = useCovers();
-  const real = generated ? null : realCover(art, covers);
+  const real = generated ? null : shownCover(art, covers);
   if (real) {
     const srcSet = real.thumb && real.thumb !== real.cover && real.thumbW && real.coverW
       ? `${real.thumb} ${real.thumbW}w, ${real.cover} ${real.coverW}w`
@@ -237,5 +254,5 @@ function CoverArt({ art, className = '', title, generated = false, sizes = '160p
   );
 }
 
-export default memo(CoverArt, (a, b) => a.art.seed === b.art.seed && a.art.cover === b.art.cover && a.className === b.className
+export default memo(CoverArt, (a, b) => a.art.seed === b.art.seed && a.art.cover === b.art.cover && a.art.coverBlocked === b.art.coverBlocked && a.className === b.className
   && a.generated === b.generated && a.title === b.title && a.sizes === b.sizes);

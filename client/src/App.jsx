@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, lazy, Suspense } from 'react';
-import { Routes, Route, Navigate, NavLink, Link, useLocation, useNavigate } from 'react-router';
+import { useEffect, useRef, useState, Suspense } from 'react';
+import { Routes, NavLink, Link, useLocation, useNavigate } from 'react-router';
 import { useGame } from './state/GameContext.jsx';
 import { useI18n, LANGS } from './i18n/index.jsx';
 import { Avatar, Icon, Logo, Modal, Royalties, formatDuration, useNow, Spinner, useToast } from './components/ui.jsx';
@@ -8,17 +8,8 @@ import { post } from './api.js';
 import { sound } from './sound.js';
 import { PROVIDER_NAMES, useCovers } from './state/CoversContext.jsx';
 import { useApi } from './state/catalog.js';
-import Home from './pages/Home.jsx';
-import Collection from './pages/Collection.jsx';
-import AlbumPage from './pages/AlbumPage.jsx';
-import ArtistPage from './pages/ArtistPage.jsx';
-import Profile from './pages/Profile.jsx';
-import Friends from './pages/Friends.jsx';
-import BlindTest from './pages/BlindTest.jsx';
-import { Login, Signup, CheckEmail, Verify, Forgot, Reset } from './pages/Auth.jsx';
-import Mailbox from './pages/Mailbox.jsx';
-
-const Admin = lazy(() => import('./pages/Admin.jsx'));
+// Pages : table des routes (chargement à la demande sauf accueil et connexion).
+import { guestRoutes, userRoutes } from './routes.jsx';
 
 function useSound() {
   const [muted, setMuted] = useState(sound.isMuted());
@@ -243,7 +234,6 @@ function Footer() {
 
 export default function App() {
   const { status } = useGame();
-  const location = useLocation();
 
   if (status === 'loading') {
     return <div className="boot"><Logo /><Spinner /></div>;
@@ -253,16 +243,7 @@ export default function App() {
     return (
       <>
         <ScrollToTop />
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
-          <Route path="/check-email" element={<CheckEmail />} />
-          <Route path="/verify" element={<Verify />} />
-          <Route path="/forgot" element={<Forgot />} />
-          <Route path="/reset" element={<Reset />} />
-          <Route path="/dev/mailbox" element={<Mailbox />} />
-          <Route path="*" element={<Navigate to="/login" replace state={{ from: location.pathname }} />} />
-        </Routes>
+        <Routes>{guestRoutes}</Routes>
       </>
     );
   }
@@ -273,22 +254,7 @@ export default function App() {
       <Header />
       <main className="page">
         <Suspense fallback={<div className="boot boot--inline"><Spinner /></div>}>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/collection" element={<Collection />} />
-            <Route path="/collection/:tab" element={<Collection />} />
-            <Route path="/album/:id" element={<AlbumPage />} />
-            <Route path="/artist/:id" element={<ArtistPage />} />
-            <Route path="/blindtest" element={<BlindTest />} />
-            <Route path="/friends" element={<Friends />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/u/:username" element={<Profile />} />
-            <Route path="/admin" element={<Admin />} />
-            <Route path="/verify" element={<Verify />} />
-            <Route path="/reset" element={<Reset />} />
-            <Route path="/dev/mailbox" element={<Mailbox />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+          <Routes>{userRoutes}</Routes>
         </Suspense>
       </main>
       <Footer />

@@ -37,7 +37,7 @@ const lastLink = (email) => db.prepare('SELECT text FROM dev_emails WHERE to_add
 const tokenFrom = (text) => /token=([\w-]+)/.exec(text)[1];
 
 async function register(call, email, username) {
-  const r = await call('POST', '/api/auth/signup', { email, username, password: 'motdepasse123' });
+  const r = await call('POST', '/api/auth/signup', { acceptTerms: true, age15: true, email, username, password: 'motdepasse123' });
   assert.equal(r.status, 201, JSON.stringify(r.body));
   const v = await call('POST', '/api/auth/verify', { token: tokenFrom(lastLink(email)) });
   assert.equal(v.status, 200, JSON.stringify(v.body));
@@ -46,11 +46,11 @@ async function register(call, email, username) {
 
 test('inscription, vérification e-mail et connexion', async () => {
   const call = client();
-  const r = await call('POST', '/api/auth/signup', { email: 'Alice@Example.com', username: 'alice', password: 'motdepasse123' });
+  const r = await call('POST', '/api/auth/signup', { acceptTerms: true, age15: true, email: 'Alice@Example.com', username: 'alice', password: 'motdepasse123' });
   assert.equal(r.status, 201);
-  assert.equal((await call('POST', '/api/auth/signup', { email: 'x@example.com', username: 'ALICE', password: 'motdepasse123' })).body.error, 'username_taken');
-  assert.equal((await call('POST', '/api/auth/signup', { email: 'y@example.com', username: 'a b', password: 'motdepasse123' })).body.error, 'username_format');
-  assert.equal((await call('POST', '/api/auth/signup', { email: 'z@example.com', username: 'zed', password: 'court' })).body.error, 'password_short');
+  assert.equal((await call('POST', '/api/auth/signup', { acceptTerms: true, age15: true, email: 'x@example.com', username: 'ALICE', password: 'motdepasse123' })).body.error, 'username_taken');
+  assert.equal((await call('POST', '/api/auth/signup', { acceptTerms: true, age15: true, email: 'y@example.com', username: 'a b', password: 'motdepasse123' })).body.error, 'username_format');
+  assert.equal((await call('POST', '/api/auth/signup', { acceptTerms: true, age15: true, email: 'z@example.com', username: 'zed', password: 'court' })).body.error, 'password_short');
 
   const login = await call('POST', '/api/auth/login', { identifier: 'alice', password: 'motdepasse123' });
   assert.equal(login.status, 403);
@@ -62,7 +62,7 @@ test('inscription, vérification e-mail et connexion', async () => {
   assert.equal(v.body.user.username, 'alice');
   assert.equal(v.body.user.role, 'admin', 'adresse listée dans ADMIN_EMAILS = admin');
   assert.equal(v.body.packs.bonus, 5);
-  assert.equal((await call('POST', '/api/auth/signup', { email: 'alice@example.com', username: 'alice2', password: 'motdepasse123' })).body.error, 'email_taken');
+  assert.equal((await call('POST', '/api/auth/signup', { acceptTerms: true, age15: true, email: 'alice@example.com', username: 'alice2', password: 'motdepasse123' })).body.error, 'email_taken');
 
   assert.equal((await call('GET', '/api/state')).status, 200);
   await call('POST', '/api/auth/logout');
@@ -218,9 +218,16 @@ test('admin réservé à ADMIN_EMAILS : personne d’autre ne peut le devenir', 
   assert.equal(st.packs.unlimited, false);
   assert.equal((await call('GET', '/api/admin/overview')).status, 403);
   assert.equal((await call('POST', '/api/admin/me/complete')).status, 403);
-  assert.equal((await call('POST', '/api/admin/users/1/role', { role: 'admin' })).status, 404, 'plus de changement de rôle');
+  // Le sous-routeur /api/admin est gardé une seule fois : tout y répond 403 à un non-admin, même une route qui
+  // n'existe pas ; l'admin, lui, reçoit 404 sur l'ancienne route de changement de rôle (supprimée).
+  assert.equal((await call('POST', '/api/admin/users/1/role', { role: 'admin' })).status, 403);
+  const owner = client();
+  await owner('POST', '/api/auth/login', { identifier: 'alice', password: 'motdepasse123' });
+  assert.equal((await owner('POST', '/api/admin/users/1/role', { role: 'admin' })).status, 404, 'plus de changement de rôle');
+  // Le profil public ne dit plus qui est admin (PLAN.md 7.2) : seul l'intéressé le voit dans son propre état.
   const profile = (await call('GET', '/api/users/alice')).body;
-  assert.equal(profile.role, 'admin');
+  assert.equal(profile.username, 'alice');
+  assert.equal(profile.role, undefined);
 });
 
 test('pouvoirs admin : pressage gratuit, promos, toutes les pochettes, réponse du blind test', async () => {
@@ -255,7 +262,9 @@ test('notes et critiques', async () => {
   assert.equal(r1.status, 200, JSON.stringify(r1.body));
   assert.equal(r1.body.mine.score, 9);
   assert.equal(r1.body.mine.review, 'Un classique.');
-  assert.ok(r1.body.state.ratings.some((x) => x.t === 'album' && x.i === 'discovery' && x.s === 9));
+  // Réponse d'une action : état partiel + delta de la note (le site le fusionne dans state.ratings).
+  assert.equal(r1.body.state.partial, true);
+  assert.deepEqual(r1.body.rating, { type: 'album', id: 'discovery', score: 9 });
   // Mise à jour plutôt que doublon
   await a('PUT', '/api/ratings/album/discovery', { score: 10, review: 'Chef-d’œuvre.' });
   await b('PUT', '/api/ratings/album/discovery', { score: 6 });
@@ -307,7 +316,7 @@ test('adresse réservée par quelqu’un d’autre : le vrai propriétaire la r�
   const attacker = client();
   const owner = client();
   // L'imposteur crée un compte avec l'adresse admin et son propre mot de passe.
-  assert.equal((await attacker('POST', '/api/auth/signup', { email: 'alice2@example.com', username: 'imposteur', password: 'piratepirate' })).status, 201);
+  assert.equal((await attacker('POST', '/api/auth/signup', { acceptTerms: true, age15: true, email: 'alice2@example.com', username: 'imposteur', password: 'piratepirate' })).status, 201);
   const attackerToken = tokenFrom(lastLink('alice2@example.com'));
   // Le propriétaire clique sur ce lien depuis son propre navigateur : sans le mot de passe, rien ne se passe.
   const noPw = await owner('POST', '/api/auth/verify', { token: attackerToken });
@@ -315,7 +324,7 @@ test('adresse réservée par quelqu’un d’autre : le vrai propriétaire la r�
   assert.equal(noPw.body.error, 'password_required');
   assert.equal((await owner('POST', '/api/auth/verify', { token: attackerToken, password: 'motdepasse123' })).body.error, 'invalid_credentials');
   // Le propriétaire peut quand même s'inscrire avec son adresse : le compte inachevé est remplacé.
-  const reg = await owner('POST', '/api/auth/signup', { email: 'alice2@example.com', username: 'alice2', password: 'motdepasse123' });
+  const reg = await owner('POST', '/api/auth/signup', { acceptTerms: true, age15: true, email: 'alice2@example.com', username: 'alice2', password: 'motdepasse123' });
   assert.equal(reg.status, 201, JSON.stringify(reg.body));
   assert.equal((await attacker('POST', '/api/auth/verify', { token: attackerToken, password: 'piratepirate' })).body.error, 'invalid_token');
   assert.equal((await attacker('POST', '/api/auth/login', { identifier: 'imposteur', password: 'piratepirate' })).status, 401);
@@ -323,13 +332,13 @@ test('adresse réservée par quelqu’un d’autre : le vrai propriétaire la r�
   assert.equal(ok.status, 200);
   assert.equal(ok.body.user.username, 'alice2');
   // Une adresse vérifiée, elle, ne peut plus être reprise.
-  assert.equal((await attacker('POST', '/api/auth/signup', { email: 'alice2@example.com', username: 'encoreuntest', password: 'piratepirate' })).body.error, 'email_taken');
+  assert.equal((await attacker('POST', '/api/auth/signup', { acceptTerms: true, age15: true, email: 'alice2@example.com', username: 'encoreuntest', password: 'piratepirate' })).body.error, 'email_taken');
 });
 
 test('vérifier depuis un autre appareil demande le mot de passe', async () => {
   const laptop = client();
   const phone = client();
-  await laptop('POST', '/api/auth/signup', { email: 'zoe@example.com', username: 'zoe', password: 'motdepasse123' });
+  await laptop('POST', '/api/auth/signup', { acceptTerms: true, age15: true, email: 'zoe@example.com', username: 'zoe', password: 'motdepasse123' });
   const token = tokenFrom(lastLink('zoe@example.com'));
   assert.equal((await phone('POST', '/api/auth/verify', { token })).body.error, 'password_required');
   const ok = await phone('POST', '/api/auth/verify', { token, password: 'motdepasse123' });

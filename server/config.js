@@ -34,11 +34,47 @@ export function catalogImportMode(v, isTest = false) {
   return mode === 'deezer' ? 'deezer' : 'off';
 }
 
+/** Adresse locale (localhost, 127.0.0.1, ::1, *.localhost) : seule une telle adresse autorise la boîte de test. */
+export function isLocalUrl(url) {
+  try {
+    const host = new URL(url).hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.localhost');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Boîte e-mail de test (/dev/mailbox, /api/dev/emails) : seulement avec DEV_MAILBOX=1 ET une adresse APP_URL locale.
+ * DEV_MAILBOX=1 avec une adresse publique est une erreur de configuration : le serveur refuse de démarrer
+ * (sinon n'importe qui lirait les liens de confirmation et de mot de passe des joueurs).
+ */
+export function devMailboxMode(flag, appUrl) {
+  const on = /^\s*(1|true|yes|on)\s*$/i.test(String(flag ?? ''));
+  if (!on) return { enabled: false, error: null };
+  if (!isLocalUrl(appUrl)) {
+    return { enabled: false, error: `DEV_MAILBOX=1 n'est permis qu'avec une adresse APP_URL locale (reçu : ${appUrl}). Retire DEV_MAILBOX en production.` };
+  }
+  return { enabled: true, error: null };
+}
+
+const appUrl = (env.APP_URL || (isProd ? `http://localhost:${port}` : 'http://localhost:5173')).replace(/\/$/, '');
+const devMailbox = devMailboxMode(env.DEV_MAILBOX, appUrl);
+// Version des CGU en vigueur (date de publication) : un changement affiche le bandeau d'acceptation aux comptes
+// existants et bloque leurs écritures publiques jusqu'à l'acceptation (PLAN.md 7.1).
+const termsVersion = String(env.TERMS_VERSION || '2026-10-06').trim();
+const text = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+
 export const config = {
   isProd,
   isTest: env.NODE_ENV === 'test',
   port,
-  appUrl: (env.APP_URL || (isProd ? `http://localhost:${port}` : 'http://localhost:5173')).replace(/\/$/, ''),
+  appUrl,
+  // Cookies « Secure » dès que le site est servi en https (pas seulement avec NODE_ENV=production).
+  secureCookies: isProd || appUrl.startsWith('https://'),
+  // Boîte e-mail de test (voir devMailboxMode) ; devMailboxError non nul = le serveur refuse de démarrer.
+  devMailbox: devMailbox.enabled,
+  devMailboxError: devMailbox.error,
   dbFile: env.DATABASE_FILE || defaultDbFile(),
   trustProxy: env.TRUST_PROXY === 'true',
 
@@ -59,20 +95,30 @@ export const config = {
     : null,
   mailFrom: env.MAIL_FROM || 'AlbumMania <no-reply@albummania.local>',
 
-  // Extraits audio du blind test : "off" (mode indices, par défaut) ou "itunes" (aperçus de 30 s de l'API iTunes Search).
-  // Les conditions d'Apple interdisent ces aperçus dans un jeu : ne pas activer "itunes" sans autorisation écrite.
-  blindtestAudio: env.BLINDTEST_AUDIO || 'off',
-  previewCountry: env.PREVIEW_COUNTRY || 'FR',
+  // Le blind test se joue en mode indices uniquement : aucun extrait audio n'est diffusé (PLAN.md 7.1 ; l'ancien
+  // interrupteur BLINDTEST_AUDIO=itunes est supprimé, les conditions d'Apple interdisent ces extraits dans un jeu).
 
-  // Vraies pochettes : "auto" (Spotify si les clés sont renseignées, sinon Deezer), "spotify", "deezer" ou "off".
-  // Les images ne sont jamais copiées : le site affiche celle hébergée par la plateforme, avec un lien vers elle.
+  // Vraies pochettes : "auto" (= Deezer), "deezer" ou "off". Les images ne sont jamais copiées : le site affiche celle
+  // hébergée par la plateforme, avec un lien vers elle. L'API Web de Spotify n'est plus utilisée (ses conditions
+  // interdisent les jeux) : `spotify` reste toujours null, SPOTIFY_CLIENT_ID et SPOTIFY_CLIENT_SECRET sont ignorés.
   covers: coversMode(env.COVERS),
   coversRaw: env.COVERS,
   coversInvalid: coversMode(env.COVERS) === 'off' && !/^\s*off\s*$/i.test(env.COVERS || ''),
   coversMarket: (env.COVERS_MARKET || 'FR').toUpperCase(),
-  spotify: env.SPOTIFY_CLIENT_ID && env.SPOTIFY_CLIENT_SECRET
-    ? { clientId: env.SPOTIFY_CLIENT_ID, clientSecret: env.SPOTIFY_CLIENT_SECRET }
-    : null,
+  spotify: null,
+  // Vraies pochettes dans les images partagées (Mes 9 albums, Rétro…) : "deezer" pour les autoriser (composées dans
+  // le navigateur seulement), sinon false = visuels AlbumMania générés (par défaut, PLAN.md 7.1).
+  shareCovers: /^\s*deezer\s*$/i.test(env.SHARE_COVERS || '') ? 'deezer' : false,
+
+  // Mentions légales (/legal/mentions, GET /api/legal/info) : éditeur, directeur de la publication, hébergeur.
+  legal: {
+    editor: { name: text(env.LEGAL_EDITOR_NAME), address: text(env.LEGAL_EDITOR_ADDRESS), email: text(env.LEGAL_EDITOR_EMAIL) },
+    publicationDirector: text(env.LEGAL_PUBLICATION_DIRECTOR),
+    host: { name: text(env.LEGAL_HOST_NAME), address: text(env.LEGAL_HOST_ADDRESS), phone: text(env.LEGAL_HOST_PHONE) },
+    contactEmail: text(env.LEGAL_CONTACT_EMAIL) || text(env.LEGAL_EDITOR_EMAIL),
+  },
+  termsVersion,
+  termsUpdatedAt: text(env.TERMS_UPDATED_AT) || termsVersion,
   // Grand catalogue importé depuis Deezer : "deezer" (par défaut) ou "off" (seulement les 20 albums de base).
   catalogImport: catalogImportMode(env.CATALOG_IMPORT, env.NODE_ENV === 'test'),
   catalogImportInvalid: !!String(env.CATALOG_IMPORT ?? '').trim() && !/^\s*(deezer|off)\s*$/i.test(env.CATALOG_IMPORT),

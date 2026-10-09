@@ -1,3 +1,6 @@
+// Feuille de base en premier : jetons et composants communs d'abord, puis les feuilles des pages et des chantiers
+// (importées par leurs composants), qui la précisent sans astuce de spécificité.
+import './styles/app.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, MemoryRouter } from 'react-router';
@@ -8,7 +11,6 @@ import { ToastProvider } from './components/ui.jsx';
 import { CardModalProvider } from './components/CardModal.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { CoversProvider } from './state/CoversContext.jsx';
-import './styles/app.css';
 
 // La démo tourne dans un cadre isolé : on garde la navigation en mémoire.
 const Router = __DEMO__ ? MemoryRouter : BrowserRouter;

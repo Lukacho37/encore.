@@ -15,7 +15,11 @@
     "build:demo": "vite build --mode demo && node scripts/package-demo.js",
     "start": "NODE_ENV=production node --disable-warning=ExperimentalWarning server/index.js",
     "test": "node --disable-warning=ExperimentalWarning --test server/test/*.test.js",
-    "catalog:purge": "node --disable-warning=ExperimentalWarning scripts/purge-catalog.js"
+    "catalog:purge": "node --disable-warning=ExperimentalWarning scripts/purge-catalog.js",
+    "lint:css": "node scripts/css-lint.mjs",
+    "scaffold": "node scripts/scaffold.mjs",
+    "owners": "node scripts/check-owners.mjs",
+    "e2e": "node scripts/e2e/run.mjs"
   },
   "dependencies": {
     "express": "^5.2.1",

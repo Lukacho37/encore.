@@ -63,9 +63,10 @@ export function RarityTable() {
                     </span>
                   )}
                 </td>
-                <td className="num mono">{tier ? `${tier.min}–${tier.max}` : t('rarityGuide.promoRange')}</td>
-                <td className="num mono">{pct(odds)}</td>
-                <td className="num mono">{counts ? num(counts[r] || 0) : '…'}</td>
+                {/* data-label : sur téléphone, le tableau s'empile et chaque chiffre reprend le nom de sa colonne. */}
+                <td className="num mono" data-label={t('rarityGuide.colPop')}>{tier ? `${tier.min}–${tier.max}` : t('rarityGuide.promoRange')}</td>
+                <td className="num mono" data-label={t('rarityGuide.colOdds')}>{pct(odds)}</td>
+                <td className="num mono" data-label={t('rarityGuide.colCards')}>{counts ? num(counts[r] || 0) : '…'}</td>
               </tr>
             );
           })}
@@ -98,6 +99,12 @@ export function RarityGuideModal({ open, onClose }) {
             <p>{t('rarityGuide.promoBody')}</p>
           </section>
         </div>
+        {/* Séparation entre le jeu et les œuvres (PLAN.md 7.1) : rien ici n'est un droit ni une valeur réelle. */}
+        <section className="rarity-guide__game">
+          <h3>{t('rarityGuide.gameTitle')}</h3>
+          <p>{t('rarityGuide.gameBody')}</p>
+          <p>{t('rarityGuide.gameRoyalties')}</p>
+        </section>
       </div>
     </Modal>
   );

@@ -1,4 +1,6 @@
-// Textes ajoutés pour le catalogue à grande échelle (zone : home). Fusionnés dans fr.js / en.js au chargement.
+// Zone « home » (chantier P0-B) : accueil, écran d'ouverture (open), guide des raretés (rarityGuide) et états partagés
+// des listes (feedback : components/feedback.jsx). Fusionnés dans fr.js / en.js au chargement ; une clé ici précise
+// celle du dictionnaire principal.
 export default {
   fr: {
     home: {
@@ -16,17 +18,36 @@ export default {
       howAlbumFree: 'offert (admin)',
       howQuick: 'Compléter « {title} »',
       howCta: 'Choisir un album',
+      // Doublons : plus de promesse d'échanges entre joueurs (pas prévus pour l'instant).
+      dupHint: 'Recycle-les en royalties quand tu veux : chaque doublon rapporte selon sa rareté.',
+      feedEmptyTitle: 'Le studio est calme',
+      feedEmptyBody: 'Les notes et critiques de tes amis apparaîtront ici.',
+      feedEmptyCta: 'Trouver des amis',
     },
     open: {
       albumBooster: 'Booster d’album',
       summaryAlbum: 'Ton booster d’album',
       againAlbum: 'Encore un booster d’album',
       spent: 'Royalties dépensées',
-      royaltiesHint: 'Droits d’auteur des nouvelles cartes et récompenses',
+      // Les royalties sont une monnaie de jeu, sans lien avec les droits d'auteur (PLAN.md 7.1).
+      royaltiesHint: 'Gagnées avec les nouvelles cartes et les récompenses',
+      // Une vraie pochette n'est jamais une photo de profil : c'est le visuel AlbumMania de l'album.
+      albumUnlocks: 'Rangé dans ta vinylthèque · visuel AlbumMania de l’album débloqué pour ta photo de profil',
     },
     rarityGuide: {
       cardsHint: 'Nombre de cartes de cette rareté dans tout le catalogue.',
       packFocus: 'Chaque carte (hors promo) a {p} de chances de venir d’un album que tu as déjà commencé.',
+      colExample: 'Exemple',
+      gameTitle: 'Des éléments de jeu',
+      gameBody: 'Raretés, cartes, royalties, badges et classements sont des éléments de jeu AlbumMania ; les œuvres, pochettes, noms et marques appartiennent à leurs ayants droit.',
+      gameRoyalties: 'Les royalties sont une monnaie de jeu : elles n’ont aucune valeur en argent, ne s’achètent pas et n’ont aucun lien avec les droits d’auteur.',
+    },
+    feedback: {
+      loadError: 'Impossible de charger cette liste pour le moment.',
+      retry: 'Réessayer',
+      loadMore: 'Voir plus',
+      remaining: { one: '{n} restant', other: '{n} restants' },
+      refine: 'Affine ta recherche pour voir la suite de la liste.',
     },
   },
   en: {
@@ -45,17 +66,33 @@ export default {
       howAlbumFree: 'free (admin)',
       howQuick: 'Complete “{title}”',
       howCta: 'Pick an album',
+      dupHint: 'Recycle them into royalties whenever you like: each duplicate pays according to its rarity.',
+      feedEmptyTitle: 'The studio is quiet',
+      feedEmptyBody: 'Your friends’ ratings and reviews will show up here.',
+      feedEmptyCta: 'Find friends',
     },
     open: {
       albumBooster: 'Album pack',
       summaryAlbum: 'Your album pack',
       againAlbum: 'Another album pack',
       spent: 'Royalties spent',
-      royaltiesHint: 'Royalties from new cards and rewards',
+      royaltiesHint: 'Earned from new cards and rewards',
+      albumUnlocks: 'Added to your record collection · the album’s AlbumMania artwork unlocked as profile picture',
     },
     rarityGuide: {
       cardsHint: 'Number of cards of this rarity in the whole catalog.',
       packFocus: 'Each card (except promos) has a {p} chance to come from an album you have already started.',
+      colExample: 'Example',
+      gameTitle: 'Game items',
+      gameBody: 'Rarities, cards, royalties, badges and rankings are AlbumMania game items; the works, covers, names and trademarks belong to their rights holders.',
+      gameRoyalties: 'Royalties are an in-game currency: they have no cash value, can’t be bought and have nothing to do with authors’ rights.',
+    },
+    feedback: {
+      loadError: 'This list can’t be loaded right now.',
+      retry: 'Try again',
+      loadMore: 'Load more',
+      remaining: { one: '{n} left', other: '{n} left' },
+      refine: 'Refine your search to see the rest of the list.',
     },
   },
 };

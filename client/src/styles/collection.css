@@ -7,23 +7,23 @@
 
 .coll-summary {
   list-style: none;
-  margin: 0 0 14px;
+  margin: 0 0 var(--s-14);
   padding: 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: var(--s-10);
 }
 
 .coll-summary__item {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--s-6);
   height: 100%;
-  padding: 12px 14px;
+  padding: var(--s-12) var(--s-14);
   border-radius: 12px;
   background: var(--stage);
   border: 1px solid var(--line-soft);
-  transition: border-color 0.15s;
+  transition: border-color var(--dur-hover);
 }
 
 .coll-summary__item:hover {
@@ -33,9 +33,9 @@
 .coll-summary__label {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--s-6);
   color: var(--haze);
-  font: 650 12.5px/1.2 var(--font-body);
+  font: var(--fw-ui) var(--fs-13)/1.2 var(--font-body);
 }
 
 .coll-summary__item.is-on .coll-summary__label svg {
@@ -44,13 +44,13 @@
 
 .coll-summary__value {
   font-size: 19px;
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   color: var(--paper);
 }
 
 .coll-summary__value small {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
   color: var(--haze);
 }
 
@@ -63,10 +63,10 @@
 .coll-hint {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: var(--s-10);
   max-width: 88ch;
-  margin: 0 0 16px;
-  padding: 10px 14px;
+  margin: 0 0 var(--s-16);
+  padding: var(--s-10) var(--s-14);
   border-radius: 12px;
   background: color-mix(in oklab, var(--cue) 7%, var(--stage));
   border: 1px solid color-mix(in oklab, var(--cue) 22%, var(--line-soft));
@@ -87,8 +87,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
+  gap: var(--s-10);
+  margin-bottom: var(--s-12);
 }
 
 .coll-search {
@@ -121,14 +121,14 @@
 .coll-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--s-8);
   min-height: 38px;
-  padding: 0 14px 0 10px;
-  border-radius: 999px;
+  padding: 0 var(--s-14) 0 var(--s-10);
+  border-radius: var(--rad-pill);
   border: 1px solid var(--line);
   background: var(--stage);
   color: var(--paper-dim);
-  font: 600 13px var(--font-body);
+  font: var(--fw-semi) var(--fs-13) var(--font-body);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -150,21 +150,21 @@
 /* pastilles de filtre (genres, raretés) */
 
 .coll-chips {
-  margin-bottom: 14px;
+  margin-bottom: var(--s-14);
 }
 
 .coll-chips .chip-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--s-6);
   flex: none;
   white-space: nowrap;
 }
 
 .coll-chip__n {
-  font: 500 11px var(--font-mono);
+  font: var(--fw-medium) var(--fs-12) var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-stretch: 85%;
+  font-stretch: var(--fst-mono);
   opacity: 0.7;
 }
 
@@ -184,12 +184,12 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px 12px;
+  gap: var(--s-8) var(--s-12);
   min-height: 30px;
-  margin-bottom: 14px;
+  margin-bottom: var(--s-14);
   color: var(--haze);
   font-size: 13.5px;
-  font-weight: 600;
+  font-weight: var(--fw-semi);
 }
 
 .coll-count .spinner {
@@ -215,13 +215,13 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  margin-top: 28px;
+  gap: var(--s-10);
+  margin-top: var(--s-28);
   text-align: center;
 }
 
 .coll-more .btn {
-  gap: 8px;
+  gap: var(--s-8);
 }
 
 .coll-more .spinner {
@@ -231,15 +231,15 @@
 
 .coll-more__n {
   color: var(--haze);
-  font: 500 12px var(--font-mono);
-  font-stretch: 85%;
+  font: var(--fw-medium) var(--fs-12) var(--font-mono);
+  font-stretch: var(--fst-mono);
 }
 
 .coll-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
+  gap: var(--s-14);
 }
 
 .coll-empty p {
@@ -263,13 +263,6 @@
 
 /* emplacements en cours de chargement (même reflet que les cartes) */
 
-.coll-skel__block,
-.coll-skel__line,
-.collection .coll-skel-row {
-  background: linear-gradient(110deg, #1a1522 30%, #2a2233 50%, #1a1522 70%) 0 0 / 300% 100%;
-  animation: card-loading 1.4s linear infinite;
-}
-
 .coll-skel {
   pointer-events: none;
 }
@@ -282,7 +275,7 @@
   display: block;
   width: 80%;
   height: 12px;
-  border-radius: 6px;
+  border-radius: var(--rad-xs);
 }
 
 .coll-skel__line--short {
@@ -298,30 +291,22 @@
   grid-template-columns: auto minmax(0, 1fr);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .coll-skel__block,
-  .coll-skel__line,
-  .collection .coll-skel-row {
-    animation: none;
-  }
-}
-
 @media (max-width: 640px) {
   .coll-summary {
-    gap: 8px;
+    gap: var(--s-8);
   }
 
   /* Raretés plus compactes : le nom, puis la barre et le compte sur une même ligne. */
   .collection .rarity-bar {
-    gap: 8px;
+    gap: var(--s-8);
   }
 
   .collection .rarity-bar__item {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: 6px 8px;
-    padding: 8px 10px;
+    gap: var(--s-6) var(--s-8);
+    padding: var(--s-8) var(--s-10);
   }
 
   .collection .rarity-bar__item .rarity-bar__label {
@@ -333,11 +318,11 @@
   }
 
   .coll-summary__item {
-    padding: 10px;
+    padding: var(--s-10);
   }
 
   .coll-summary__label {
-    font-size: 11.5px;
+    font-size: var(--fs-12);
   }
 
   .coll-summary__label svg {
@@ -345,16 +330,16 @@
   }
 
   .coll-summary__value {
-    font-size: 16px;
+    font-size: var(--fs-16);
   }
 
   .coll-summary__value small {
     display: block;
-    font-size: 11px;
+    font-size: var(--fs-12);
   }
 
   .coll-hint {
-    font-size: 13px;
+    font-size: var(--fs-13);
   }
 
   .coll-search {
@@ -372,7 +357,7 @@
 
   .coll-toolbar .select select {
     width: 100%;
-    padding: 0 28px 0 12px;
+    padding: 0 var(--s-28) 0 var(--s-12);
     background-position: right 10px center;
   }
 
@@ -381,9 +366,9 @@
     flex-wrap: nowrap;
     overflow-x: auto;
     scrollbar-width: none;
-    padding: 0 28px 2px 0;
-    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
-    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+    padding: 0 var(--s-28) var(--s-2) 0;
+    -webkit-mask-image: linear-gradient(to right, var(--black) calc(100% - 28px), transparent);
+    mask-image: linear-gradient(to right, var(--black) calc(100% - 28px), transparent);
   }
 
   .collection .coll-chips::-webkit-scrollbar {

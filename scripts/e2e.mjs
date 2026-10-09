@@ -1,64 +1,10 @@
 // Parcours de bout en bout avec un vrai navigateur + captures d'écran.
 // Usage : BASE=http://localhost:3100 OUT=./shots node scripts/e2e.mjs
 // Le serveur doit tourner sans SMTP (boîte e-mail de test) et avec ADMIN_EMAILS=luka@example.com.
-import { chromium } from 'playwright';
-import fs from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { BASE, run, shot, signup, fillSignup, fail, finish } from './e2e/lib.mjs';
 
-const BASE = process.env.BASE || 'http://localhost:3000';
-const OUT = process.env.OUT || 'shots';
-const executablePath = process.env.CHROMIUM || undefined;
-fs.mkdirSync(OUT, { recursive: true });
-
-const browser = await chromium.launch({ executablePath });
-const errors = [];
-
-async function run(name, viewport, fn) {
-  const ctx = await browser.newContext({ viewport, deviceScaleFactor: 1, locale: 'fr-FR' });
-  // Derrière un proxy qui intercepte le TLS, le navigateur de test ne fait pas confiance aux polices Google :
-  // ROUTE_FONTS_VIA_CURL=1 les télécharge avec curl (qui utilise le magasin de certificats du système).
-  if (process.env.ROUTE_FONTS_VIA_CURL) {
-    await ctx.route(/fonts\.(googleapis|gstatic)\.com/, (route) => {
-      const body = execFileSync('curl', ['-sS', '-A', 'Mozilla/5.0 Chrome/140', route.request().url()]);
-      const type = route.request().url().includes('googleapis') ? 'text/css' : 'font/woff2';
-      route.fulfill({ status: 200, body, headers: { 'content-type': type, 'access-control-allow-origin': '*' } });
-    });
-  }
-  const page = await ctx.newPage();
-  page.on('pageerror', (e) => errors.push(`[${name}] ${e.message}`));
-  // Le 401 sur /api/state avant connexion est attendu.
-  // Les images de pochettes bloquées par le réseau (« net::ERR_… », bac à sable sans Internet) sont ignorées :
-  // le site affiche alors le visuel généré. Les vraies erreurs HTTP du site restent comptées.
-  page.on('console', (m) => m.type() === 'error' && !m.text().includes('401') && !/Failed to load resource: net::ERR_/.test(m.text())
-    && errors.push(`[${name}] console: ${m.text()}`));
-  try {
-    await fn(page);
-  } catch (err) {
-    // Capture de l'écran au moment de l'échec, pour comprendre ce qui bloquait.
-    await page.screenshot({ path: `${OUT}/zz-error-${name}.png` }).catch(() => {});
-    throw err;
-  } finally {
-    await ctx.close();
-  }
-}
-
-const shot = (page, file) => page.screenshot({ path: `${OUT}/${file}.png`, fullPage: false });
-
-async function signup(page, email, username) {
-  await page.goto(`${BASE}/signup`);
-  await page.fill('#su-email', email);
-  await page.fill('#su-user', username);
-  await page.fill('#su-pw', 'motdepasse123');
-  await page.fill('#su-confirm', 'motdepasse123');
-  await page.waitForSelector('.field__ok');
-  await page.click('button[type=submit]');
-  await page.waitForURL('**/check-email');
-  const mails = await (await page.request.get(`${BASE}/api/dev/emails`)).json();
-  const mail = mails.find((m) => m.to === email);
-  const token = /token=([\w-]+)/.exec(mail.text)[1];
-  await page.goto(`${BASE}/verify?token=${token}`);
-  await page.waitForSelector('.hero');
-}
+// Erreurs relevées par les parcours (les outils communs sont dans scripts/e2e/lib.mjs).
+const errors = { push: fail };
 
 await run('desktop', { width: 1280, height: 820 }, async (page) => {
   await page.goto(`${BASE}/login`);
@@ -69,12 +15,8 @@ await run('desktop', { width: 1280, height: 820 }, async (page) => {
   await page.waitForTimeout(400);
   await shot(page, '01-login');
 
-  await page.goto(`${BASE}/signup`);
-  await page.fill('#su-email', 'luka@example.com');
-  await page.fill('#su-user', 'luka');
-  await page.fill('#su-pw', 'motdepasse123');
-  await page.fill('#su-confirm', 'motdepasse123');
-  await page.waitForSelector('.field__ok');
+  // Formulaire rempli, cases (CGU, âge) cochées quand elles existent.
+  await fillSignup(page, { email: 'luka@example.com', username: 'luka' });
   await shot(page, '02-signup');
   await page.click('button[type=submit]');
   await page.waitForURL('**/check-email');
@@ -339,10 +281,4 @@ await run('mobile', { width: 390, height: 844 }, async (page) => {
   if (overflow) errors.push('[mobile] horizontal overflow on /collection');
 });
 
-await browser.close();
-if (errors.length) {
-  console.log('ERREURS :\n' + errors.join('\n'));
-  process.exitCode = 1;
-} else {
-  console.log('Parcours complet sans erreur.');
-}
+await finish();

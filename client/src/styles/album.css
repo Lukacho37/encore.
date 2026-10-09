@@ -26,8 +26,6 @@
 .album-skel {
   display: block;
   border-radius: 8px;
-  background: linear-gradient(110deg, #1a1522 30%, #2a2233 50%, #1a1522 70%) 0 0 / 300% 100%;
-  animation: album-skel 1.4s linear infinite;
 }
 
 .album-skel--cover {
@@ -56,13 +54,13 @@
 .album-skel--bar {
   height: 10px;
   width: min(100%, 460px);
-  border-radius: 999px;
+  border-radius: var(--rad-pill);
 }
 
 .album-skel--block {
   height: 84px;
   width: min(100%, 560px);
-  border-radius: 14px;
+  border-radius: var(--rad-md);
 }
 
 .album-skel--badge {
@@ -71,16 +69,10 @@
   border-radius: 50%;
 }
 
-@keyframes album-skel {
-  to {
-    background-position: -150% 0;
-  }
-}
-
 .artist-skel-tile {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--s-10);
 }
 
 .artist-skel-tile .album-skel--cover {
@@ -90,26 +82,15 @@
 .sides-skel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin: 6px 0 4px;
+  gap: var(--s-10);
+  margin: var(--s-6) 0 var(--s-4);
 }
 
 .card-detail__info--loading {
-  gap: 14px;
+  gap: var(--s-14);
 }
 
-/* Pochette d'un vinyle dont l'album arrive encore du serveur. */
-.vinyl__sleeve--loading {
-  background: linear-gradient(110deg, #1a1522 30%, #2a2233 50%, #1a1522 70%) 0 0 / 300% 100%;
-  animation: album-skel 1.4s linear infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .album-skel,
-  .vinyl__sleeve--loading {
-    animation: none;
-  }
-}
+/* Pochette d'un vinyle dont l'album arrive encore du serveur : reflet de chargement commun (app.css). */
 
 /* ---------- album ou artiste introuvable ---------- */
 
@@ -131,13 +112,13 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 10px;
+  gap: var(--s-10);
 }
 
 .album-tracks-error {
   display: grid;
   justify-items: center;
-  gap: 12px;
+  gap: var(--s-12);
 }
 
 .album-tracks-error p {
@@ -150,12 +131,12 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 14px 22px;
-  margin: -12px 0 28px;
-  padding: 14px 20px 14px 16px;
+  gap: var(--s-14) 22px;
+  margin: -12px 0 var(--s-28);
+  padding: var(--s-14) var(--s-20) var(--s-14) var(--s-16);
   border-radius: var(--radius);
   background:
-    linear-gradient(100deg, color-mix(in oklab, var(--album-c1, #c26bff) 16%, transparent), transparent 60%),
+    linear-gradient(100deg, color-mix(in oklab, var(--album-c1, var(--pack-violet)) 16%, transparent), transparent 60%),
     var(--stage);
   border: 1px solid var(--line-soft);
 }
@@ -170,12 +151,12 @@
 .album-booster__text {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--s-4);
   min-width: 0;
 }
 
 .album-booster__title {
-  font-size: 18px;
+  font-size: var(--fs-18);
 }
 
 .album-booster__body {
@@ -199,9 +180,9 @@
 .album-booster__price {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  margin-left: 4px;
-  padding-left: 10px;
+  gap: var(--s-4);
+  margin-left: var(--s-4);
+  padding-left: var(--s-10);
   border-left: 1px solid rgba(0, 0, 0, 0.25);
 }
 
@@ -213,7 +194,7 @@
   position: relative;
   min-width: 0;
   margin-top: auto;
-  padding: 0 8px;
+  padding: 0 var(--s-8);
   white-space: nowrap;
 }
 
@@ -246,7 +227,7 @@
   .album-booster {
     grid-template-columns: auto minmax(0, 1fr);
     margin-top: -16px;
-    padding: 14px;
+    padding: var(--s-14);
   }
 
   .album-booster .album-booster__pack {
@@ -260,9 +241,9 @@
   }
 
   .card-cell .press-btn {
-    gap: 4px;
-    padding: 0 6px;
-    font-size: 11.5px;
+    gap: var(--s-4);
+    padding: 0 var(--s-6);
+    font-size: var(--fs-12);
   }
 
   /* Admin : « Gratuit » suffit à côté de l'icône ; le libellé reste lu par les lecteurs d'écran. */

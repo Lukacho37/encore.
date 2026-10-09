@@ -11,6 +11,7 @@ import {
   buildBlindtest, blindtestClues, blindtestPoints, blindtestReward,
   validateEmail, validatePassword, validateUsername,
 } from '@shared/rules.js';
+import MODULES from './mock/index.js';
 
 const KEY = 'albummania.demo.v1';
 const REGEN_MS = 30 * 60_000;
@@ -225,7 +226,14 @@ function load() {
   } catch {
     db = null;
   }
-  if (!db) db = fresh();
+  if (db) {
+    // Sauvegarde existante : chaque module complète ses données (idempotent).
+    for (const mod of MODULES) mod.migrate?.(db, ctx);
+  } else {
+    db = fresh();
+    // Base neuve : chaque module sème ses contenus d'exemple (bots, posts…).
+    for (const mod of MODULES) mod.seed?.(db, ctx);
+  }
 }
 
 function save() {
@@ -366,6 +374,32 @@ function summary(u) {
 
 function between(a, b) {
   return db.friendships.find((f) => (f.requester === a && f.addressee === b) || (f.requester === b && f.addressee === a));
+}
+
+/**
+ * Résumés de joueurs (UserSummary, PLAN.md 4.0) par identifiant : Map id → { id, username, avatar, avatarColor,
+ * level, uniqueCards, frame, title, relation }, `relation` vu du joueur connecté ('self', 'friend', 'incoming',
+ * 'outgoing' ou null). Les identifiants inconnus sont ignorés.
+ */
+function summaries(ids) {
+  const viewer = db.session;
+  const out = new Map();
+  for (const id of new Set(ids)) {
+    const u = userById(id);
+    if (!u) continue;
+    let relation = null;
+    if (id === viewer) relation = 'self';
+    else if (viewer) {
+      const f = between(viewer, id);
+      if (f?.status === 'accepted') relation = 'friend';
+      else if (f?.status === 'pending') relation = f.requester === viewer ? 'outgoing' : 'incoming';
+    }
+    out.set(id, {
+      id, username: u.username, avatar: u.avatar, avatarColor: u.avatarColor, level: levelFromXp(u.xp).level,
+      uniqueCards: ownedSet(id).size, frame: u.frame || null, title: u.title || null, relation,
+    });
+  }
+  return out;
 }
 
 function friendsOf(uid) {
@@ -1114,17 +1148,46 @@ const routes = [
   }],
 ];
 
+/**
+ * Outils du faux serveur pour les jumeaux de modules (client/src/demo/mock/<module>.js) : reçus par seed/migrate
+ * et par chaque route ({ params, body, query, ctx }). `partialState` : état renvoyé par une action (P0-A le
+ * réduit à l'état partiel du vrai serveur ; en attendant, l'état complet, que le site sait déjà fusionner).
+ */
+export const ctx = {
+  get db() {
+    return db;
+  },
+  me,
+  userById,
+  userByName,
+  summaries,
+  refs,
+  state,
+  partialState: () => state(),
+  fail,
+  save,
+  now: () => Date.now(),
+  rand,
+  staticCatalog,
+  TRACK,
+  ALBUM,
+  ARTIST,
+};
+
+// Routes des modules d'abord : un module peut préciser ou remplacer une route du cœur.
+const ALL_ROUTES = [...MODULES.flatMap((mod) => mod.routes || []), ...routes];
+
 export async function handle(method, path, body = {}) {
   load();
   const [pathname, qs] = path.split('?');
   // Petit délai réseau simulé (plus court pour la navigation dans le catalogue : défilement, recherche).
   const browsing = method === 'GET' && pathname.startsWith('/catalog/');
   await new Promise((r) => setTimeout(r, browsing ? 40 + rand() * 60 : 90 + rand() * 110));
-  for (const [m, re, fn] of routes) {
+  for (const [m, re, fn] of ALL_ROUTES) {
     if (m !== method) continue;
     const match = re.exec(pathname);
     if (!match) continue;
-    const result = await fn({ params: match.slice(1), body: body || {}, query: new URLSearchParams(qs || '') });
+    const result = await fn({ params: match.slice(1), body: body || {}, query: new URLSearchParams(qs || ''), ctx });
     save();
     return JSON.parse(JSON.stringify(result));
   }

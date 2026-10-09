@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import CoverArt from './CoverArt.jsx';
 import { useAlbum } from '../state/catalog.js';
 import { useI18n } from '../i18n/index.jsx';
+import { AVATAR_COLORS } from '@shared/rules.js';
 
 // ---------- icônes ----------------------------------------------------------
 
@@ -55,6 +56,31 @@ export function Icon({ name, size = 18 }) {
       return <svg {...common}><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" /></svg>;
     case 'star':
       return <svg {...common}><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z" /></svg>;
+    // Icônes des nouveaux écrans (PLAN.md 9.2), même trait que les autres.
+    case 'bell':
+      return <svg {...common}><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z" /><path d="M10 20.5a2.2 2.2 0 0 0 4 0" /></svg>;
+    case 'heart':
+      return <svg {...common}><path d="M12 20s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7.4 4.3 4.3 0 0 1 19.5 10c0 5.4-7.5 10-7.5 10z" /></svg>;
+    case 'comment':
+      return <svg {...common}><path d="M4 5h16v11H9l-4 3.5V16H4z" /></svg>;
+    case 'share':
+      return <svg {...common}><path d="M12 15V4M8 8l4-4 4 4" /><path d="M5 13v6h14v-6" /></svg>;
+    case 'list':
+      return <svg {...common}><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r="1.1" /><circle cx="4.5" cy="12" r="1.1" /><circle cx="4.5" cy="18" r="1.1" /></svg>;
+    case 'trophy':
+      return <svg {...common}><path d="M8 4h8v5a4 4 0 0 1-8 0z" /><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4" /><path d="M12 13v4M8.5 20.5h7M10 17h4l.5 3.5h-5z" /></svg>;
+    case 'flag':
+      return <svg {...common}><path d="M5 21V4" /><path d="M5 4.5h11l-2 4 2 4H5" /></svg>;
+    case 'compass':
+      return <svg {...common}><circle cx="12" cy="12" r="9" /><path d="M15.5 8.5l-2 5-5 2 2-5z" /></svg>;
+    case 'home':
+      return <svg {...common}><path d="M4 10.5L12 4l8 6.5V20h-5.5v-5.5h-5V20H4z" /></svg>;
+    case 'more':
+      return <svg {...common}><circle cx="6" cy="12" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="18" cy="12" r="1.2" /></svg>;
+    case 'quote':
+      return <svg {...common}><path d="M10 7H6.5A1.5 1.5 0 0 0 5 8.5V12h4.5v1.5A3.5 3.5 0 0 1 6 17" /><path d="M19 7h-3.5A1.5 1.5 0 0 0 14 8.5V12h4.5v1.5A3.5 3.5 0 0 1 15 17" /></svg>;
+    case 'chevron':
+      return <svg {...common}><path d="M9 5l7 7-7 7" /></svg>;
     default:
       return null;
   }
@@ -81,20 +107,46 @@ export function Royalties({ value, className = '' }) {
   );
 }
 
+/**
+ * Booster miniature (icône de l'onglet Boosters) : mêmes dégradés que le vrai paquet. Le style (.mini-pack) vient de
+ * la feuille de la coquille (P0-D, design-system-current §4.14).
+ */
+export function MiniPack({ className = '' }) {
+  return (
+    <span className={`mini-pack ${className}`} aria-hidden="true">
+      <span className="mini-pack__body" />
+    </span>
+  );
+}
+
 // ---------- avatar -----------------------------------------------------------
 
 /**
- * Photo de profil : initiale sur la couleur choisie, ou pochette d'un album complété (« album:<id> »).
- * L'album vient du catalogue du site (les réponses qui citent un joueur l'apportent) ; sinon il est chargé par lots
- * et l'initiale s'affiche en attendant.
+ * Couleur d'avatar d'un joueur : celle qu'il a choisie, ou, avec « auto » (valeur par défaut), une couleur de
+ * AVATAR_COLORS tirée de son identifiant : chacun garde la sienne, au lieu du même rose pour tout le monde.
+ */
+export function avatarColor(user) {
+  const chosen = user?.avatarColor;
+  if (chosen && chosen !== 'auto') return chosen;
+  const key = String(user?.id ?? user?.username ?? '');
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+
+/**
+ * Photo de profil : initiale sur la couleur du joueur, ou visuel d'un album complété (« album:<id> »).
+ * Une vraie pochette n'est jamais un avatar (PLAN.md 7.1) : l'avatar d'album montre le visuel AlbumMania généré
+ * de l'album. L'album vient du catalogue du site (les réponses qui citent un joueur l'apportent) ; sinon il est
+ * chargé par lots et l'initiale s'affiche en attendant.
  */
 export function Avatar({ user, size = 40, className = '' }) {
   const albumId = user?.avatar?.startsWith('album:') ? user.avatar.slice(6) : null;
   const album = useAlbum(albumId);
-  const style = { width: size, height: size, fontSize: size * 0.44, '--ac': user?.avatarColor || '#ff4f7e' };
+  const style = { width: size, height: size, fontSize: size * 0.44, '--ac': avatarColor(user) };
   return (
     <span className={`avatar ${className}`} style={style} aria-hidden="true">
-      {album?.art ? <CoverArt art={{ ...album.art, seed: album.art.seed || album.id }} /> : <span>{(user?.username || '?')[0].toUpperCase()}</span>}
+      {album?.art ? <CoverArt art={{ ...album.art, seed: album.art.seed || album.id }} generated /> : <span>{(user?.username || '?')[0].toUpperCase()}</span>}
     </span>
   );
 }
@@ -239,16 +291,11 @@ export function Logo({ className = '' }) {
   );
 }
 
-/** Logo de la plateforme qui fournit la pochette et le lien d'écoute. */
-export function ProviderMark({ provider, size = 16 }) {
-  if (provider === 'spotify') {
-    return (
-      <svg className="provider-mark" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="12" r="12" fill="#1ED760" />
-        <path d="M6 9.4c3.9-1.2 8.4-.9 11.8 1.1M6.9 12.7c3.2-.9 6.8-.6 9.5.9M7.7 15.8c2.5-.6 5.1-.4 7.2.7" fill="none" stroke="#000" strokeWidth="1.7" strokeLinecap="round" />
-      </svg>
-    );
-  }
+/**
+ * Repère d'un lien d'écoute (« Écouter sur Spotify / Deezer »). Pas de logo de plateforme ni d'imitation de logo
+ * (PLAN.md 7.1) : un disque neutre, le nom de la plateforme est écrit dans le libellé qui suit.
+ */
+export function ProviderMark({ size = 16 }) {
   return <Icon name="disc" size={size} />;
 }
 

@@ -251,6 +251,13 @@ async function main() {
     const accepted = incoming && await apiCall(page, 'POST', `/friends/${incoming.requestId ?? incoming.id}/accept`);
     if (accepted?.status !== 200) fail(`[setup-friend] demande d'ami non acceptée : ${accepted?.status ?? 'aucune demande reçue'}`);
   });
+  // Une demande d'ami en attente pour l'admin : ses pages montrent la pastille rouge (.count-badge), mesurée elle aussi.
+  await run('setup-request', VIEWPORTS.desktop, async (page) => {
+    const res = await page.request.post(`${BASE}/api/auth/login`, { headers: { 'X-AlbumMania': '1' }, data: { identifier: player.username, password: lib.PASSWORD } });
+    if (res.status() !== 200) throw new Error(`connexion de ${player.username} : ${res.status()}`);
+    const sent = await apiCall(page, 'POST', '/friends/request', { username: lib.ADMIN.username });
+    if (sent.status !== 200) fail(`[setup-request] demande d'ami vers l'admin : ${sent.status}`);
+  });
 
   const asUser = async (page, identifier) => {
     const res = await page.request.post(`${BASE}/api/auth/login`, { headers: { 'X-AlbumMania': '1' }, data: { identifier, password: lib.PASSWORD } });

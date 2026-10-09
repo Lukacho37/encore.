@@ -30,7 +30,7 @@ export default {
         title: 'Ma carte',
         since: 'Obtenue le',
         collectors: 'Collection',
-        promoHint: 'Les promos ne se pressent pas : on ne les trouve qu’en booster.',
+        promoHint: `Les promos ne se pressent pas${NNBSP}: on ne les trouve qu’en booster.`,
       },
       listen: {
         title: 'Écouter',

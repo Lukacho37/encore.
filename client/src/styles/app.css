@@ -849,7 +849,8 @@ p {
   height: 20px;
   padding: 0 5px;
   border-radius: var(--rad-pill);
-  background: var(--r-promo);
+  /* Même rouge, à peine assombri : le chiffre blanc passe de 3,9:1 à 4,7:1 (AA). */
+  background: color-mix(in oklab, var(--r-promo) 90%, var(--ink));
   color: var(--white);
   font: var(--fw-bold) var(--fs-12) var(--font-body);
 }

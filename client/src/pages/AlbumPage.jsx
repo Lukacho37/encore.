@@ -143,15 +143,16 @@ export function Tracklist({ tracks, trackRatings, onPress, currentId = null }) {
   };
   return (
     <div className="table-wrap tracklist-wrap">
-      <table className="tracklist">
+      {/* Sur téléphone, la moyenne passe sous le titre (trk-avg-inline) pour que « Ta note » reste à l'écran. */}
+      <table className="tracklist trk-tracklist">
         <thead>
           <tr>
             <th className="num">#</th>
             <th>{t('album.colTrack')}</th>
             <th>{t('card.rarity')}</th>
             <th>{t('album.colOwned')}</th>
-            <th>{t('album.colAvg')}</th>
-            <th>{t('album.colMine')}</th>
+            <th className="trk-col-avg">{t('album.colAvg')}</th>
+            <th className="trk-col-mine">{t('album.colMine')}</th>
           </tr>
         </thead>
         <tbody>
@@ -160,6 +161,9 @@ export function Tracklist({ tracks, trackRatings, onPress, currentId = null }) {
             const community = trackRatings?.averages?.[tr.id];
             const cost = isAdmin ? 0 : pressCost(tr.rarity);
             const current = tr.id === currentId;
+            const average = community?.count
+              ? <><RatingValue value={community.avg} average size={11} /> <span className="muted small mono">({community.count})</span></>
+              : null;
             return (
               <tr key={tr.id} className={`${mine ? 'is-owned' : ''}${current ? ' trk-row--current' : ''}`} aria-current={current ? 'true' : undefined}>
                 <td className="num mono muted">{tr.kind === 'promo' ? `P${String(tr.n).padStart(2, '0')}` : tr.n}</td>
@@ -168,6 +172,7 @@ export function Tracklist({ tracks, trackRatings, onPress, currentId = null }) {
                     {tr.title}
                     {tr.feat && <span className="muted small"> · feat. {tr.feat}</span>}
                   </Link>
+                  {average && <span className="trk-avg-inline">{average}</span>}
                 </td>
                 <td><span className="tracklist__rarity"><RarityGem rarity={tr.rarity} size={12} /> {t(`rarity.${tr.rarity}`)}</span></td>
                 <td>
@@ -180,8 +185,8 @@ export function Tracklist({ tracks, trackRatings, onPress, currentId = null }) {
                     </button>
                   ) : null}
                 </td>
-                <td>{community?.count ? <span className="tracklist__avg"><RatingValue value={community.avg} average size={11} /> <span className="muted small mono">({community.count})</span></span> : <span className="muted">·</span>}</td>
-                <td><RatingInput key={`${tr.id}-${resetKey}`} value={ratings.get(`track:${tr.id}`) ?? null} onChange={(v) => rateTrack(tr.id, v)} size={15} compact label={`${t('rating.yours')} · ${tr.title}`} /></td>
+                <td className="trk-col-avg">{average ? <span className="tracklist__avg">{average}</span> : <span className="muted">·</span>}</td>
+                <td className="trk-col-mine"><RatingInput key={`${tr.id}-${resetKey}`} value={ratings.get(`track:${tr.id}`) ?? null} onChange={(v) => rateTrack(tr.id, v)} size={15} compact label={`${t('rating.yours')} · ${tr.title}`} /></td>
               </tr>
             );
           })}

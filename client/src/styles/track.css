@@ -322,6 +322,16 @@
   color: var(--paper);
 }
 
+/* Étoiles de la tracklist (moyenne, ta note) : jamais tassées par une colonne étroite (elles devenaient des points). */
+.trk-tracklist .stars svg {
+  flex: none;
+}
+
+/* Moyenne sous le titre : seulement sur téléphone, où la colonne « Moyenne » disparaît. */
+.trk-avg-inline {
+  display: none;
+}
+
 /* ---------- fiche de carte (modale) ---------- */
 
 .trk-modal__actions {
@@ -397,5 +407,28 @@
 
   .trk-head__actions .btn {
     flex: 1 1 auto;
+  }
+
+  /* Tracklist : #, titre (+ moyenne), carte, ta note — tout tient dans 358 px, sans défilement latéral. */
+  .trk-tracklist th,
+  .trk-tracklist td {
+    padding-inline: var(--s-8);
+  }
+
+  .trk-tracklist .trk-col-avg {
+    display: none;
+  }
+
+  .trk-tracklist .trk-col-mine {
+    width: 1%;
+    white-space: nowrap;
+  }
+
+  .trk-avg-inline {
+    display: flex;
+    align-items: center;
+    gap: var(--s-4);
+    margin-top: var(--s-2);
+    white-space: nowrap;
   }
 }

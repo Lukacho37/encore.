@@ -106,6 +106,10 @@ await run('desktop', VIEWPORTS.desktop, async (page) => {
   if (!incoming) throw new Error('demande d’ami non reçue');
   await callAs(friend, 'POST', `/friends/${incoming.requestId}/accept`);
 
+  // Pages suivantes des critiques demandées par le site (jamais la première, qui arrive avec les notes de l'élément).
+  const reviewPages = [];
+  page.on('request', (r) => r.url().includes('/reviews?') && reviewPages.push(new URL(r.url())));
+
   // 1. Depuis le fil des amis de l'accueil : la note d'un morceau mène à sa page.
   await page.goto(`${BASE}/`);
   await page.waitForSelector('.hero');
@@ -142,6 +146,7 @@ await run('desktop', VIEWPORTS.desktop, async (page) => {
   const all = await apiCall(page, 'GET', `/ratings/track/${enc(TRACK)}/reviews?scope=community&limit=50`);
   const expected = all.body?.items?.length || 0;
   if (expected < 11) fail(`[desktop] critiques de la communauté côté API : ${expected}`);
+  if (reviewPages.length) fail(`[desktop] critiques redemandées sans clic : ${reviewPages.map((u) => u.search).join(', ')}`);
   for (let i = 0; i < 6 && (await page.locator('.trk-group--community .load-more .btn').count()); i++) {
     const shown = await page.locator('.trk-group--community .review').count();
     await page.waitForFunction(() => !document.querySelector('.trk-group--community .load-more .btn')?.disabled);
@@ -150,6 +155,11 @@ await run('desktop', VIEWPORTS.desktop, async (page) => {
   }
   const ids = await page.locator('.trk-group--community .review').evaluateAll((els) => els.map((e) => e.id));
   if (ids.length !== expected || new Set(ids).size !== ids.length) fail(`[desktop] « Voir plus » : ${ids.length} critiques affichées (${new Set(ids).size} distinctes), ${expected} attendues`);
+  // Chaque « Voir plus » = une page suivante, avec un seul curseur.
+  const clicks = Math.ceil((expected - 10) / 10);
+  if (reviewPages.length !== clicks || reviewPages.some((u) => u.searchParams.getAll('cursor').length !== 1)) {
+    fail(`[desktop] pages suivantes : ${reviewPages.map((u) => u.search).join(', ')} (${clicks} attendue(s), un curseur chacune)`);
+  }
 
   // 3. Note en demi-étoiles + critique.
   await page.locator('#ma-note').scrollIntoViewIfNeeded();
@@ -274,6 +284,13 @@ await run('phone', VIEWPORTS.phone, async (page) => {
   await checkNoHorizontalScroll(page, 'phone track');
   if (await page.locator('.track-head__card').isVisible()) fail('[phone] la carte de l’en-tête devrait laisser place à « Ma carte »');
   if (!(await page.locator('.trk-mine__card .card').isVisible())) fail('[phone] carte absente de « Ma carte »');
+  // Tracklist du bas : tout tient dans l'écran (moyenne sous le titre), la colonne « Ta note » reste visible.
+  const table = await page.$eval('.trk-siblings .table-wrap', (el) => {
+    const mine = el.querySelector('tbody .trk-col-mine')?.getBoundingClientRect();
+    return { sw: el.scrollWidth, cw: el.clientWidth, mineRight: mine ? mine.right : Infinity };
+  });
+  if (table.sw > table.cw + 1 || table.mineRight > 390) fail(`[phone] tracklist plus large que l’écran : ${JSON.stringify(table)}`);
+  if (!(await page.locator('.trk-siblings .trk-avg-inline').first().isVisible())) fail('[phone] moyenne absente sous le titre');
   // Note en demi-étoiles sur téléphone (appui).
   await page.locator('#ma-note').scrollIntoViewIfNeeded();
   const stars = await page.locator('#ma-note .star-input__stars').boundingBox();

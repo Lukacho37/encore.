@@ -365,21 +365,28 @@ export function ReviewList({ reviews, renderItem, empty }) {
 
 /**
  * Un groupe de critiques (« Vos amis » ou « Communauté AlbumMania ») : la première page arrive avec les notes de
- * l'élément ; « Voir plus » lit les suivantes par curseur (GET /api/ratings/:type/:id/reviews?scope=…).
+ * l'élément ; « Voir plus » lit les suivantes par curseur (GET /api/ratings/:type/:id/reviews?scope=…&cursor=…),
+ * seulement à la demande. Chaque page suivante a sa propre adresse (curseur compris), lue une fois par useCursorList
+ * et ajoutée à la liste par `onPage` : la première page n'est jamais redemandée.
  */
 function ReviewGroup({ type, id, scope, title, initial, nextCursor, empty }) {
   const { t } = useI18n();
-  const path = nextCursor ? `/ratings/${type}/${encodeURIComponent(id)}/reviews?scope=${scope}` : null;
-  const list = useCursorList(path, { limit: 10 });
-  const loaded = !!path && list.items.length > 0;
-  const reviews = loaded ? list.items : initial;
-  const hasMore = !!path && (loaded ? list.hasMore : true);
+  const [cursor, setCursor] = useState(null);
+  const [more, setMore] = useState({ items: [], next: nextCursor });
+  const path = cursor ? `/ratings/${type}/${encodeURIComponent(id)}/reviews?scope=${scope}&cursor=${encodeURIComponent(cursor)}` : null;
+  const page = useCursorList(path, {
+    limit: 10,
+    onPage: (res) => setMore((m) => ({ items: [...m.items, ...(res?.items || [])], next: res?.nextCursor ?? null })),
+  });
+  const seen = new Set();
+  const reviews = [...initial, ...more.items].filter((r) => !seen.has(r.id) && seen.add(r.id));
   return (
     <div className={`trk-group trk-group--${scope}`}>
       <h3 className="trk-group__title">{title}</h3>
       <ReviewList reviews={reviews} empty={empty} />
-      {hasMore && (
-        <LoadMore hasMore loading={list.loading} onClick={loaded ? list.loadMore : list.reload} label={t('track.reviews.more')} />
+      {(more.next || page.error) && (
+        <LoadMore hasMore loading={page.loading} error={page.error} onRetry={page.reload}
+          onClick={() => setCursor(more.next)} label={t('track.reviews.more')} />
       )}
     </div>
   );
@@ -453,11 +460,13 @@ export function RatingsSection({ type, id, ratingsApi, className = '' }) {
           <FriendScores scores={friends.scores} />
         </div>
       </div>
+      {/* Clé = curseur de départ : si la première page change (nouvelles critiques), les pages suivantes repartent de zéro. */}
       {friends.reviews.length > 0 && (
-        <ReviewGroup type={type} id={id} scope="friends" title={t('track.reviews.friends')} initial={friends.reviews} nextCursor={friends.nextCursor} />
+        <ReviewGroup key={`friends:${friends.nextCursor ?? ''}`} type={type} id={id} scope="friends" title={t('track.reviews.friends')}
+          initial={friends.reviews} nextCursor={friends.nextCursor} />
       )}
-      <ReviewGroup type={type} id={id} scope="community" title={t('track.reviews.community')} initial={community.reviews}
-        nextCursor={community.nextCursor} empty={t('track.reviews.communityEmpty')} />
+      <ReviewGroup key={`community:${community.nextCursor ?? ''}`} type={type} id={id} scope="community" title={t('track.reviews.community')}
+        initial={community.reviews} nextCursor={community.nextCursor} empty={t('track.reviews.communityEmpty')} />
     </section>
   );
 }

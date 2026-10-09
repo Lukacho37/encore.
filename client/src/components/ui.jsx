@@ -140,10 +140,11 @@ export function avatarColor(user) {
 }
 
 /**
- * Photo de profil : initiale sur la couleur du joueur, ou visuel d'un album complété (« album:<id> »).
- * Une vraie pochette n'est jamais un avatar (PLAN.md 7.1) : l'avatar d'album montre le visuel AlbumMania généré
- * de l'album. L'album vient du catalogue du site (les réponses qui citent un joueur l'apportent) ; sinon il est
- * chargé par lots et l'initiale s'affiche en attendant.
+ * Photo de profil : initiale sur la couleur du joueur, ou pochette d'un album complété (« album:<id> »).
+ * Décision du propriétaire (DECISION-DESIGN.md, point 5) : c'est la vraie pochette de l'album ; le visuel généré ne
+ * sert que de repli (pochette indisponible ou retirée par l'admin), comme partout ailleurs. L'album vient du
+ * catalogue du site (les réponses qui citent un joueur l'apportent) ; sinon il est chargé par lots et l'initiale
+ * s'affiche en attendant.
  */
 export function Avatar({ user, size = 40, className = '' }) {
   const albumId = user?.avatar?.startsWith('album:') ? user.avatar.slice(6) : null;
@@ -151,7 +152,7 @@ export function Avatar({ user, size = 40, className = '' }) {
   const style = { width: size, height: size, fontSize: size * 0.44, '--ac': avatarColor(user) };
   return (
     <span className={`avatar ${className}`} style={style} aria-hidden="true">
-      {album?.art ? <CoverArt art={{ ...album.art, seed: album.art.seed || album.id }} generated /> : <span>{(user?.username || '?')[0].toUpperCase()}</span>}
+      {album?.art ? <CoverArt art={{ ...album.art, seed: album.art.seed || album.id }} sizes={`${size}px`} /> : <span>{(user?.username || '?')[0].toUpperCase()}</span>}
     </span>
   );
 }

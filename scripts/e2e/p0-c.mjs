@@ -136,15 +136,20 @@ await run('desktop', VIEWPORTS.desktop, async (page) => {
   const rows = await page.locator('.trk-siblings .tracklist tbody tr').count();
   if (rows !== 14) fail(`[desktop] autres morceaux de l'album : ${rows} lignes (14 attendues)`);
   if ((await page.locator('.trk-siblings .trk-row--current').count()) !== 1) fail('[desktop] morceau en cours non repéré dans la tracklist');
-  // « Voir plus » : la page suivante de la communauté (curseur).
+  // « Voir plus » : les pages suivantes de la communauté (curseur), jusqu'à la fin, sans doublon.
   const firstPage = await page.locator('.trk-group--community .review').count();
   if (firstPage !== 10) fail(`[desktop] première page de la communauté : ${firstPage} critiques (10 attendues)`);
-  const more = page.locator('.trk-group--community .load-more .btn');
-  await more.waitFor();
-  await page.waitForFunction(() => !document.querySelector('.trk-group--community .load-more .btn')?.disabled);
-  await more.click();
-  await page.waitForFunction(() => document.querySelectorAll('.trk-group--community .review').length === 11, null, { timeout: 10_000 });
-  if (await page.locator('.trk-group--community .load-more .btn').count()) fail('[desktop] « Voir plus » reste affiché à la fin de la liste');
+  const all = await apiCall(page, 'GET', `/ratings/track/${enc(TRACK)}/reviews?scope=community&limit=50`);
+  const expected = all.body?.items?.length || 0;
+  if (expected < 11) fail(`[desktop] critiques de la communauté côté API : ${expected}`);
+  for (let i = 0; i < 6 && (await page.locator('.trk-group--community .load-more .btn').count()); i++) {
+    const shown = await page.locator('.trk-group--community .review').count();
+    await page.waitForFunction(() => !document.querySelector('.trk-group--community .load-more .btn')?.disabled);
+    await page.click('.trk-group--community .load-more .btn');
+    await page.waitForFunction((n) => document.querySelectorAll('.trk-group--community .review').length > n, shown, { timeout: 10_000 });
+  }
+  const ids = await page.locator('.trk-group--community .review').evaluateAll((els) => els.map((e) => e.id));
+  if (ids.length !== expected || new Set(ids).size !== ids.length) fail(`[desktop] « Voir plus » : ${ids.length} critiques affichées (${new Set(ids).size} distinctes), ${expected} attendues`);
 
   // 3. Note en demi-étoiles + critique.
   await page.locator('#ma-note').scrollIntoViewIfNeeded();
@@ -226,13 +231,35 @@ await run('desktop', VIEWPORTS.desktop, async (page) => {
   if (await page.locator('.modal').count()) fail('[desktop] la fiche reste ouverte sur la page du morceau');
   if (pathOf(page) !== TRACK_URL) fail(`[desktop] fiche → ${pathOf(page)}`);
 
-  // 7. Morceau inconnu.
-  await page.goto(`${BASE}/track/${enc('nope:99')}`);
-  await page.waitForSelector('.catalog-missing__title');
-  const missing = await page.textContent('.catalog-missing__title');
-  if (!/face/i.test(missing)) fail(`[desktop] morceau inconnu : « ${missing} »`);
-  await shot(page, 'd-60-track-404');
 });
+
+// Morceau inconnu : « Cette face n'existe pas ». Contexte à part : le 404 attendu de GET /api/catalog/tracks/:id
+// s'inscrit dans la console du navigateur (« Failed to load resource … 404 ») et n'est pas une erreur ici.
+{
+  const b = await launch();
+  const ctx = await b.newContext({ viewport: VIEWPORTS.desktop, locale: 'fr-FR' });
+  await routeFonts(ctx);
+  const page = await ctx.newPage();
+  const expected = [];
+  page.on('response', (r) => r.status() === 404 && expected.push(new URL(r.url()).pathname));
+  page.on('pageerror', (e) => fail(`[desktop-404] ${e.message}`));
+  page.on('console', (m) => m.type() === 'error' && !ignoredConsole(m.text()) && !/status of 404/.test(m.text()) && fail(`[desktop-404] console: ${m.text()}`));
+  try {
+    await login(page, player.username);
+    await page.goto(`${BASE}/track/${enc('nope:99')}`);
+    await page.waitForSelector('.catalog-missing__title');
+    const missing = await page.textContent('.catalog-missing__title');
+    if (!/face/i.test(missing)) fail(`[desktop-404] morceau inconnu : « ${missing} »`);
+    const others = expected.filter((p) => p !== `/api/catalog/tracks/${enc('nope:99')}`);
+    if (others.length) fail(`[desktop-404] autres réponses 404 : ${others.join(', ')}`);
+    await page.screenshot({ path: `${OUT}/d-60-track-404.png` });
+  } catch (err) {
+    await page.screenshot({ path: `${OUT}/zz-error-desktop-404.png` }).catch(() => {});
+    fail(`[desktop-404] ${err.message}`);
+  } finally {
+    await ctx.close();
+  }
+}
 
 // ---------- téléphone ----------
 
@@ -318,13 +345,14 @@ if (fs.existsSync(demoFile)) {
       await page.locator('.album-grid a.album-tile').first().click();
       await page.waitForSelector('.album-head');
       await page.click('.toolbar .seg__btn:nth-child(2)');
-      await page.locator('.tracklist a.tracklist__title').nth(1).click();
+      await page.locator('.tracklist a.tracklist__title').nth(2).click();
       await page.waitForSelector('.track-head');
       await page.waitForSelector('#critiques .review-editor');
       await page.waitForTimeout(400);
       await page.screenshot({ path: `${OUT}/${name === 'desktop' ? 'd' : 'm'}-70-demo-track.png` });
       if (name === 'phone') await checkNoHorizontalScroll(page, `${label} track`);
       // Une note en demi-étoiles dans la démo aussi.
+      await page.locator('#ma-note .star-input__stars').scrollIntoViewIfNeeded();
       const stars = await page.locator('#ma-note .star-input__stars').boundingBox();
       await page.mouse.click(stars.x + stars.width * 0.85, stars.y + stars.height / 2);
       await page.click('#ma-note .review-editor__actions .btn--primary');

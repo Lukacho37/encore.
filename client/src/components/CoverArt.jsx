@@ -2,16 +2,17 @@ import { memo, useId } from 'react';
 import { useCovers, realCover } from '../state/CoversContext.jsx';
 
 // Pochette d'un album ou d'un single.
-// - Vraie pochette quand le serveur en a trouvé une (Deezer) : l'image reste hébergée par la plateforme, affichée
-//   telle quelle, sans recadrage ni filtre.
-// - Sinon, visuel original généré à partir d'une palette et d'un motif propres à chaque album.
+// - Vraie pochette quand le serveur en a trouvé une (Deezer, ou Spotify si les clés sont configurées) : l'image reste
+//   hébergée par la plateforme, affichée telle quelle, sans recadrage ni filtre. Décision du propriétaire
+//   (DECISION-DESIGN.md, point 5) : vraies pochettes partout, photo de profil « album complété » comprise.
+// - Sinon, visuel original généré à partir d'une palette et d'un motif propres à chaque album : repli (pochette
+//   indisponible ou retirée) et cartes pas encore obtenues (`generated`), dont la vraie pochette se révèle à l'obtention.
 //
 // Règles des pochettes (PLAN.md 7.1, à respecter partout où une vraie pochette s'affiche) :
 // - l'image est liée depuis le CDN de la plateforme, jamais téléchargée, mise en cache, relayée ni réhébergée par
-//   le serveur ; elle sert seulement à identifier l'album (pages album et morceau, vignettes, listes, recherche, fil) ;
+//   le serveur ;
 // - redimensionnement seulement : pas de recadrage au-delà d'une source carrée, pas de filtre, pas de fondu, rien posé
 //   sur l'image (reflet holo, pastilles de rareté, « Nouveau », ruban PROMO vont sur le cadre de la carte) ;
-// - jamais comme avatar, cosmétique, badge ou récompense : ces usages prennent le visuel généré (`generated`) ;
 // - pochette retirée par l'admin (`art.coverBlocked`, demande de retrait) : visuel généré partout à la fois.
 
 function seededRandom(seed) {

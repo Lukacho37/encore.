@@ -18,9 +18,10 @@
   scroll-snap-align: start;
 }
 
+/* Titre et compteur (« 218 albums commencés ») : sur téléphone, le compteur passe à la ligne, à 10 px du titre
+   (l'écart de .section__head h2, celui qui s'affichait déjà quand app.css était chargé après cette feuille). */
 .home-head h2 {
   flex-wrap: wrap;
-  row-gap: var(--s-4);
 }
 
 .home-head .section__link {

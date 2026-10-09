@@ -1,12 +1,11 @@
 // Textes de la zone « album » (P0-C) : catalogue à grande échelle, booster d'album, page artiste. Fusionnés dans
-// fr.js / en.js au chargement ; une clé d'ici peut préciser une clé existante (album.rewardBody : l'avatar débloqué est
-// le visuel AlbumMania de l'album, jamais sa vraie pochette, PLAN.md 7.1).
+// fr.js / en.js au chargement ; une clé d'ici peut préciser une clé existante. album.rewardBody garde « la pochette en
+// photo de profil » (décision du propriétaire du 2026-10-09 : vraies pochettes partout, avatar d'album compris).
 const NNBSP = '\u202f';
 
 export default {
   fr: {
     album: {
-      rewardBody: '+{r} royalties, +{x} XP, le vinyle dans ta vinylthèque et le visuel AlbumMania de l’album en photo de profil.',
       loading: 'Chargement de l’album…',
       notFound: 'Album introuvable',
       notFoundBody: 'Cet album n’existe pas ou n’est plus au catalogue.',
@@ -41,7 +40,6 @@ export default {
   },
   en: {
     album: {
-      rewardBody: '+{r} royalties, +{x} XP, the vinyl on your shelf and the album’s AlbumMania artwork as your profile picture.',
       loading: 'Loading album…',
       notFound: 'Album not found',
       notFoundBody: 'This album doesn’t exist or is no longer in the catalog.',

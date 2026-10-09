@@ -5,8 +5,9 @@
 //    aucune micro-étiquette de carte sous 10 px, aucun texte courant sous 4,5:1 (3:1 pour les grands titres) ;
 //  - héros Boosters et rangée Boutique / Doublons / Blind test : balisage et taille du titre inchangés ;
 //  - correctifs permis : bouton désactivé en contour, barre d'onglets opaque (une colonne égale par onglet), grille
-//    de cartes à 2 colonnes sur téléphone, reflet holo jamais posé sur une vraie pochette, avatar d'album = visuel
-//    généré ; cartes de 84 à 320 px sans titre coupé ni ligne d'artiste à moitié visible ;
+//    de cartes à 2 colonnes sur téléphone, reflet holo jamais posé sur une vraie pochette, avatar d'album = pochette
+//    de l'album (vraie pochette, visuel généré en repli : DECISION-DESIGN.md, point 5) ; cartes de 84 à 320 px sans
+//    titre coupé ni ligne d'artiste à moitié visible ;
 //  - pas de défilement horizontal sur téléphone, zéro erreur de console ;
 //  - captures côte à côte avec design/shots-current (SHOTS_CURRENT) pour la revue de parité ;
 //  - démo autonome (dist-demo/albummania-demo.html) si elle est construite.
@@ -20,11 +21,12 @@ import { pathToFileURL } from 'node:url';
 /**
  * Exécutée dans la page : tailles et contrastes de tous les textes visibles. Chaque texte est classé : `ui` (interface,
  * 12 px minimum), `card` (dans une carte de collection, 10 px minimum), `object` (logo, booster dessiné, dos de carte,
- * vinyles : objets à l'échelle, non contrôlés). Le contraste est calculé contre la pile des fonds (couleurs et premier
+ * vinyles, initiale d'un avatar — image décorative masquée aux lecteurs d'écran, le pseudo est écrit à côté — : objets
+ * à l'échelle, non contrôlés). Le contraste est calculé contre la pile des fonds (couleurs et premier
  * arrêt des dégradés), opacités comprises ; les contrôles désactivés en sont exclus (WCAG 1.4.3).
  */
 export function measure() {
-  const OBJECT = '.pack, .mini-pack, .logo, .card-back, .vinyl, .disc, .turntable, .opening__pack, .pack-art';
+  const OBJECT = '.pack, .mini-pack, .logo, .card-back, .vinyl, .disc, .turntable, .opening__pack, .pack-art, .avatar';
   const CARD = '.card';
   const toLin = (v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
   const fromLin = (v) => (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055);
@@ -236,7 +238,7 @@ async function main() {
     if (done.status !== 200) fail(`[setup] album complété : ${done.status}`);
     await apiCall(page, 'POST', '/admin/me/almost', { albumId: 'discovery' });
     await apiCall(page, 'PUT', '/ratings/album/moon-safari', { score: 8, review: 'La bande-son d’un dimanche matin.' });
-    // Avatar d'album : une vraie pochette n'est jamais un avatar (PLAN.md 7.1), seulement le visuel généré.
+    // Avatar d'album : la pochette de l'album complété (DECISION-DESIGN.md, point 5).
     const av = await apiCall(page, 'POST', '/profile/avatar', { avatar: 'album:moon-safari' });
     if (av.status !== 200) fail(`[setup] avatar d'album : ${av.status}`);
     await apiCall(page, 'POST', '/friends/request', { username: friend.username });
@@ -375,12 +377,13 @@ async function main() {
       await visit(page, v, '/album/moon-safari', '.album-head', '62-album-completed', { ms: 1200 });
       await visit(page, v, '/artist/daft-punk', '.artist-page', '64-artist', { ms: 1200 });
       await visit(page, v, '/studio', '.profile-head', '70-profile', { full: true, ms: 1200 });
-      // Avatar « album:<id> » : le visuel généré (svg), jamais l'image de la pochette.
+      // Avatar « album:<id> » : la pochette de l'album (vraie pochette, ou visuel généré quand l'image manque, comme ici
+      // où le CDN est bloqué), jamais l'initiale.
       const avatar = await page.evaluate(() => {
         const a = document.querySelector('.profile-head .avatar');
-        return a ? { svg: !!a.querySelector('svg'), img: !!a.querySelector('img') } : null;
+        return a ? { cover: !!a.querySelector('.cover, img, svg'), initial: !!a.querySelector(':scope > span') } : null;
       });
-      if (!avatar?.svg || avatar.img) fail(`[${v}] avatar d'album : ${JSON.stringify(avatar)}`);
+      if (!avatar?.cover || avatar.initial) fail(`[${v}] avatar d'album : ${JSON.stringify(avatar)}`);
       await visit(page, v, '/friends', '.friends', '74-friends', { ms: 1000 });
       await visit(page, v, '/blindtest', '.genre-grid', '20-bt-intro', { ms: 800 });
 
@@ -464,6 +467,11 @@ async function main() {
         for (const box of await page.locator('.auth__form input[type=checkbox]').all()) await box.check();
         await page.waitForSelector('.field__ok');
         await page.click('button[type=submit]');
+        // Inscription refusée (ex. case « CGU et 15 ans » absente du formulaire alors que la démo l'exige) : le message
+        // du formulaire plutôt qu'une attente qui expire.
+        await page.waitForSelector('.demo-mail .btn, .form-error', { timeout: 20_000 });
+        const refused = await page.locator('.form-error').first().textContent({ timeout: 500 }).catch(() => null);
+        if (refused) throw new Error(`inscription de démo refusée : « ${refused.trim()} »`);
         await page.click('.demo-mail .btn');
         await page.waitForSelector('.hero');
         await settle(page, 600);

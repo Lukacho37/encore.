@@ -414,6 +414,12 @@ function FriendScores({ scores }) {
 export function RatingsSection({ type, id, ratingsApi, className = '' }) {
   const { t } = useI18n();
   const { data, save, remove } = ratingsApi;
+  const ready = !!data;
+  // Lien vers une critique (#review-<id>, notifications, fil) : la page défile jusqu'à elle une fois les notes chargées.
+  useEffect(() => {
+    if (!ready || !/^#review-\d+$/.test(window.location.hash)) return;
+    document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ block: 'center' });
+  }, [ready]);
   if (!data) {
     return (
       <section className={`section album-ratings ${className}`} id="critiques" aria-busy="true">

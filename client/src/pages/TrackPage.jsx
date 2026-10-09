@@ -130,13 +130,13 @@ function MyCard({ page, onPress }) {
           )}
           <dt>{t('track.mine.collectors')}</dt>
           <dd>
-            {t('track.owners', { n: owners.count })}
+            {owners.count ? t('track.owners', { n: owners.count }) : t('track.ownersNone')}
             {friends.length > 0 && <span className="muted"> · {t('track.ownersFriends', { n: friends.length })}</span>}
           </dd>
           {albumCompletedBy != null && (
             <>
               <dt>{t('card.album')}</dt>
-              <dd>{t('track.completedBy', { n: albumCompletedBy })}</dd>
+              <dd>{albumCompletedBy ? t('track.completedBy', { n: albumCompletedBy }) : t('track.completedNone')}</dd>
             </>
           )}
         </dl>
@@ -175,8 +175,9 @@ function TrackView({ id }) {
   const { owned, ratings, user } = useGame();
   const covers = useCovers();
   const page = useApi(`/catalog/tracks/${encodeURIComponent(id)}`, { keep: false });
-  const ratingsApi = useItemRatings('track', id);
   const data = page.data?.track?.id === id ? page.data : null;
+  // Les notes se chargent une fois le morceau trouvé (pas de seconde 404 pour un identifiant inconnu).
+  const ratingsApi = useItemRatings('track', data ? id : null);
   const albumId = data?.album?.id || null;
   // Moyennes des autres morceaux de l'album (tracklist du bas).
   const albumRatings = useItemRatings('album', albumId);

@@ -68,6 +68,10 @@
   gap: var(--s-8);
 }
 
+.track-head__chips .pop-icon {
+  width: 14px;
+}
+
 .track-head__card {
   width: 168px;
   display: flex;
@@ -385,6 +389,10 @@
   .trk-listen__embed {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .trk-listen__text {
+    flex: none;
   }
 
   .trk-head__actions .btn {

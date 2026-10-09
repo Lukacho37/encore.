@@ -31,8 +31,6 @@ export default {
       spent: 'Royalties dépensées',
       // Les royalties sont une monnaie de jeu, sans lien avec les droits d'auteur (PLAN.md 7.1).
       royaltiesHint: 'Gagnées avec les nouvelles cartes et les récompenses',
-      // Une vraie pochette n'est jamais une photo de profil : c'est le visuel AlbumMania de l'album.
-      albumUnlocks: 'Rangé dans ta vinylthèque · visuel AlbumMania de l’album débloqué pour ta photo de profil',
     },
     rarityGuide: {
       cardsHint: 'Nombre de cartes de cette rareté dans tout le catalogue.',
@@ -77,7 +75,6 @@ export default {
       againAlbum: 'Another album pack',
       spent: 'Royalties spent',
       royaltiesHint: 'Earned from new cards and rewards',
-      albumUnlocks: 'Added to your record collection · the album’s AlbumMania artwork unlocked as profile picture',
     },
     rarityGuide: {
       cardsHint: 'Number of cards of this rarity in the whole catalog.',

@@ -148,7 +148,8 @@ function CardDetail({ trackId, onClose }) {
           )}
         </dl>
         <TrackRating trackId={trackId} />
-        <ListenPanel kind="track" item={track} />
+        {/* Carte pas encore obtenue : elle montre le visuel généré, donc pas de crédit de pochette. */}
+        <ListenPanel kind="track" item={mine ? track : { ...track, art: null }} />
         <div className="trk-modal__actions">
           <Link to={itemPath('track', trackId)} className="btn btn--ghost" onClick={onClose}>
             {t('track.openPage')} <Icon name="chevron" size={16} />

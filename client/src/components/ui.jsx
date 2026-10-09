@@ -1,3 +1,8 @@
+// Feuille de base (jetons, composants communs) : importée ici en plus de main.jsx pour que, dans le site compilé, elle
+// soit liée AVANT toutes les autres. ui.jsx est importé par presque tous les modules : sa feuille part dans le morceau
+// commun dont dépendent les autres morceaux, dont les feuilles sont donc liées après elle. Les feuilles des pages et
+// des chantiers précisent ainsi app.css à spécificité égale, en développement comme en production.
+import '../styles/app.css';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import CoverArt from './CoverArt.jsx';

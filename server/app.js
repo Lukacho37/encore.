@@ -177,7 +177,8 @@ export function createApp({ dbFile, db: openedDb } = {}) {
   browse.get('/groups', (req, res) => res.json(services.groups(req.user.id, req.query.by)));
   user.use('/catalog', browse);
 
-  api.use(actionLimit);
+  // Lectures (état, profils, amis, notes) : limite `read` ; actions : limite `write` (PLAN.md 4.0).
+  api.use((req, res, next) => (req.method === 'GET' ? limits.read : actionLimit)(req, res, next));
 
   // État complet : seulement ici (et à la connexion). Les actions renvoient un état partiel + leurs deltas
   // (PLAN.md 4.1.1) ; le site les fusionne (client/src/state/mergeState.js).

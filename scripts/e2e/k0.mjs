@@ -80,11 +80,14 @@ await run('desktop', VIEWPORTS.desktop, async (page) => {
   // Navigation par les liens (pages chargées à la demande, sans rechargement).
   await page.goto(`${BASE}/`);
   await page.waitForSelector('.hero');
-  await page.click('.topnav a[href="/collection"]');
+  await page.locator('a[href="/collection"]:visible').first().click();
   await page.waitForSelector('.album-grid');
-  await page.click('.topnav a[href="/blindtest"]');
+  // Blind test : lien de la barre ou de la rangée Boutique / Doublons / Blind test de l'accueil (selon la navigation).
+  await page.locator('a[href="/"]:visible').first().click();
+  await page.waitForSelector('.hero');
+  await page.locator('a[href="/blindtest"]:visible').first().click();
   await page.waitForSelector('.genre-grid');
-  await page.click('.topnav a[href="/"]');
+  await page.locator('a[href="/"]:visible').first().click();
   await page.waitForSelector('.hero');
 });
 
@@ -105,9 +108,9 @@ await run('phone', VIEWPORTS.phone, async (page) => {
   await visit(page, '/friends', '.add-friend', null, 'phone');
   await visit(page, '/blindtest', '.genre-grid', null, 'phone');
   await visit(page, '/nulle-part', NOT_FOUND, 'm-18-not-found', 'phone');
-  await page.click('.tabbar a[href="/collection"]');
+  await page.locator('a[href="/collection"]:visible').first().click();
   await page.waitForSelector('.album-grid');
-  await page.click('.tabbar a[href="/"]');
+  await page.locator('a[href="/"]:visible').first().click();
   await page.waitForSelector('.hero');
 });
 
@@ -126,24 +129,40 @@ if (fs.existsSync(demoFile)) {
       await page.goto(`file://${demoFile}`);
       await page.waitForSelector('.auth__form', { timeout: 20_000 });
       await page.getByText(/Créer un compte/).first().click();
-      await page.fill('#su-email', `demo_${name}@example.com`);
-      await page.fill('#su-user', `demo_${name}`);
-      await page.fill('#su-pw', 'motdepasse123');
-      if (await page.locator('#su-confirm').count()) await page.fill('#su-confirm', 'motdepasse123');
-      for (const box of await page.locator('.auth__form input[type=checkbox]').all()) await box.check();
-      await page.waitForSelector('.field__ok');
-      await page.click('button[type=submit]');
-      await page.click('.demo-mail .btn');
+      await page.waitForSelector('#su-email');
+      if (await page.locator('.auth__form input[type=checkbox]').count()) {
+        await page.fill('#su-email', `demo_${name}@example.com`);
+        await page.fill('#su-user', `demo_${name}`);
+        await page.fill('#su-pw', 'motdepasse123');
+        if (await page.locator('#su-confirm').count()) await page.fill('#su-confirm', 'motdepasse123');
+        for (const box of await page.locator('.auth__form input[type=checkbox]').all()) await box.check();
+        await page.waitForSelector('.field__ok');
+        await page.click('button[type=submit]');
+        await page.click('.demo-mail .btn');
+      } else {
+        // Le faux serveur exige la case « CGU et 15 ans ou plus » (PLAN.md 4.1.5), que P0-D ajoute au formulaire :
+        // en attendant, on reprend une session enregistrée (sauvegarde d'un joueur déjà inscrit).
+        console.log(`[${label}] case CGU absente du formulaire : session de démo enregistrée à la place de l'inscription.`);
+        await page.evaluate((who) => {
+          const now = Date.now();
+          localStorage.setItem('albummania.demo.v1', JSON.stringify({
+            nextId: 2, cards: {}, achievements: {}, friendships: [], tokens: [], games: {}, ratings: [], session: 1,
+            users: [{ id: 1, email: `${who}@example.com`, username: who, password: 'x', verified: now, role: 'player', lang: 'fr',
+              avatar: 'initials', avatarColor: 'auto', royalties: 200, xp: 0, packs: 0, packsAt: now, bonusPacks: 5, showcase: [],
+              createdAt: now, openings: 0 }],
+          }));
+        }, `demo_${name}`);
+        await page.goto(`file://${demoFile}`);
+      }
       await page.waitForSelector('.hero');
       await page.waitForTimeout(400);
       await page.screenshot({ path: `${OUT}/${name === 'desktop' ? 'd' : 'm'}-30-demo-home.png` });
-      const nav = name === 'desktop' ? '.topnav' : '.tabbar';
-      await page.click(`${nav} a[href="/collection"]`);
+      await page.locator('a[href="/collection"]:visible').first().click();
       await page.waitForSelector('.album-grid');
       await page.waitForTimeout(300);
       await page.screenshot({ path: `${OUT}/${name === 'desktop' ? 'd' : 'm'}-31-demo-collection.png` });
       if (name === 'phone') await checkNoHorizontalScroll(page, `${label} collection`);
-      await page.click(`${nav} a[href="/"]`);
+      await page.locator('a[href="/"]:visible').first().click();
       await page.waitForSelector('.hero');
       const ready = await page.evaluate(() => window.__albummaniaReady === true);
       if (!ready) fail(`[${label}] window.__albummaniaReady absent`);

@@ -32,7 +32,14 @@ function dropCollectionCaches() {
 export function GameProvider({ children }) {
   const { lang, setLang } = useI18n();
   const [status, setStatus] = useState('loading'); // loading | guest | ready
-  const [data, setData] = useState(null);
+  const [data, setDataState] = useState(null);
+  // Dernier état connu, à jour dès la fusion (sans attendre le rendu) : deux réponses arrivées coup sur coup se
+  // fusionnent l'une après l'autre, et on sait tout de suite s'il faut recharger l'état complet.
+  const dataRef = useRef(null);
+  const setData = useCallback((next) => {
+    dataRef.current = next;
+    setDataState(next);
+  }, []);
   const offset = useRef(0);
   const syncedLang = useRef(null);
   // États déjà fusionnés (par la réponse de l'API) : un applyState(res.state) qui suit est sans effet.
@@ -46,16 +53,15 @@ export function GameProvider({ children }) {
     applied.current.add(state);
     if (Number.isFinite(state.serverTime)) offset.current = state.serverTime - Date.now();
     if (!state.partial || res.cards || res.albumDeltas) dropCollectionCaches();
-    let reload = false;
-    setData((current) => {
-      const next = mergeResponse(current, res);
-      if (next === null) reload = true;
-      return next ?? current;
-    });
+    const next = mergeResponse(dataRef.current, res);
+    // État partiel sans état de départ (session ouverte ailleurs, état pas encore chargé) : on recharge l'état complet.
+    if (next === null) {
+      refreshRef.current?.();
+      return;
+    }
+    if (next !== dataRef.current) setData(next);
     if (!state.partial) setStatus('ready');
-    // État partiel sans état de départ : on recharge l'état complet.
-    if (reload) refreshRef.current?.();
-  }, []);
+  }, [setData]);
 
   /**
    * Applique un état reçu à part (connexion, ou `res.state` d'une réponse déjà fusionnée : sans effet en double).
@@ -66,13 +72,14 @@ export function GameProvider({ children }) {
     applied.current.add(state);
     if (Number.isFinite(state.serverTime)) offset.current = state.serverTime - Date.now();
     if (state.partial) {
-      setData((current) => (current ? mergePartial(current, state) : current));
+      if (dataRef.current) setData(mergePartial(dataRef.current, state));
+      else refreshRef.current?.();
       return;
     }
     dropCollectionCaches();
     setData(fullState(state));
     setStatus('ready');
-  }, []);
+  }, [setData]);
 
   useEffect(() => onApiResponse((res) => mergeApiResponse(res)), [mergeApiResponse]);
 
@@ -87,7 +94,7 @@ export function GameProvider({ children }) {
         setStatus('guest');
       }
     }
-  }, [applyState, status]);
+  }, [applyState, setData, status]);
   refreshRef.current = refresh;
 
   useEffect(() => {
@@ -114,7 +121,7 @@ export function GameProvider({ children }) {
     syncedLang.current = null;
     setData(null);
     setStatus('guest');
-  }, []);
+  }, [setData]);
 
   const derived = useMemo(() => {
     if (!data) return null;

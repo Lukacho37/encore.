@@ -1,5 +1,6 @@
 /* Profil, Studio, photo de profil, notes : listes paginées et recherches (catalogue à grande échelle). */
-/* app.css est chargé après ce fichier : un sélecteur qui le précise doit être plus spécifique que le sien. */
+/* app.css est chargé en premier (main.jsx en développement, ui.jsx dans le site compilé) : une règle d'ici précise
+   celle d'app.css à spécificité égale. */
 
 /* ---------- recherche dans une fenêtre de choix ---------- */
 
@@ -27,7 +28,7 @@
 
 /* ---------- filtres par rareté ---------- */
 
-.chips.pf-chips {
+.pf-chips {
   gap: var(--s-6);
 }
 
@@ -41,7 +42,7 @@
 
 /* Sur téléphone, les raretés défilent sur une ligne au lieu d'occuper quatre lignes. */
 @media (max-width: 640px) {
-  .chips.pf-chips {
+  .pf-chips {
     flex-wrap: nowrap;
     overflow-x: auto;
     margin: 0 -4px;
@@ -58,10 +59,15 @@
   }
 }
 
+/* Même rendu que .chip__n (et .coll-chip__n) : contraste AA au lieu d'une opacité de 0,7. */
 .pf-chip__n {
   font: var(--fw-medium) var(--fs-12) var(--font-mono);
   font-variant-numeric: tabular-nums;
-  opacity: 0.7;
+  color: var(--haze);
+}
+
+.chip-btn.is-on .pf-chip__n {
+  color: color-mix(in oklab, var(--ink) 72%, transparent);
 }
 
 .pf-count {
@@ -101,7 +107,7 @@
   font: var(--fw-medium) var(--fs-12) var(--font-mono);
 }
 
-.empty.pf-empty {
+.pf-empty {
   display: flex;
   flex-direction: column;
   align-items: center;

@@ -9,7 +9,6 @@ import { once } from 'node:events';
 
 process.env.NODE_ENV = 'test';
 process.env.COVERS ??= 'off';
-process.env.BLINDTEST_AUDIO ??= 'off';
 
 export const PASSWORD = 'motdepasse123';
 

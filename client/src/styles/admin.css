@@ -5,6 +5,7 @@
   margin-top: var(--s-16);
 }
 
+/* plus d'air au-dessus du catalogue : l'emporte sur la règle des deux panneaux qui se suivent */
 .admin .panel.adm-catalog {
   margin-top: var(--s-28);
 }

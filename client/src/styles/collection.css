@@ -1,7 +1,8 @@
 /* ---------- collection à l'échelle du grand catalogue ---------- */
 /* Résumé, barre d'outils (recherche, filtres), listes paginées et emplacements en cours de chargement.
-   Ce fichier est chargé avant app.css : les règles qui reprennent une classe d'app.css sont préfixées
-   par .collection pour garder la main. */
+   app.css est chargé en premier (main.jsx en développement, ui.jsx dans le site compilé) : une règle d'ici précise
+   celle d'app.css à spécificité égale. Le préfixe .collection ne sert plus qu'à limiter à cette page un composant
+   partagé (grilles, lignes, barre des raretés). */
 
 /* résumé : albums complétés, artistes maîtrisés, promos */
 
@@ -161,11 +162,17 @@
   white-space: nowrap;
 }
 
+/* Compte d'une pastille : rendu du .chip__n commun (haze plein, encre à 72 % sur la pastille active) au lieu d'une
+   opacité de 0,7 qui tombait à 4,25:1. */
 .coll-chip__n {
   font: var(--fw-medium) var(--fs-12) var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-stretch: var(--fst-mono);
-  opacity: 0.7;
+  color: var(--haze);
+}
+
+.chip-btn.is-on .coll-chip__n {
+  color: color-mix(in oklab, var(--ink) 72%, transparent);
 }
 
 .coll-chips .chip-btn:disabled {
@@ -282,12 +289,12 @@
   width: 45%;
 }
 
-.collection .coll-skel-row {
+.coll-skel-row {
   min-height: 66px;
   border-color: transparent;
 }
 
-.collection .artist-row.coll-skel-row {
+.artist-row.coll-skel-row {
   grid-template-columns: auto minmax(0, 1fr);
 }
 
@@ -362,7 +369,7 @@
   }
 
   /* Sur téléphone, les pastilles défilent sur une seule ligne au lieu d'occuper tout l'écran. */
-  .collection .coll-chips {
+  .coll-chips {
     flex-wrap: nowrap;
     overflow-x: auto;
     scrollbar-width: none;
@@ -371,7 +378,7 @@
     mask-image: linear-gradient(to right, var(--black) calc(100% - 28px), transparent);
   }
 
-  .collection .coll-chips::-webkit-scrollbar {
+  .coll-chips::-webkit-scrollbar {
     display: none;
   }
 }

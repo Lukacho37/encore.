@@ -1,8 +1,8 @@
 import { memo, useRef } from 'react';
-import CoverArt from './CoverArt.jsx';
+import CoverArt, { shownCover } from './CoverArt.jsx';
 import { RARITY } from '@shared/rules.js';
 import { useI18n } from '../i18n/index.jsx';
-import { useCovers, realCover } from '../state/CoversContext.jsx';
+import { useCovers } from '../state/CoversContext.jsx';
 import { useTrack } from '../state/catalog.js';
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -84,8 +84,9 @@ function Card({ trackId, variant = 'std', count = 0, ghost = false, badge, badge
   if (!track) return <span className={`card card--loading ${className}`} aria-busy="true" />;
   const holo = variant === 'holo' && !ghost;
   const art = track.art;
-  // Une carte non obtenue garde le visuel généré : la vraie pochette se révèle quand on l'obtient.
-  const showsCover = !ghost && !!realCover(art, covers);
+  // Une carte non obtenue garde le visuel généré : la vraie pochette se révèle quand on l'obtient. Une pochette retirée
+  // par l'admin (art.coverBlocked) redonne le visuel généré, et la mise en page qui va avec.
+  const showsCover = !ghost && !!shownCover(art, covers);
   // Sur une vraie pochette, « Nouveau » et le nombre d'exemplaires vont dans le pied de carte.
   const footTags = showsCover && (!!badge || count > 1);
   const Tag = onClick ? 'button' : 'div';
@@ -132,6 +133,8 @@ function Card({ trackId, variant = 'std', count = 0, ghost = false, badge, badge
             : <span className="card__code">{track.code}</span>}
         </span>
       </span>
+      {/* Reflet holo : sur une vraie pochette (card--cover), l'image passe au-dessus du reflet, qui ne colore que le
+          cadre (PLAN.md 7.1 : rien n'est posé sur une pochette) ; sur le visuel généré, il couvre toute la carte. */}
       {holo && <span className="card__holo" aria-hidden="true" />}
       {track.kind === 'promo' && !ghost && !showsCover && <span className="card__ribbon" aria-hidden="true">PROMO</span>}
       {badge && !showsCover && <span className={`card__badge${badgeTone ? ` card__badge--${badgeTone}` : ''}`}>{badge}</span>}

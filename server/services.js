@@ -291,6 +291,8 @@ export function createServices(db, catalog, { bus = null } = {}) {
   /**
    * Recalcule user_album_progress pour ces albums depuis les cartes (même calcul que l'étape v3 de db.js), en
    * parcourant seulement les morceaux de ces albums. À appeler dans la transaction qui a modifié les cartes.
+   * CROSS JOIN impose l'ordre des boucles (morceaux des albums, puis cartes du joueur par clé primaire) : sans
+   * statistiques, le planificateur parcourrait sinon toutes les cartes du joueur (60 000 pour un gros collectionneur).
    */
   function refreshProgress(userId, albumIds) {
     if (!albumIds.length) return;
@@ -299,9 +301,9 @@ export function createServices(db, catalog, { bus = null } = {}) {
     q(`INSERT INTO user_album_progress (user_id, album_id, owned, holo, total, first_at, updated_at)
       SELECT c.user_id, t.album_id, COUNT(DISTINCT c.track_id), COUNT(DISTINCT CASE WHEN c.variant = 'holo' THEN c.track_id END),
              al.track_count, MIN(c.first_at), MAX(c.first_at)
-      FROM cat_tracks t JOIN cards c ON c.user_id = ? AND c.track_id = t.id JOIN cat_albums al ON al.id = t.album_id
-      WHERE t.album_id IN (SELECT value FROM json_each(?))
-      GROUP BY t.album_id`).run(userId, list);
+      FROM cat_tracks t CROSS JOIN cards c CROSS JOIN cat_albums al
+      WHERE t.album_id IN (SELECT value FROM json_each(?)) AND c.user_id = ? AND c.track_id = t.id AND al.id = t.album_id
+      GROUP BY t.album_id`).run(list, userId);
   }
 
   /** Recompte complet des compteurs d'un joueur (outils admin qui touchent beaucoup de cartes d'un coup). */
@@ -1064,6 +1066,8 @@ export function createServices(db, catalog, { bus = null } = {}) {
       .run(adminId ?? null, String(action).slice(0, 80), target == null ? null : String(target).slice(0, 200), data, Date.now());
   }
 
+  const adminTotals = createLru({ max: 1, ttlMs: 30_000 });
+
   /**
    * Vue d'ensemble admin : joueurs par pages de 50 (curseur sur created_at, id ; `nextCursor` null à la fin), totaux
    * réels lus dans les compteurs (users.unique_cards) et des COUNT(*) indexés, sans sous-requête par joueur sur les cartes.
@@ -1075,7 +1079,12 @@ export function createServices(db, catalog, { bus = null } = {}) {
       FROM users u ${after ? 'WHERE (u.created_at, u.id) < (?, ?)' : ''} ORDER BY u.created_at DESC, u.id DESC LIMIT ?`)
       .all(...(after ? [after[0], after[1]] : []), n + 1);
     const page = keysetPage(rows, n, (u) => [u.created_at, u.id]);
-    const totals = q(`SELECT COUNT(*) AS users, COUNT(email_verified_at) AS verified, COALESCE(SUM(unique_cards), 0) AS cards FROM users`).get();
+    // Totaux : parcourent les tables entières (centaines de milliers d'ouvertures et de notes), gardés 30 s.
+    const totals = adminTotals.wrap('all', () => ({
+      ...q(`SELECT COUNT(*) AS users, COUNT(email_verified_at) AS verified, COALESCE(SUM(unique_cards), 0) AS cards FROM users`).get(),
+      openings: q('SELECT COUNT(*) AS n FROM pack_openings').get().n,
+      ratings: q('SELECT COUNT(*) AS n FROM ratings').get().n,
+    }));
     return {
       users: page.items.map((u) => ({
         id: u.id, username: u.username, email: u.email, role: roleOf(u), verified: !!u.email_verified_at,
@@ -1086,10 +1095,10 @@ export function createServices(db, catalog, { bus = null } = {}) {
       totals: {
         users: totals.users,
         verified: totals.verified,
-        openings: q('SELECT COUNT(*) AS n FROM pack_openings').get().n,
+        openings: totals.openings,
         // Cartes distinctes de tous les joueurs (somme des compteurs users.unique_cards).
         cards: totals.cards,
-        ratings: q('SELECT COUNT(*) AS n FROM ratings').get().n,
+        ratings: totals.ratings,
       },
       catalog: catalog.totals(),
       adminCount: config.adminEmails.length,
@@ -1174,8 +1183,9 @@ export function createServices(db, catalog, { bus = null } = {}) {
     // ?ids=a,b,c : ces albums précis (vignettes de l'accueil, du profil...), avec la progression du joueur.
     if (query.ids != null) {
       const items = idList(query.ids, 100).map((id) => catalog.album(id)).filter(Boolean);
-      const counts = albumCounts(userId, items.map((a) => a.id));
-      return { total: items.length, items: items.map((a) => ({ ...a, owned: counts.get(a.id) || 0 })) };
+      // Progression lue dans user_album_progress (tenue à jour par addCards), sans GROUP BY sur les cartes.
+      const progress = progressOf(userId, items.map((a) => a.id));
+      return { total: items.length, items: items.map((a) => ({ ...a, owned: progress.get(a.id)?.owned || 0 })) };
     }
     const text = typeof query.q === 'string' ? query.q.slice(0, 100) : '';
     const genre = typeof query.genre === 'string' && query.genre.length <= 30 ? query.genre : null;
@@ -1233,6 +1243,8 @@ export function createServices(db, catalog, { bus = null } = {}) {
   }
 
   return {
+    // forget(userId) : oublie les statistiques et le profil gardés en cache d'un joueur (après un changement fait ailleurs).
+    forget: dropStats,
     bind, atomic, getUser, isAdmin, refs, syncPacks, state, openPacks, openAlbumPack, buyPack, recycleDuplicates, pressCard,
     addCards, refreshProgress, focusAlbums,
     setAvatar, setShowcase, setLang, setPrefs, publicProfile, userSummaries, summaryAlbums,

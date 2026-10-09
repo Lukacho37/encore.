@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 
 process.env.NODE_ENV = 'test';
 process.env.ADMIN_EMAILS = 'alice@example.com';
-process.env.BLINDTEST_AUDIO = 'off';
 process.env.COVERS = 'off';
 const { createApp } = await import('../app.js');
 const { TRACKS_BY_ALBUM } = await import('../../shared/catalog.js');
@@ -279,11 +278,13 @@ test('notes et critiques', async () => {
   assert.equal(view.reviews.length, 1, 'une critique écrite par une autre personne');
   assert.equal(view.reviews[0].user.username, 'carla');
   assert.equal(view.reviews[0].friend, false, 'carla et dan ne sont plus amis');
-  assert.equal(view.tracks['discovery:01'].count, 1);
+  // Moyennes des morceaux : `tracks.averages[id]` (notes v2, PLAN.md 4.1.2) ou l'ancienne forme `tracks[id]`.
+  assert.equal((view.tracks.averages?.['discovery:01'] ?? view.tracks['discovery:01']).count, 1);
   const journal = (await b('GET', '/api/users/carla/ratings')).body;
   assert.equal(journal.stats.count, 2);
   assert.equal(journal.topAlbums[0].id, 'discovery');
-  assert.equal(journal.reviews.length, 1);
+  // Critiques du journal : `reviews.items` paginées (notes v2) ou l'ancienne liste.
+  assert.equal((Array.isArray(journal.reviews) ? journal.reviews : journal.reviews.items).length, 1);
   // Fil d'activité des amis
   await a('POST', '/api/friends/request', { username: 'dan' });
   const inbox = (await b('GET', '/api/friends')).body;

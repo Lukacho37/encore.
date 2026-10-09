@@ -5014,6 +5014,79 @@ button.showcase__empty:hover {
   color: var(--paper);
 }
 
+/* Séparation entre le jeu et les œuvres (PLAN.md 7.1) : même encadré que les notes, sur toute la largeur. */
+.rarity-guide__game {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+  padding: var(--s-14);
+  border-radius: var(--rad-md);
+  border: 1px solid var(--line-soft);
+  font-size: 13.5px;
+  color: var(--paper-dim);
+}
+
+.rarity-guide__game h3 {
+  font-size: var(--fs-14);
+  color: var(--paper);
+}
+
+.rarity-guide__game p {
+  margin: 0;
+}
+
+/* Téléphone : le tableau s'empile, une rareté par bloc. Le nom et le sens sur toute la largeur, puis les trois
+   chiffres côte à côte, chacun sous le nom de sa colonne (data-label) ; l'en-tête reste lu par les lecteurs d'écran. */
+@media (max-width: 640px) {
+  .rarity-table,
+  .rarity-table tbody {
+    display: block;
+  }
+
+  .rarity-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .rarity-table tr {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--s-8) var(--s-12);
+    padding: var(--s-12) var(--s-14);
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .rarity-table tr:last-child {
+    border-bottom: 0;
+  }
+
+  .rarity-table td {
+    display: block;
+    padding: 0;
+    border: 0;
+  }
+
+  .rarity-table td:nth-child(-n + 2) {
+    grid-column: 1 / -1;
+  }
+
+  .rarity-table td.num {
+    text-align: left;
+  }
+
+  .rarity-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: var(--s-2);
+    font: var(--fw-semi) var(--fs-12) / var(--lh-ui) var(--font-body);
+    color: var(--haze);
+  }
+}
+
 .rarity-help,
 .summary__help {
   display: flex;
@@ -6278,7 +6351,7 @@ button.card.card--cover:hover {
 .album-tile__skel,
 .coll-skel__block,
 .coll-skel__line,
-.collection .coll-skel-row,
+.coll-skel-row,
 .album-skel,
 .vinyl__sleeve--loading,
 .cover-pick.pf-cover-skel,
@@ -6372,7 +6445,7 @@ button.card.card--cover:hover {
   .album-tile__skel,
   .coll-skel__block,
   .coll-skel__line,
-  .collection .coll-skel-row,
+  .coll-skel-row,
   .album-skel,
   .vinyl__sleeve--loading,
   .cover-pick.pf-cover-skel,

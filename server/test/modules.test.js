@@ -55,20 +55,29 @@ test('deps : dépendances partagées et API sans effet des squelettes', () => {
   assert.equal(deps.probe.sawAccess, true);
   assert.equal(deps.access, deps.moderation.access);
   assert.equal(deps.notify, deps.notifications.notify);
-  // Règles d'accès permissives de K0.
+  // API internes promises par K0 (PLAN.md 9.1) : présentes, qu'elles soient encore des squelettes ou déjà remplies par
+  // leur chantier du même niveau. On ne vérifie que ce qui reste vrai dans les deux cas (aucun blocage ni amitié en base).
+  const internal = {
+    access: ['hiddenIds', 'isBlocked', 'canSee', 'assertActive', 'linkPolicy'],
+    moderation: ['purgeTarget', 'snapshot'],
+    notifications: ['notify', 'unreadCount'],
+    ratings: ['rate', 'summaryOf'],
+    search: ['upsert', 'remove', 'refresh'],
+    lists: ['setGrid9'],
+    collection: ['addXp', 'grantBooster', 'grantCosmetic', 'unlockedCosmetics'],
+    match: ['cachedScore'],
+  };
+  for (const [mod, fns] of Object.entries(internal)) {
+    for (const fn of fns) assert.equal(typeof deps[mod][fn], 'function', `deps.${mod}.${fn}`);
+  }
   assert.equal(deps.access.hiddenIds(1).size, 0);
   assert.equal(deps.access.isBlocked(1, 2), false);
   assert.equal(deps.access.canSee(1, 2, 'public'), true);
   assert.equal(deps.access.canSee(1, 2, 'friends'), false);
   assert.equal(deps.access.canSee(2, 2, 'private'), true);
   assert.equal(deps.access.linkPolicy('texte'), 'texte');
-  assert.doesNotThrow(() => deps.access.assertActive({ id: 1 }));
-  assert.equal(deps.moderation.snapshot('review', 1), null);
-  assert.equal(deps.notify(1, 'friend.requested', {}), undefined);
   assert.equal(deps.notifications.unreadCount(1), 0);
-  assert.throws(() => deps.ratings.rate(1, 'album', 'discovery', 8), (err) => err.status === 501 && err.code === 'not_ready');
-  assert.equal(deps.ratings.summaryOf('album', 'discovery'), null);
-  for (const fn of ['upsert', 'remove', 'refresh']) assert.equal(deps.search[fn](), undefined);
+  // Modules du niveau P1 : encore des squelettes en P0.
   assert.equal(deps.lists.setGrid9(1, []), undefined);
   assert.equal(deps.match.cachedScore(1, 2), null);
   assert.deepEqual(deps.collection.unlockedCosmetics(1), []);

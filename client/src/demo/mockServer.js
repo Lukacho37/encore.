@@ -11,12 +11,18 @@ import {
   buildBlindtest, blindtestClues, blindtestPoints, blindtestReward,
   validateEmail, validatePassword, validateUsername,
 } from '@shared/rules.js';
+import { dayStart as parisDayStart } from '@shared/periods.js';
 import MODULES from './mock/index.js';
 
 const KEY = 'albummania.demo.v1';
 const REGEN_MS = 30 * 60_000;
 const MAX_STOCK = 5;
 const GAME_TTL = 2 * 86_400_000; // parties de blind test gardées deux jours (le quota est quotidien)
+// Comme le vrai serveur (server/config.js, server/services.js) : version des CGU en vigueur, plateformes d'écoute,
+// délai avant de renvoyer une demande d'ami refusée.
+const TERMS_VERSION = '2026-10-06';
+const LISTEN_PLATFORMS = ['deezer', 'spotify', 'apple'];
+const FRIEND_COOLDOWN_MS = 7 * 86_400_000;
 
 const fail = (status, code, extra) => {
   throw new ApiError(status, code, { error: code, ...extra });
@@ -101,6 +107,7 @@ function fresh() {
       id, email: `${b.username}@demo.albummania`, username: b.username, password: hash('demo-bot'), verified: now - 86_400_000 * (30 + i * 9),
       role: 'player', lang: 'fr', avatar: 'initials', avatarColor: b.color, royalties: 500, xp: 0, packs: 0, packsAt: now, bonusPacks: 0,
       showcase: [], createdAt: now - 86_400_000 * (30 + i * 9), openings: b.packs, bot: true,
+      prefs: {}, onboardedAt: now - 86_400_000 * (30 + i * 9), termsAcceptedAt: now - 86_400_000 * (30 + i * 9), termsVersion: TERMS_VERSION,
     };
     data.users.push(user);
     const rng = seededRng(1234 + i * 77);
@@ -171,7 +178,7 @@ function sanitize(d) {
   for (const u of d.users) {
     u.showcase = Array.from({ length: SHOWCASE_SLOTS }, (_, i) => (Array.isArray(u.showcase) && trackOf(u.showcase[i]) ? u.showcase[i] : null));
     if (typeof u.avatar !== 'string' || (u.avatar !== 'initials' && !ALBUM.has(avatarAlbum(u.avatar)))) u.avatar = 'initials';
-    if (typeof u.avatarColor !== 'string') u.avatarColor = AVATAR_COLORS[0];
+    if (u.avatarColor !== 'auto' && !AVATAR_COLORS.includes(u.avatarColor)) u.avatarColor = 'auto';
     if (u.lang !== 'fr' && u.lang !== 'en') u.lang = 'fr';
     if (u.role !== 'admin') u.role = 'player';
     if (u.ratingScale !== 'stars' && u.ratingScale !== 'points') delete u.ratingScale;
@@ -182,6 +189,16 @@ function sanitize(d) {
     u.packsAt = num(u.packsAt, now);
     u.createdAt = num(u.createdAt, now);
     u.openings = num(u.openings, 0);
+    // Champs ajoutés en P0 (préférences, parcours d'accueil, CGU) : une ancienne sauvegarde a déjà fait son accueil
+    // (comme l'étape v8 du serveur) et ses joueurs avaient accepté les CGU de l'époque.
+    if (!isObj(u.prefs)) u.prefs = {};
+    if (!LISTEN_PLATFORMS.includes(u.prefs.listen)) delete u.prefs.listen;
+    if (u.onboardedAt === undefined) u.onboardedAt = u.createdAt;
+    u.onboardedAt = u.onboardedAt === null ? null : num(u.onboardedAt, u.createdAt);
+    if (u.termsVersion === undefined) {
+      u.termsVersion = TERMS_VERSION;
+      u.termsAcceptedAt = u.createdAt;
+    }
   }
   const ids = new Set(d.users.map((u) => u.id));
   for (const key of Object.keys(d.cards)) {
@@ -213,7 +230,8 @@ function sanitize(d) {
   }
   d.ratings = d.ratings.filter((r) => isObj(r) && ids.has(r.userId) && Number.isInteger(r.score) && r.score >= 0 && r.score <= 10
     && itemExists(r.type, r.id));
-  d.friendships = d.friendships.filter((f) => isObj(f) && ids.has(f.requester) && ids.has(f.addressee));
+  d.friendships = d.friendships.filter((f) => isObj(f) && ids.has(f.requester) && ids.has(f.addressee)
+    && ['pending', 'accepted', 'declined'].includes(f.status));
   d.nextId = Math.max(num(d.nextId, 1), ...d.users.map((u) => u.id + 1));
   if (!ids.has(d.session)) d.session = null;
   return d;
@@ -278,31 +296,105 @@ function botsRespond(u) {
   }
 }
 
+/**
+ * « Pressage n° » d'un album complété : rang du joueur parmi ceux qui l'ont complété (date, puis identifiant),
+ * comme achievements.rank côté serveur ; null pour un artiste maîtrisé.
+ */
+function rankOf(uid, key) {
+  if (!key.startsWith('album:')) return null;
+  const at = achOf(uid)[key];
+  if (at === undefined) return null;
+  let rank = 1;
+  for (const [other, list] of Object.entries(db.achievements)) {
+    const t = list?.[key];
+    if (Number(other) !== uid && t !== undefined && (t < at || (t === at && Number(other) < uid))) rank += 1;
+  }
+  return rank;
+}
+
+/** Préférences du joueur avec leurs valeurs par défaut (comme prefsOf côté serveur). */
+const prefsOf = (u) => ({
+  listen: LISTEN_PLATFORMS.includes(u.prefs?.listen) ? u.prefs.listen : 'deezer',
+  emailDigest: u.prefs?.emailDigest === true,
+});
+
+/** Partie « joueur » de l'état (state.user), commune à l'état complet et à l'état partiel. */
+function selfPayload(u) {
+  return {
+    id: u.id, username: u.username, email: u.email, role: u.role, lang: u.lang, avatar: u.avatar, avatarColor: u.avatarColor,
+    royalties: u.royalties, level: levelFromXp(u.xp), showcase: u.showcase, createdAt: u.createdAt, ratingScale: u.ratingScale || 'stars',
+    prefs: prefsOf(u),
+    onboarded: u.onboardedAt != null,
+    termsOk: !!u.termsAcceptedAt && u.termsVersion === TERMS_VERSION,
+    termsVersion: u.termsVersion || null,
+  };
+}
+
+function packInfo(u) {
+  return {
+    regen: u.packs, bonus: u.bonusPacks, available: u.packs + u.bonusPacks, max: MAX_STOCK, intervalMs: REGEN_MS,
+    nextAt: u.packs < MAX_STOCK ? u.packsAt + REGEN_MS : null, unlimited: isAdmin(u),
+  };
+}
+
+/**
+ * Pastilles du joueur : demandes d'ami reçues, notifications non lues. Un module de la démo peut en fournir
+ * (`export function counts(db, ctx, userId) { return { unread: 3 } }`, ex. mock/notifications.js) : seules les
+ * valeurs numériques sont gardées.
+ */
+function countsFor(uid) {
+  const counts = { pendingFriends: db.friendships.filter((f) => f.addressee === uid && f.status === 'pending').length, unread: 0 };
+  for (const mod of MODULES) {
+    try {
+      for (const [k, v] of Object.entries(mod.counts?.(db, ctx, uid) || {})) if (Number.isFinite(v)) counts[k] = v;
+    } catch (err) {
+      console.error('[démo] pastilles d’un module en erreur :', err);
+    }
+  }
+  return counts;
+}
+
 /** État complet du joueur connecté, comme le vrai serveur (statistiques calculées ici, cartes avec leur rareté). */
 function state() {
   const u = me();
   syncPacks(u);
   botsRespond(u);
-  const admin = isAdmin(u);
+  const counts = countsFor(u.id);
   return {
-    user: {
-      id: u.id, username: u.username, email: u.email, role: u.role, lang: u.lang, avatar: u.avatar, avatarColor: u.avatarColor,
-      royalties: u.royalties, level: levelFromXp(u.xp), showcase: u.showcase, createdAt: u.createdAt, ratingScale: u.ratingScale || 'stars',
-    },
-    packs: {
-      regen: u.packs, bonus: u.bonusPacks, available: u.packs + u.bonusPacks, max: MAX_STOCK, intervalMs: REGEN_MS,
-      nextAt: u.packs < MAX_STOCK ? u.packsAt + REGEN_MS : null, unlimited: admin,
-    },
+    user: selfPayload(u),
+    packs: packInfo(u),
     // r : rareté (les sauvegardes des anciennes versions de la démo ne la stockaient pas : on la lit dans le catalogue).
     cards: Object.entries(cardsOf(u.id)).map(([k, v]) => {
       const [t, variant] = k.split('|');
       return { t, v: variant, c: v.count, at: v.at, r: trackOf(t)?.rarity || 'common' };
     }),
-    achievements: Object.entries(achOf(u.id)).map(([key, at]) => ({ key, at })),
+    achievements: Object.entries(achOf(u.id)).map(([key, at]) => ({ key, at, rank: rankOf(u.id, key) })),
     ratings: db.ratings.filter((r) => r.userId === u.id).map((r) => ({ t: r.type, i: r.id, s: r.score })),
-    pendingFriends: db.friendships.filter((f) => f.addressee === u.id && f.status === 'pending').length,
+    counts,
+    // Ancien nom de counts.pendingFriends, gardé pendant P0.
+    pendingFriends: counts.pendingFriends,
     stats: staticCatalog.stats(ownedSet(u.id), Object.keys(achOf(u.id))),
     catalog: refs({ trackIds: u.showcase.filter(Boolean), albumIds: [avatarAlbum(u.avatar)].filter(Boolean) }),
+    serverTime: Date.now(),
+    partial: false,
+  };
+}
+
+/**
+ * État partiel renvoyé par les actions (PLAN.md 4.1.1), comme le vrai serveur : joueur, boosters, pastilles et
+ * résumé des statistiques ; le site déduit le reste des deltas de la réponse (client/src/state/mergeState.js).
+ */
+function partialState() {
+  const u = me();
+  syncPacks(u);
+  botsRespond(u);
+  const s = staticCatalog.stats(ownedSet(u.id), Object.keys(achOf(u.id)));
+  return {
+    partial: true,
+    user: selfPayload(u),
+    packs: packInfo(u),
+    counts: countsFor(u.id),
+    stats: { summary: { total: s.total, albumsCompleted: s.albumsCompleted, artistsMastered: s.artistsMastered, catalog: s.catalog } },
     serverTime: Date.now(),
   };
 }
@@ -312,9 +404,16 @@ function albumCounts(owned, albumIds) {
   return new Map(albumIds.map((id) => [id, staticCatalog.albumTrackIds(id).filter((t) => owned.has(t)).length]));
 }
 
+/** Cartes possédées de ces artistes : { artistId: nombre }. */
+function artistCounts(owned, artistIds) {
+  return new Map(artistIds.map((id) => [id, staticCatalog.artistTrackIds(id).filter((t) => owned.has(t)).length]));
+}
+
 /**
- * Ajoute des cartes à la collection, attribue XP, droits d'auteur, succès et récompenses (même calcul que le serveur).
- * `source` : 'pack', 'admin-pack', 'album-pack' ou 'press' (une carte pressée ne rapporte pas de droits d'auteur).
+ * Ajoute des cartes à la collection, attribue XP, royalties, succès et récompenses (même calcul que le serveur).
+ * `source` : 'pack', 'admin-pack', 'album-pack' ou 'press' (une carte pressée ne rapporte pas de royalties).
+ * Renvoie les deltas de la réponse, comme services.addCards : cards, at, xp, royalties, achievements (avec leur
+ * rang), albumDeltas, artistDeltas, catalog.
  */
 function addCards(u, cards, source) {
   const now = Date.now();
@@ -323,8 +422,10 @@ function addCards(u, cards, source) {
   const ids = [...new Set(list.map((c) => c.trackId))];
   const views = ids.map(trackOf);
   const albumIds = [...new Set(views.map((t) => t.albumId).filter(Boolean))];
+  const artistIds = [...new Set(views.map((t) => t.artistId).filter(Boolean))];
   const before = ownedSet(u.id);
   const beforeCounts = albumCounts(before, albumIds);
+  const beforeArtists = artistCounts(before, artistIds);
   const owned = new Set(before);
   let xp = 0;
   let cardRoyalties = 0;
@@ -347,6 +448,7 @@ function addCards(u, cards, source) {
     royalties += a.royalties;
     xp += a.xp;
   }
+  for (const a of achievements) if (a.type === 'album') a.rank = rankOf(u.id, a.key);
   u.xp += xp;
   u.royalties += royalties;
   u.openings = (u.openings || 0) + 1;
@@ -357,19 +459,31 @@ function addCards(u, cards, source) {
     after: afterCounts.get(albumId) || 0,
     total: views.find((t) => t.albumId === albumId).total,
   })).filter((d) => d.after > d.before);
+  const afterArtists = artistCounts(owned, artistIds);
+  const artistDeltas = artistIds.map((artistId) => ({
+    artistId,
+    before: beforeArtists.get(artistId) || 0,
+    after: afterArtists.get(artistId) || 0,
+    total: staticCatalog.artistTrackIds(artistId).length,
+  })).filter((d) => d.after > d.before);
   return {
     cards: results,
+    // Date des nouvelles cartes et des succès, pour la fusion du site.
+    at: now,
     xp,
     royalties,
     cardRoyalties,
     achievements,
     albumDeltas,
+    artistDeltas,
     catalog: refs({ trackIds: ids, albumIds, artistIds: achievements.filter((a) => a.type === 'artist').map((a) => a.id) }),
   };
 }
 
+/** Joueur d'une liste d'amis : UserSummary, plus `unique` et `total` (noms d'avant, gardés pour les pages existantes). */
 function summary(u) {
-  return { id: u.id, username: u.username, avatar: u.avatar, avatarColor: u.avatarColor, level: levelFromXp(u.xp).level, unique: ownedSet(u.id).size, total: ALL_TRACKS.length };
+  const s = summaries([u.id]).get(u.id);
+  return { ...s, unique: s.uniqueCards, total: ALL_TRACKS.length };
 }
 
 function between(a, b) {
@@ -405,7 +519,8 @@ function summaries(ids) {
 function friendsOf(uid) {
   const out = { friends: [], incoming: [], outgoing: [] };
   for (const f of [...db.friendships].sort((a, b) => b.createdAt - a.createdAt)) {
-    if (f.requester !== uid && f.addressee !== uid) continue;
+    // Une demande refusée reste 7 jours (délai avant de pouvoir la renvoyer) sans apparaître nulle part.
+    if ((f.requester !== uid && f.addressee !== uid) || f.status === 'declined') continue;
     const other = userById(f.requester === uid ? f.addressee : f.requester);
     const entry = { requestId: f.id, since: f.respondedAt || f.createdAt, user: summary(other) };
     if (f.status === 'accepted') out.friends.push(entry);
@@ -416,7 +531,7 @@ function friendsOf(uid) {
   return { ...out, catalog: refs({ albumIds }) };
 }
 
-/** Profil public d'un joueur : statistiques, vitrine, vinyles, prochains vinyles (même forme que le serveur). */
+/** Profil public d'un joueur : statistiques, vitrine, vinyles, prochains vinyles (même forme que le serveur, sans `role`). */
 function publicProfile(viewer, target) {
   const owned = ownedSet(target.id);
   const holo = holoSet(target.id);
@@ -426,7 +541,7 @@ function publicProfile(viewer, target) {
   if (target.id === viewer.id) friendship = 'self';
   else {
     const f = between(viewer.id, target.id);
-    if (f) {
+    if (f && f.status !== 'declined') {
       requestId = f.id;
       friendship = f.status === 'accepted' ? 'friends' : f.requester === viewer.id ? 'outgoing' : 'incoming';
     }
@@ -437,7 +552,9 @@ function publicProfile(viewer, target) {
     .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 120).reverse()
     .map(([k, at]) => {
       const albumId = k.slice(6);
-      return { albumId, at, edition: staticCatalog.albumTrackIds(albumId).every((id) => holo.has(id)) ? 'holo' : 'black' };
+      return {
+        albumId, at, rank: rankOf(target.id, k), edition: staticCatalog.albumTrackIds(albumId).every((id) => holo.has(id)) ? 'holo' : 'black',
+      };
     });
   const mastered = entries.filter(([k]) => k.startsWith('artist:')).sort((a, b) => b[1] - a[1]).slice(0, 100).map(([k]) => k.slice(7));
   // Prochains vinyles : les albums commencés les plus avancés.
@@ -447,7 +564,7 @@ function publicProfile(viewer, target) {
   const slotIds = target.showcase.map(idOf);
   return {
     id: target.id, username: target.username, avatar: target.avatar, avatarColor: target.avatarColor, level: levelFromXp(target.xp),
-    createdAt: target.createdAt, role: target.role,
+    createdAt: target.createdAt,
     stats: {
       unique: stats.total.owned, total: stats.total.total,
       albumsCompleted: stats.albumsCompleted, albumsTotal: stats.catalog.albums,
@@ -480,6 +597,17 @@ function demoEmail(kind, u, tok) {
       path: `/verify?token=${tok}`,
     };
   }
+  // Inscription avec une adresse qui a déjà un compte confirmé : même réponse qu'une inscription réussie (pas de
+  // fuite des adresses inscrites), et un e-mail qui prévient le titulaire du compte.
+  if (kind === 'exists') {
+    return {
+      subject: fr ? 'Ton compte AlbumMania existe déjà' : 'Your AlbumMania account already exists',
+      text: fr ? `Salut ${u.username}, quelqu’un a voulu créer un compte avec ton adresse. Si c’était toi, connecte-toi simplement.`
+        : `Hi ${u.username}, someone tried to sign up with your address. If it was you, just log in.`,
+      cta: fr ? 'Me connecter' : 'Log in',
+      path: '/login',
+    };
+  }
   return {
     subject: fr ? 'Réinitialise ton mot de passe · AlbumMania' : 'Reset your password · AlbumMania',
     text: fr ? `Salut ${u.username}, clique sur le bouton pour choisir un nouveau mot de passe.` : `Hi ${u.username}, click the button to choose a new password.`,
@@ -504,12 +632,8 @@ function consume(tok, purpose) {
 
 // ---------- blind test ----------
 
-const dayStart = () => {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
-};
-const rewardedToday = (uid) => Object.values(db.games).filter((g) => g.userId === uid && g.rewarded && g.createdAt >= dayStart()).length;
+// Parties récompensées du jour : jour civil à Paris (shared/periods.js), comme le vrai serveur.
+const rewardedToday = (uid) => Object.values(db.games).filter((g) => g.userId === uid && g.rewarded && g.createdAt >= parisDayStart()).length;
 
 function roundPayload(questions, index, admin) {
   const q = questions[index];
@@ -616,6 +740,19 @@ const SORTS = new Set(['popular', 'progress', 'title', 'year', 'recent']);
 const idList = (raw, max) => String(raw || '').split(',').map((x) => x.trim()).filter((x) => x && x.length <= 80).slice(0, max);
 const clampInt = (raw, min, max, fallback) => Math.min(max, Math.max(min, Math.floor(Number(raw) || fallback)));
 
+// Curseurs opaques (comme server/paging.js) : JSON en base64url ; un curseur illisible répond 400 invalid_input.
+const encodeCursor = (values) => btoa(JSON.stringify(values)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+function decodeCursor(raw) {
+  if (!raw) return null;
+  try {
+    const values = JSON.parse(atob(String(raw).replace(/-/g, '+').replace(/_/g, '/')));
+    if (Array.isArray(values) && values.length) return values;
+  } catch {
+    // curseur illisible
+  }
+  return fail(400, 'invalid_input', { field: 'cursor' });
+}
+
 function browseAlbums(u, query) {
   const owned = ownedSet(u.id);
   // ?ids=a,b,c : ces albums précis, avec la progression du joueur.
@@ -669,9 +806,14 @@ const routes = [
     const username = String(body.username || '').trim();
     const error = validateEmail(email) || validateUsername(username) || validatePassword(body.password);
     if (error) fail(400, error);
+    // Comme le vrai serveur (PLAN.md 4.1.5) : CGU acceptées et 15 ans ou plus, deux cases distinctes.
+    if (body.acceptTerms !== true) fail(400, 'terms_required');
+    if (body.age15 !== true) fail(400, 'age_required');
     // Comme le vrai serveur : un compte jamais vérifié ne bloque ni l'adresse ni le pseudo.
     const existing = db.users.find((u) => u.email === email);
-    if (existing?.verified) fail(409, 'email_taken');
+    // Adresse déjà inscrite et confirmée : même réponse qu'une inscription réussie (pas de fuite des adresses
+    // inscrites) ; le titulaire reçoit un e-mail qui l'invite à se connecter.
+    if (existing?.verified) return { ok: true, email, demoEmail: demoEmail('exists', existing) };
     const owner = userByName(username);
     if (owner && owner !== existing) fail(409, 'username_taken');
     if (existing) {
@@ -681,8 +823,10 @@ const routes = [
     const now = Date.now();
     const u = {
       id: db.nextId++, email, username, password: hash(body.password), verified: null, role: 'player',
-      lang: body.lang === 'en' ? 'en' : 'fr', avatar: 'initials', avatarColor: AVATAR_COLORS[Math.floor(rand() * AVATAR_COLORS.length)],
+      // « auto » : couleur déterminée par l'identifiant du joueur (calculée par le site).
+      lang: body.lang === 'en' ? 'en' : 'fr', avatar: 'initials', avatarColor: 'auto',
       royalties: ECONOMY.welcomeRoyalties, xp: 0, packs: 0, packsAt: now, bonusPacks: ECONOMY.welcomePacks, showcase: [], createdAt: now, openings: 0,
+      prefs: {}, onboardedAt: null, termsAcceptedAt: now, termsVersion: TERMS_VERSION,
     };
     db.users.push(u);
     return { ok: true, email, demoEmail: demoEmail('verify', u, issue(u, 'verify')) };
@@ -791,7 +935,7 @@ const routes = [
     }
     const focusAlbumIds = focusAlbums(cardsOf(u.id));
     const packs = Array.from({ length: n }, () => rollPack(rand, staticCatalog, { focusAlbumIds }));
-    return { packs: packs.map((p) => p.length), ...addCards(u, packs.flat(), admin ? 'admin-pack' : 'pack'), state: state() };
+    return { packs: packs.map((p) => p.length), ...addCards(u, packs.flat(), admin ? 'admin-pack' : 'pack'), state: partialState() };
   }],
   // Booster d'album : 5 cartes de l'album choisi, en priorité celles qui manquent ; payé en royalties (gratuit pour l'admin).
   ['POST', /^\/packs\/album$/, ({ body }) => {
@@ -803,14 +947,14 @@ const routes = [
     u.royalties -= cost;
     const owned = ownedSet(u.id);
     const cards = rollAlbumPack(rand, staticCatalog, album.id, owned);
-    return { spent: cost, albumId: album.id, packs: [cards.length], ...addCards(u, cards, 'album-pack'), state: state() };
+    return { spent: cost, albumId: album.id, packs: [cards.length], ...addCards(u, cards, 'album-pack'), state: partialState() };
   }],
   ['POST', /^\/shop\/buy-pack$/, () => {
     const u = me();
     if (u.royalties < ECONOMY.packPrice) fail(409, 'not_enough_royalties');
     u.royalties -= ECONOMY.packPrice;
     u.bonusPacks += 1;
-    return { spent: ECONOMY.packPrice, state: state() };
+    return { spent: ECONOMY.packPrice, state: partialState() };
   }],
   ['POST', /^\/collection\/recycle$/, () => {
     const u = me();
@@ -825,6 +969,7 @@ const routes = [
       }
     }
     u.royalties += royalties;
+    // Recycler change le nombre d'exemplaires de chaque carte : état complet, comme le vrai serveur.
     return { royalties, recycled, state: state() };
   }],
   ['POST', /^\/collection\/press$/, ({ body }) => {
@@ -839,11 +984,12 @@ const routes = [
     if (ownedSet(u.id).has(track.id)) fail(409, 'already_owned');
     if (u.royalties < cost) fail(409, 'not_enough_royalties');
     u.royalties -= cost;
-    return { spent: cost, ...addCards(u, [{ trackId: track.id, variant: 'std' }], 'press'), state: state() };
+    return { spent: cost, ...addCards(u, [{ trackId: track.id, variant: 'std' }], 'press'), state: partialState() };
   }],
   ['POST', /^\/profile\/avatar$/, ({ body }) => {
     const u = me();
-    if (body.color !== undefined && !AVATAR_COLORS.includes(body.color)) fail(400, 'invalid_color');
+    // « auto » : couleur déterminée par l'identifiant du joueur (comme le vrai serveur).
+    if (body.color !== undefined && body.color !== 'auto' && !AVATAR_COLORS.includes(body.color)) fail(400, 'invalid_color');
     if (body.avatar !== undefined && body.avatar !== 'initials') {
       const m = /^album:(.+)$/.exec(String(body.avatar));
       if (!m || !ALBUM.has(m[1])) fail(400, 'invalid_avatar');
@@ -851,7 +997,7 @@ const routes = [
     }
     u.avatar = body.avatar ?? u.avatar;
     u.avatarColor = body.color ?? u.avatarColor;
-    return { state: state() };
+    return { state: partialState() };
   }],
   ['POST', /^\/profile\/showcase$/, ({ body }) => {
     const u = me();
@@ -860,7 +1006,7 @@ const routes = [
     const clean = body.slots.map((id) => (idOf(id) && owned.has(id) ? id : null));
     while (clean.length < SHOWCASE_SLOTS) clean.push(null);
     u.showcase = clean;
-    return { state: state() };
+    return { state: partialState() };
   }],
   ['POST', /^\/profile\/lang$/, ({ body }) => {
     if (body.lang !== 'fr' && body.lang !== 'en') fail(400, 'invalid_lang');
@@ -869,11 +1015,17 @@ const routes = [
   }],
   ['POST', /^\/profile\/settings$/, ({ body }) => {
     const u = me();
-    if (body.ratingScale !== undefined) {
-      if (!['stars', 'points'].includes(body.ratingScale)) fail(400, 'invalid_scale');
-      u.ratingScale = body.ratingScale;
+    // Tout est validé avant d'écrire : un champ refusé n'en enregistre aucun (comme le vrai serveur).
+    if (body.ratingScale !== undefined && !['stars', 'points'].includes(body.ratingScale)) fail(400, 'invalid_scale');
+    const prefs = body.prefs;
+    if (prefs !== undefined) {
+      if (!isObj(prefs)) fail(400, 'invalid_input', { field: 'prefs' });
+      if (prefs.listen !== undefined && !LISTEN_PLATFORMS.includes(prefs.listen)) fail(400, 'invalid_input', { field: 'prefs.listen' });
+      if (prefs.emailDigest !== undefined && typeof prefs.emailDigest !== 'boolean') fail(400, 'invalid_input', { field: 'prefs.emailDigest' });
+      u.prefs = { ...u.prefs, ...(prefs.listen !== undefined && { listen: prefs.listen }), ...(prefs.emailDigest !== undefined && { emailDigest: prefs.emailDigest }) };
     }
-    return { state: state() };
+    if (body.ratingScale !== undefined) u.ratingScale = body.ratingScale;
+    return { state: partialState() };
   }],
   ['GET', /^\/users\/([^/]+)$/, ({ params }) => {
     const viewer = me();
@@ -920,14 +1072,15 @@ const routes = [
     const now = Date.now();
     if (existing) Object.assign(existing, { score: body.score, review: text || null, updatedAt: now });
     else db.ratings.push({ userId: u.id, type, id, score: body.score, review: text || null, createdAt: now, updatedAt: now });
-    return { ...itemRatings(u.id, type, id), state: state() };
+    // `rating` : le delta de la note du joueur, fusionné dans state.ratings par le site.
+    return { ...itemRatings(u.id, type, id), rating: { type, id, score: body.score }, state: partialState() };
   }],
   ['DELETE', /^\/ratings\/(album|track)\/([^/]+)$/, ({ params }) => {
     const u = me();
     const [type, id] = [params[0], decodeURIComponent(params[1])];
     if (!itemExists(type, id)) fail(404, 'unknown_item');
     db.ratings = db.ratings.filter((r) => !(r.userId === u.id && r.type === type && r.id === id));
-    return { ...itemRatings(u.id, type, id), state: state() };
+    return { ...itemRatings(u.id, type, id), rating: { type, id, score: null }, state: partialState() };
   }],
   // Démo : l'accès admin se déverrouille avec le code du propriétaire (seule son empreinte SHA-256 est ici).
   ['POST', /^\/demo\/unlock-admin$/, async ({ body }) => {
@@ -949,16 +1102,23 @@ const routes = [
     if (!target || !target.verified) fail(404, 'user_not_found');
     if (target.id === u.id) fail(400, 'cannot_add_self');
     const f = between(u.id, target.id);
-    if (f) {
-      if (f.status === 'accepted') fail(409, 'already_friends');
+    const now = Date.now();
+    if (f?.status === 'accepted') fail(409, 'already_friends');
+    if (f?.status === 'pending') {
       if (f.requester === u.id) fail(409, 'already_requested');
       // L'autre joueur nous avait déjà invité : on accepte directement.
       f.status = 'accepted';
-      f.respondedAt = Date.now();
-      return { status: 'accepted', username: target.username };
+      f.respondedAt = now;
+      return { status: 'accepted', username: target.username, state: partialState() };
     }
-    db.friendships.push({ id: db.nextId++, requester: u.id, addressee: target.id, status: 'pending', createdAt: Date.now() });
-    return { status: 'pending', username: target.username };
+    // Demande refusée : 7 jours avant de pouvoir la renvoyer (comme le vrai serveur).
+    if (f?.status === 'declined' && f.requester === u.id) {
+      const until = (f.respondedAt || f.createdAt) + FRIEND_COOLDOWN_MS;
+      if (now < until) fail(409, 'request_cooldown', { until });
+    }
+    if (f) Object.assign(f, { requester: u.id, addressee: target.id, status: 'pending', createdAt: now, respondedAt: undefined });
+    else db.friendships.push({ id: db.nextId++, requester: u.id, addressee: target.id, status: 'pending', createdAt: now });
+    return { status: 'pending', username: target.username, state: partialState() };
   }],
   ['POST', /^\/friends\/(\d+)\/(accept|decline)$/, ({ params }) => {
     const u = me();
@@ -968,19 +1128,24 @@ const routes = [
       if (f.addressee !== u.id) fail(403, 'forbidden');
       f.status = 'accepted';
       f.respondedAt = Date.now();
-    } else {
-      // Refuser (destinataire) ou annuler (expéditeur).
-      if (f.addressee !== u.id && f.requester !== u.id) fail(403, 'forbidden');
+    } else if (f.addressee === u.id) {
+      // Refuser : la demande reste 7 jours (délai avant que l'expéditeur puisse la renvoyer).
+      f.status = 'declined';
+      f.respondedAt = Date.now();
+    } else if (f.requester === u.id) {
+      // Annuler sa propre demande : elle disparaît.
       db.friendships = db.friendships.filter((x) => x !== f);
+    } else {
+      fail(403, 'forbidden');
     }
-    return friendsOf(u.id);
+    return { ...friendsOf(u.id), state: partialState() };
   }],
   ['DELETE', /^\/friends\/(\d+)$/, ({ params }) => {
     const u = me();
     const f = between(u.id, Number(params[0]));
     if (!f || f.status !== 'accepted') fail(404, 'not_friends');
     db.friendships = db.friendships.filter((x) => x !== f);
-    return friendsOf(u.id);
+    return { ...friendsOf(u.id), state: partialState() };
   }],
 
   ['GET', /^\/blindtest$/, () => {
@@ -1026,7 +1191,7 @@ const routes = [
       final = { score: g.score, correct: g.correct, rounds: g.questions.length, rewardPacks, rewarded: g.rewarded, xp };
     }
     const result = { result: { correct, answer: q.answer, picked: q.picked, points, score: g.score }, final, catalog: refs({ trackIds: [q.answer] }) };
-    return final ? { ...result, state: state() } : result;
+    return final ? { ...result, state: partialState() } : result;
   }],
   ['POST', /^\/blindtest\/([^/]+)\/next$/, ({ params }) => {
     const u = me();
@@ -1040,19 +1205,28 @@ const routes = [
     return { round };
   }],
 
-  ['GET', /^\/admin\/overview$/, () => {
+  // Vue d'ensemble : joueurs par pages de 50 (curseur sur la date d'inscription puis l'identifiant, comme le serveur).
+  ['GET', /^\/admin\/overview$/, ({ query }) => {
     requireAdmin();
-    const users = [...db.users].sort((a, b) => b.createdAt - a.createdAt).map((u) => ({
+    const limit = clampInt(query.get('limit'), 1, 100, 50);
+    const after = decodeCursor(query.get('cursor'));
+    const sorted = [...db.users].sort((a, b) => b.createdAt - a.createdAt || b.id - a.id);
+    const rest = after ? sorted.filter((u) => u.createdAt < after[0] || (u.createdAt === after[0] && u.id < after[1])) : sorted;
+    const page = rest.slice(0, limit);
+    const users = page.map((u) => ({
       id: u.id, username: u.username, email: u.email, role: u.role, verified: !!u.verified, unique: ownedSet(u.id).size,
       openings: u.openings || 0, royalties: u.royalties, packs: u.packs + u.bonusPacks, level: levelFromXp(u.xp).level, createdAt: u.createdAt, lastSeenAt: null,
     }));
+    const last = page[page.length - 1];
     return {
       users,
+      nextCursor: rest.length > limit && last ? encodeCursor([last.createdAt, last.id]) : null,
       totals: {
-        users: users.length,
-        verified: users.filter((u) => u.verified).length,
-        openings: users.reduce((s, u) => s + u.openings, 0),
-        cards: Object.values(db.cards).reduce((s, c) => s + Object.values(c).reduce((a, v) => a + v.count, 0), 0),
+        users: db.users.length,
+        verified: db.users.filter((u) => u.verified).length,
+        openings: db.users.reduce((n, u) => n + (u.openings || 0), 0),
+        // Cartes distinctes de tous les joueurs (comme la somme des compteurs users.unique_cards du serveur).
+        cards: db.users.reduce((n, u) => n + ownedSet(u.id).size, 0),
         ratings: db.ratings.length,
       },
       catalog: staticCatalog.totals(),
@@ -1150,8 +1324,10 @@ const routes = [
 
 /**
  * Outils du faux serveur pour les jumeaux de modules (client/src/demo/mock/<module>.js) : reçus par seed/migrate
- * et par chaque route ({ params, body, query, ctx }). `partialState` : état renvoyé par une action (P0-A le
- * réduit à l'état partiel du vrai serveur ; en attendant, l'état complet, que le site sait déjà fusionner).
+ * et par chaque route ({ params, body, query, ctx }). `state()` : état complet ; `partialState()` : état partiel
+ * renvoyé par une action (PLAN.md 4.1.1 : { partial, user, packs, counts, stats: { summary }, serverTime }), à
+ * accompagner des deltas de l'action. Un module peut aussi exporter `counts(db, ctx, userId)` → { unread… } pour
+ * les pastilles de state.counts (ex. notifications non lues).
  */
 export const ctx = {
   get db() {
@@ -1163,7 +1339,7 @@ export const ctx = {
   summaries,
   refs,
   state,
-  partialState: () => state(),
+  partialState,
   fail,
   save,
   now: () => Date.now(),

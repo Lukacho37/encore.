@@ -4,22 +4,55 @@ import { HttpError } from './services.js';
 import { dayStart, nextDayStart } from '../shared/periods.js';
 
 const scrypt = promisify(crypto.scrypt);
-const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 64 };
 
-export async function hashPassword(password) {
+/**
+ * Coût de scrypt (PLAN.md 7.2) : N = 2^17 (128 Mo de mémoire par calcul), r = 8, p = 1. Les tests gardent 2^14 pour
+ * rester rapides. Un mot de passe haché avec un coût plus faible (les comptes d'avant, en 2^14) est re-haché à la
+ * connexion : `needsRehash(stored)` le dit, auth.js appelle alors hashPassword (P0-D).
+ */
+export const SCRYPT_COST = { N: 2 ** 17, r: 8, p: 1, keylen: 64 };
+/** N visé pour un nouveau hachage. */
+export const scryptN = () => (process.env.NODE_ENV === 'test' ? 2 ** 14 : SCRYPT_COST.N);
+// Plafond de mémoire de node:crypto (32 Mo par défaut, trop peu au-delà de N = 2^14) : 128 × N × r × p, avec une marge.
+const maxmemOf = (N, r, p) => 256 * N * r * p;
+const MAX_N = 2 ** 20;
+
+/** Hachage scrypt « scrypt$N$r$p$sel$clé » ; `N` permet aux tests de produire un hachage de l'ancien coût. */
+export async function hashPassword(password, { N = scryptN() } = {}) {
+  const { r, p, keylen } = SCRYPT_COST;
   const salt = crypto.randomBytes(16);
-  const key = await scrypt(password.normalize('NFKC'), salt, SCRYPT.keylen, { N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p });
-  return ['scrypt', SCRYPT.N, SCRYPT.r, SCRYPT.p, salt.toString('base64'), key.toString('base64')].join('$');
+  const key = await scrypt(password.normalize('NFKC'), salt, keylen, { N, r, p, maxmem: maxmemOf(N, r, p) });
+  return ['scrypt', N, r, p, salt.toString('base64'), key.toString('base64')].join('$');
 }
 
+/** Paramètres d'un hachage enregistré, ou null s'il est illisible. */
+function parseHash(stored) {
+  const [algo, N, r, p, salt, hash] = String(stored ?? '').split('$');
+  const n = Number(N);
+  if (algo !== 'scrypt' || !salt || !hash) return null;
+  if (!Number.isInteger(n) || n < 2 || n > MAX_N || (n & (n - 1)) !== 0) return null;
+  if (!Number.isInteger(Number(r)) || Number(r) < 1 || Number(r) > 32 || !Number.isInteger(Number(p)) || Number(p) < 1 || Number(p) > 16) return null;
+  return { N: n, r: Number(r), p: Number(p), salt: Buffer.from(salt, 'base64'), hash: Buffer.from(hash, 'base64') };
+}
+
+/** Mot de passe correct ? Un hachage illisible répond non (jamais d'exception, donc jamais de 500). */
 export async function verifyPassword(password, stored) {
-  const [algo, N, r, p, salt, hash] = String(stored).split('$');
-  if (algo !== 'scrypt') return false;
-  const expected = Buffer.from(hash, 'base64');
-  const key = await scrypt(password.normalize('NFKC'), Buffer.from(salt, 'base64'), expected.length, {
-    N: Number(N), r: Number(r), p: Number(p),
-  });
-  return crypto.timingSafeEqual(key, expected);
+  const h = parseHash(stored);
+  if (!h || !h.hash.length) return false;
+  const key = await scrypt(String(password).normalize('NFKC'), h.salt, h.hash.length, { N: h.N, r: h.r, p: h.p, maxmem: maxmemOf(h.N, h.r, h.p) });
+  return crypto.timingSafeEqual(key, h.hash);
+}
+
+/**
+ * Hachage factice au coût visé, pour vérifier un identifiant inconnu en autant de temps qu'un vrai compte (la durée
+ * de la connexion ne révèle pas si l'adresse ou le pseudo existe).
+ */
+export const dummyHash = () => `scrypt$${scryptN()}$${SCRYPT_COST.r}$${SCRYPT_COST.p}$${'A'.repeat(22)}==$${'A'.repeat(86)}==`;
+
+/** Hachage à refaire (coût plus faible que le coût visé, paramètres différents ou format inconnu) ? */
+export function needsRehash(stored) {
+  const h = parseHash(stored);
+  return !h || h.N < scryptN() || h.r !== SCRYPT_COST.r || h.p !== SCRYPT_COST.p || h.hash.length !== SCRYPT_COST.keylen;
 }
 
 export const newToken = () => crypto.randomBytes(32).toString('base64url');

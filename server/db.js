@@ -763,6 +763,18 @@ CREATE INDEX IF NOT EXISTS battle_ratings_rank ON battle_ratings(category, item_
 CREATE INDEX IF NOT EXISTS user_quests_claimed ON user_quests(user_id, claimed_at) WHERE claimed_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS user_boosters_open ON user_boosters(user_id) WHERE opened_at IS NULL;
 CREATE INDEX IF NOT EXISTS set_albums_album ON set_albums(album_id);
+-- Colonnes de clé étrangère sans autre index utilisable (ajout à la section 3.5) : sans elles, chaque suppression de
+-- compte (purge nocturne des comptes non vérifiés, « Supprimer mon compte ») ou de commentaire, de signalement
+-- parcourrait toute la table enfant pour ses ON DELETE CASCADE / SET NULL.
+CREATE INDEX IF NOT EXISTS user_boosters_user ON user_boosters(user_id);
+CREATE INDEX IF NOT EXISTS notif_actor ON notifications(actor_id) WHERE actor_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS comments_parent ON comments(parent_id) WHERE parent_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS comments_reply_to ON comments(reply_to_user_id) WHERE reply_to_user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS reports_target_user ON reports(target_user_id) WHERE target_user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS reports_handled_by ON reports(handled_by) WHERE handled_by IS NOT NULL;
+CREATE INDEX IF NOT EXISTS modact_admin ON moderation_actions(admin_id) WHERE admin_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS modact_report ON moderation_actions(report_id) WHERE report_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS admin_audit_admin ON admin_audit(admin_id) WHERE admin_id IS NOT NULL;
 `;
 
 /** ALTER TABLE … ADD COLUMN pour chaque colonne absente (PRAGMA table_info). */

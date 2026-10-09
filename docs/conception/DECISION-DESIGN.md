@@ -47,3 +47,10 @@ L'animation d'ouverture (PackOpening) reste identique.
 3. **Catalogue** : `CATALOG_IMPORT` reste `deezer` par défaut (le propriétaire veut ~20 000 albums). Le risque juridique reste
    documenté (DEPLOIEMENT.md) ; ne pas changer la valeur par défaut.
 4. **Monnaie** : « royalties » partout (aucun « Sillons »).
+5. **Vraies pochettes partout (souhait explicite du propriétaire, 2026-10-09).** Les vraies pochettes (Deezer, ou Spotify si les
+   clés sont configurées) s'affichent pour tous les albums et morceaux, y compris : la photo de profil « pochette d'un album
+   complété » (fonctionnalité existante : ne PAS la remplacer par un visuel généré), et les images de partage (« Mes 9 albums »,
+   Taste Match, Rétro…) : vraies pochettes par défaut (`SHARE_COVERS` vaut `deezer` par défaut), dessinées côté navigateur, avec
+   repli vignette par vignette sur le visuel généré si l'image ne peut pas être exportée (CORS), et une ligne d'attribution
+   discrète. Le visuel généré ne sert que de repli (image indisponible ou retirée par l'admin) et pour les cartes pas encore
+   obtenues (comportement actuel : la vraie pochette se révèle quand on obtient la carte).

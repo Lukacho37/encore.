@@ -4,14 +4,15 @@
 //    blind test, le guide des raretés, la fiche carte et l'ouverture de booster : aucun texte d'interface sous 12 px,
 //    aucune micro-étiquette de carte sous 10 px, aucun texte courant sous 4,5:1 (3:1 pour les grands titres) ;
 //  - héros Boosters et rangée Boutique / Doublons / Blind test : balisage et taille du titre inchangés ;
-//  - correctifs permis : bouton désactivé en contour, barre d'onglets opaque, grille de cartes à 2 colonnes sur
-//    téléphone, reflet holo jamais posé sur une vraie pochette, avatar d'album = visuel généré ;
+//  - correctifs permis : bouton désactivé en contour, barre d'onglets opaque (une colonne égale par onglet), grille
+//    de cartes à 2 colonnes sur téléphone, reflet holo jamais posé sur une vraie pochette, avatar d'album = visuel
+//    généré ; cartes de 84 à 320 px sans titre coupé ni ligne d'artiste à moitié visible ;
 //  - pas de défilement horizontal sur téléphone, zéro erreur de console ;
 //  - captures côte à côte avec design/shots-current (SHOTS_CURRENT) pour la revue de parité ;
 //  - démo autonome (dist-demo/albummania-demo.html) si elle est construite.
 //   BASE=http://localhost:5102 OUT=/tmp/am-p0-b/shots node scripts/e2e/p0-b.mjs
 //   (sans BASE : démarre sa propre copie sur 3102 / 5102 avec une copie de $FIXTURE dans /tmp/am-p0-b/am.db)
-// La fonction `measure` est exportée (exécutée dans la page) : d'autres parcours peuvent la réutiliser.
+// Les fonctions `measure` et `cardFit` sont exportées (exécutées dans la page) : d'autres parcours peuvent les réutiliser.
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -127,6 +128,47 @@ export function measure() {
     const large = size >= 24 || (size >= 18.66 && Number(cs.fontWeight) >= 700);
     if (ratio < (large ? 3 : 4.5)) out.lowContrast.push({ ...sample, ratio: Math.round(ratio * 100) / 100, color: cs.color });
   }
+  return out;
+}
+
+/**
+ * Exécutée dans la page (grille .card-grid chargée) : force des cartes de 84 à 320 px et vérifie, carte par carte, que
+ * le titre n'est pas coupé de plus de 3 px (le bas des jambages, comme avant les planchers) et que la ligne de
+ * l'artiste est entière ou masquée (colonne hors champ, display: none), jamais à moitié. Remet la grille en place.
+ */
+export function cardFit() {
+  const style = document.createElement('style');
+  document.head.append(style);
+  const out = { checked: 0, problems: [] };
+  for (let w = 84; w <= 320; w += 4) {
+    style.textContent = `.card-grid { grid-template-columns: repeat(auto-fill, ${w}px) !important; }`;
+    for (const card of document.querySelectorAll('.card-grid .card')) {
+      const title = card.querySelector('.card__title');
+      const body = card.querySelector('.card__body');
+      const foot = card.querySelector('.card__foot');
+      if (!title || !body || !foot || getComputedStyle(body).display === 'none') continue;
+      out.checked++;
+      // Hauteur naturelle du titre (deux lignes au plus) : un clone hors flux, à la même largeur.
+      const clone = title.cloneNode(true);
+      clone.style.cssText = `position:absolute;left:-9999px;top:0;width:${title.getBoundingClientRect().width}px;flex:none;height:auto;min-height:0`;
+      body.append(clone);
+      const natural = clone.getBoundingClientRect().height;
+      clone.remove();
+      const tb = title.getBoundingClientRect();
+      const bb = body.getBoundingClientRect();
+      const bottom = getComputedStyle(body).overflow === 'hidden' ? Math.min(bb.bottom, foot.getBoundingClientRect().top) : foot.getBoundingClientRect().top;
+      const cut = natural - (Math.min(tb.bottom, bottom) - tb.top);
+      const name = title.textContent.slice(0, 30);
+      if (cut > 3.2) out.problems.push({ w, title: name, what: `titre coupé de ${cut.toFixed(1)} px` });
+      const artist = card.querySelector('.card__artist');
+      if (artist && getComputedStyle(artist).display !== 'none') {
+        const ab = artist.getBoundingClientRect();
+        const shown = ab.left < bb.right - 1;
+        if (shown && (ab.bottom > bottom + 1.5 || ab.top < tb.bottom - 1.5)) out.problems.push({ w, title: name, what: 'ligne de l’artiste à moitié visible' });
+      }
+    }
+  }
+  style.remove();
   return out;
 }
 
@@ -256,13 +298,17 @@ async function main() {
           const t = document.querySelector('.tabbar');
           if (!t) return null;
           const cs = getComputedStyle(t);
-          return { bg: cs.backgroundColor, blur: cs.backdropFilter, cols: cs.gridTemplateColumns.split(' ').length };
+          const widths = [...t.querySelectorAll(':scope > .tabbar__link, :scope > a, :scope > button')].map((a) => Math.round(a.getBoundingClientRect().width));
+          return { bg: cs.backgroundColor, blur: cs.backdropFilter, cols: cs.gridTemplateColumns.split(' ').length, widths, bar: Math.round(t.getBoundingClientRect().width) };
         });
         if (!bar) fail('[m-player] barre d\'onglets absente');
         else {
           if (!/^rgb\(/.test(bar.bg) && !/, 1\)$/.test(bar.bg)) fail(`[m-player] barre d'onglets translucide : ${bar.bg}`);
           if (bar.blur && bar.blur !== 'none') fail(`[m-player] barre d'onglets floutée : ${bar.blur}`);
-          if (bar.cols !== 5) fail(`[m-player] barre d'onglets à ${bar.cols} colonnes (5 attendues)`);
+          // Une colonne égale par onglet (5 avec la navigation de P0-D), sans case vide.
+          if (bar.cols !== bar.widths.length || bar.widths.length < 4 || bar.widths.length > 5) fail(`[m-player] barre d'onglets : ${bar.cols} colonnes pour ${bar.widths.length} onglets`);
+          if (Math.max(...bar.widths) - Math.min(...bar.widths) > 1) fail(`[m-player] onglets de largeurs inégales : ${bar.widths.join(', ')}`);
+          if (Math.abs(bar.widths.reduce((a, b) => a + b, 0) - bar.bar) > bar.widths.length) fail(`[m-player] la barre d'onglets n'est pas remplie : ${bar.widths.join(' + ')} ≠ ${bar.bar}`);
         }
       }
     });
@@ -315,6 +361,15 @@ async function main() {
         await page.waitForSelector('.card-grid .card');
         const cols = await page.evaluate(() => getComputedStyle(document.querySelector('.card-grid')).gridTemplateColumns.split(' ').length);
         if (cols !== 2) fail(`[m] grille de cartes à ${cols} colonnes sur téléphone (2 attendues)`);
+      } else {
+        // Cartes de 84 à 320 px : un titre n'est jamais coupé au milieu d'une ligne (au plus le bas des jambages, comme
+        // avant les planchers) et la ligne de l'artiste est entière ou masquée, jamais à moitié.
+        await page.goto(`${BASE}/collection/cards`);
+        await page.waitForSelector('.card-grid .card .card__title');
+        await settle(page, 400);
+        const fit = await page.evaluate(cardFit);
+        if (!fit.checked) fail('[d] contrôle des cartes : aucune carte mesurée');
+        for (const p of fit.problems.slice(0, 6)) fail(`[d] carte de ${p.w}px « ${p.title} » : ${p.what}`);
       }
       await visit(page, v, '/album/discovery', '.album-head', '60-album-discovery', { full: true, ms: 1200 });
       await visit(page, v, '/album/moon-safari', '.album-head', '62-album-completed', { ms: 1200 });

@@ -4,12 +4,19 @@ import { get, post, api } from '../api.js';
 import { useGame } from '../state/GameContext.jsx';
 import { useI18n } from '../i18n/index.jsx';
 import { useAlbum, useTrack } from '../state/catalog.js';
+import { useCursorList } from '../state/paged.js';
 import CoverArt from './CoverArt.jsx';
 import { Avatar, useToast } from './ui.jsx';
+import { LoadMore, Skeleton } from './feedback.jsx';
+import UgcText from './UgcText.jsx';
+import SafetyMenu from './safety/SafetyMenu.jsx';
 import '../styles/profile.css';
+import '../styles/track.css';
 
 // Une note est toujours stockée sur 10 (entier de 0 à 10).
 // Affichage au choix du joueur : 5 étoiles avec demi-étoiles (1 point = ½ étoile) ou une note sur 10.
+// Notes v2 (PLAN.md 4.1.2, chantier P0-C) : chaque critique a un identifiant stable (ancre #review-<id>), les critiques
+// des amis (« Vos amis ») passent avant celles de la communauté (« Communauté AlbumMania »), page par page.
 
 const REVIEW_MAX = 2000;
 
@@ -51,24 +58,30 @@ export function useFormatScore() {
   }, [ratingScale, t, lang]);
 }
 
-/** Affiche une note (ou une moyenne) dans l'échelle choisie par le joueur. */
+/**
+ * Affiche une note (ou une moyenne) dans l'échelle choisie par le joueur. En étoiles, une note personnelle peut
+ * tomber sur une demi-étoile : le libellé garde une décimale (« 4,5 étoiles sur 5 », jamais « 5 » pour 9/10).
+ */
 export function RatingValue({ value, average = false, size = 15, className = '' }) {
   const { ratingScale } = useGame();
   const { t, lang } = useI18n();
   if (value == null) return null;
-  const fmt = new Intl.NumberFormat(lang, { maximumFractionDigits: average ? 1 : 0 });
-  const label = ratingScale === 'points' ? t('rating.pointsAria', { v: fmt.format(value) }) : t('rating.starsAria', { v: fmt.format(value / 2), n: value / 2 });
   if (ratingScale === 'points') {
+    const fmt = new Intl.NumberFormat(lang, { maximumFractionDigits: average ? 1 : 0 });
+    const label = t('rating.pointsAria', { v: fmt.format(value) });
     return (
       <span className={`rating-value rating-value--points ${className}`} role="img" aria-label={label} title={label}>
         <b className="mono">{fmt.format(value)}</b><span>/10</span>
       </span>
     );
   }
+  const fmt = new Intl.NumberFormat(lang, { maximumFractionDigits: 1 });
+  const stars = average ? Math.round(value * 5) / 10 : value / 2;
+  const label = t('rating.starsAria', { v: fmt.format(stars), n: stars });
   return (
     <span className={`rating-value ${className}`} role="img" aria-label={label} title={label}>
       <Stars value={value} size={size} />
-      {average && <b className="mono">{fmt.format(value / 2)}</b>}
+      {average && <b className="mono">{fmt.format(stars)}</b>}
     </span>
   );
 }
@@ -83,7 +96,7 @@ export function RatingInput({ value, onChange, size = 30, disabled = false, comp
   useEffect(() => {
     setDraft(value);
   }, [value]);
-  const half = (v) => new Intl.NumberFormat(lang).format(v / 2);
+  const half = (v) => new Intl.NumberFormat(lang, { maximumFractionDigits: 1 }).format(v / 2);
   const ref = useRef(null);
   const name = label || t('rating.yours');
   const change = (v) => {
@@ -154,56 +167,84 @@ export function RatingHistogram({ distribution, mine }) {
         ))}
       </div>
       <div className="histogram__axis mono">
-        <span>{ratingScale === 'points' ? '0' : '0'}</span>
+        <span>0</span>
         <span>{ratingScale === 'points' ? '10' : '5 ★'}</span>
       </div>
     </div>
   );
 }
 
-/** Charge et met à jour les notes d'un album ou d'un morceau. */
+/** Notes d'un élément quand le chargement a échoué : la page reste utilisable (sa note se saisit quand même). */
+const EMPTY_RATINGS = {
+  summary: { count: 0, average: null, distribution: Array(11).fill(0), reviewCount: 0 },
+  mine: null,
+  friends: { scores: [], reviews: [], nextCursor: null },
+  community: { reviews: [], nextCursor: null },
+  reviews: [],
+  friendScores: [],
+};
+
+/**
+ * Charge et met à jour les notes d'un album ou d'un morceau (GET/PUT/DELETE /api/ratings/:type/:id).
+ * Renvoie { data, error, save(score, review?), remove(), reload() } ; l'état du joueur (state.ratings) est fusionné
+ * par api.js à chaque réponse.
+ */
 export function useItemRatings(type, id) {
-  const { applyState } = useGame();
   const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
   const [version, setVersion] = useState(0);
-  const path = `/ratings/${type}/${encodeURIComponent(id)}`;
+  const path = id ? `/ratings/${type}/${encodeURIComponent(id)}` : null;
   const lastPath = useRef(path);
 
   useEffect(() => {
+    if (!path) return undefined;
     let alive = true;
     // Nouvel album / morceau : on n'affiche pas les notes du précédent pendant le chargement.
     if (lastPath.current !== path) {
       lastPath.current = path;
       setData(null);
     }
-    get(path).then((d) => alive && setData(d)).catch(() => alive && setData({ summary: { count: 0, average: null, distribution: Array(11).fill(0) }, mine: null, reviews: [], friendScores: [] }));
+    get(path)
+      .then((d) => {
+        if (!alive) return;
+        setData(d);
+        setError(null);
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setError(err);
+        setData((prev) => prev || EMPTY_RATINGS);
+      });
     return () => {
       alive = false;
     };
   }, [path, version]);
 
   const save = useCallback(async (score, review) => {
-    const res = await api('PUT', path, { score, review });
+    const res = await api('PUT', path, review === undefined ? { score } : { score, review });
     setData(res);
-    applyState(res.state);
     return res;
-  }, [path, applyState]);
+  }, [path]);
 
   const remove = useCallback(async () => {
     const res = await api('DELETE', path);
     setData(res);
-    applyState(res.state);
     return res;
-  }, [path, applyState]);
+  }, [path]);
 
   const reload = useCallback(() => setVersion((v) => v + 1), []);
-  return { data, save, remove, reload };
+  return { data, error, save, remove, reload };
 }
 
-/** Éditeur de note + critique écrite. */
+/**
+ * Éditeur de note + critique écrite. Le champ de la critique d'une page (album ou morceau : une seule par page)
+ * garde l'identifiant historique « review-f » ; ceux des fiches de carte (compactes) sont uniques (useId).
+ */
 export function ReviewEditor({ data, save, remove, compact = false }) {
   const { t, error, date } = useI18n();
   const toast = useToast();
+  const uid = useId();
+  const fieldId = compact ? `review-c${uid.replace(/:/g, '')}` : 'review-f';
   const mine = data?.mine;
   const [score, setScore] = useState(mine?.score ?? null);
   const [text, setText] = useState(mine?.review || '');
@@ -220,7 +261,8 @@ export function ReviewEditor({ data, save, remove, compact = false }) {
     if (nextScore == null) return toast(t('reviews.pickScore'), 'error');
     setBusy(true);
     try {
-      await save(nextScore, nextText);
+      // Note seule (fiche de carte, critique fermée) : le texte déjà écrit est gardé.
+      await save(nextScore, instant && !open ? undefined : nextText);
       toast(t('rating.saved'), 'success');
     } catch (err) {
       toast(error(err.code), 'error');
@@ -255,10 +297,11 @@ export function ReviewEditor({ data, save, remove, compact = false }) {
         <RatingInput value={score} onChange={onScore} disabled={busy} size={compact ? 26 : 32} />
         {score != null && <RatingValue value={score} className="review-editor__value" />}
       </div>
+      {mine?.moderated && <p className="small trk-moderated">{t('track.reviews.moderated')}</p>}
       {open ? (
         <>
-          <label className="sr-only" htmlFor={`review-${compact ? 'c' : 'f'}`}>{t('reviews.yours')}</label>
-          <textarea id={`review-${compact ? 'c' : 'f'}`} className="input textarea" rows={compact ? 3 : 5} maxLength={REVIEW_MAX}
+          <label className="sr-only" htmlFor={fieldId}>{t('reviews.yours')}</label>
+          <textarea id={fieldId} className="input textarea" rows={compact ? 3 : 5} maxLength={REVIEW_MAX}
             placeholder={t('reviews.placeholder')} value={text} onChange={(e) => setText(e.target.value)} />
           <div className="review-editor__row">
             <span className="small muted mono">{t('reviews.counter', { n: text.length })}</span>
@@ -281,59 +324,154 @@ export function ReviewEditor({ data, save, remove, compact = false }) {
   );
 }
 
-function ReviewText({ text }) {
-  const { t } = useI18n();
-  const [open, setOpen] = useState(false);
-  const long = text.length > 320;
+/** Identifiant de la note d'une critique (ancre #review-<id>) : `id` des critiques v2, `ratingId` du journal. */
+const ratingIdOf = (r) => (Number.isInteger(r.ratingId) ? r.ratingId : !r.type && Number.isInteger(r.id) ? r.id : null);
+
+/**
+ * Liste de critiques. Chaque critique porte l'ancre « review-<id> », son texte passe par UgcText et le menu
+ * « Signaler / Bloquer » (SafetyMenu) accompagne celles des autres joueurs. `renderItem(r)` remplace l'auteur
+ * (journal d'un profil : l'élément noté à la place).
+ */
+export function ReviewList({ reviews, renderItem, empty }) {
+  const { t, date } = useI18n();
+  if (!reviews.length) return <p className="empty">{empty || t('reviews.empty')}</p>;
   return (
-    <div className="review__text">
-      <p>{long && !open ? `${text.slice(0, 300).trimEnd()}…` : text}</p>
-      {long && <button type="button" className="link-btn small" onClick={() => setOpen(!open)}>{open ? t('reviews.less') : t('reviews.more')}</button>}
+    <ul className="reviews">
+      {reviews.map((r) => {
+        const ratingId = ratingIdOf(r);
+        return (
+          <li key={`${r.user?.id ?? 'me'}-${r.type ?? ''}-${r.id ?? ''}-${r.updatedAt}`} className="review" id={ratingId ? `review-${ratingId}` : undefined}>
+            {renderItem ? renderItem(r) : (
+              <div className="trk-review__head">
+                <Link to={`/u/${r.user.username}`} className="review__author">
+                  <Avatar user={r.user} size={32} />
+                  <span className="review__name">{r.user.username}</span>
+                  {r.friend && <span className="chip chip--new review__tag">{t('reviews.friendTag')}</span>}
+                </Link>
+                {ratingId && r.user?.relation !== 'self' && <SafetyMenu target={{ type: 'review', id: ratingId }} user={r.user} />}
+              </div>
+            )}
+            <div className="review__meta">
+              <RatingValue value={r.score} size={14} />
+              <span className="small muted">{date(r.updatedAt)}</span>
+            </div>
+            {r.review && <div className="review__text trk-review__text"><UgcText text={r.review} clamp /></div>}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
+ * Un groupe de critiques (« Vos amis » ou « Communauté AlbumMania ») : la première page arrive avec les notes de
+ * l'élément ; « Voir plus » lit les suivantes par curseur (GET /api/ratings/:type/:id/reviews?scope=…).
+ */
+function ReviewGroup({ type, id, scope, title, initial, nextCursor, empty }) {
+  const { t } = useI18n();
+  const path = nextCursor ? `/ratings/${type}/${encodeURIComponent(id)}/reviews?scope=${scope}` : null;
+  const list = useCursorList(path, { limit: 10 });
+  const loaded = !!path && list.items.length > 0;
+  const reviews = loaded ? list.items : initial;
+  const hasMore = !!path && (loaded ? list.hasMore : true);
+  return (
+    <div className={`trk-group trk-group--${scope}`}>
+      <h3 className="trk-group__title">{title}</h3>
+      <ReviewList reviews={reviews} empty={empty} />
+      {hasMore && (
+        <LoadMore hasMore loading={list.loading} onClick={loaded ? list.loadMore : list.reload} label={t('track.reviews.more')} />
+      )}
     </div>
   );
 }
 
-export function ReviewList({ reviews, renderItem }) {
-  const { t, date } = useI18n();
-  if (!reviews.length) return <p className="empty">{t('reviews.empty')}</p>;
+/** Notes des amis : petites pastilles (nom + note), lien vers leur Studio. */
+function FriendScores({ scores }) {
+  const { t } = useI18n();
+  if (!scores?.length) return null;
   return (
-    <ul className="reviews">
-      {reviews.map((r) => (
-        <li key={`${r.user?.id ?? 'me'}-${r.type ?? ''}-${r.id ?? ''}-${r.updatedAt}`} className="review">
-          {renderItem ? renderItem(r) : (
-            <Link to={`/u/${r.user.username}`} className="review__author">
-              <Avatar user={r.user} size={32} />
-              <span className="review__name">{r.user.username}</span>
-              {r.friend && <span className="chip chip--new review__tag">{t('reviews.friendTag')}</span>}
+    <div className="friend-scores">
+      <h4 className="trk-subtitle">{t('rating.friends')}</h4>
+      <ul>
+        {scores.map((f) => (
+          <li key={f.user.id}>
+            <Link to={`/u/${f.user.username}`} className="friend-score">
+              <span className="friend-score__name">{f.user.username}</span>
+              <RatingValue value={f.score} size={11} />
             </Link>
-          )}
-          <div className="review__meta">
-            <RatingValue value={r.score} size={14} />
-            <span className="small muted">{date(r.updatedAt)}</span>
-          </div>
-          {r.review && <ReviewText text={r.review} />}
-        </li>
-      ))}
-    </ul>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Bloc « Notes & critiques » d'un album ou d'un morceau : ma note et ma critique, la communauté (moyenne,
+ * répartition, notes des amis), puis les critiques des amis (« Vos amis ») avant celles de la communauté.
+ * `ratingsApi` : résultat de useItemRatings(type, id).
+ */
+export function RatingsSection({ type, id, ratingsApi, className = '' }) {
+  const { t } = useI18n();
+  const { data, save, remove } = ratingsApi;
+  if (!data) {
+    return (
+      <section className={`section album-ratings ${className}`} id="critiques" aria-busy="true">
+        <header className="section__head"><h2>{t('reviews.title')}</h2></header>
+        <Skeleton kind="row" count={3} />
+      </section>
+    );
+  }
+  const { summary } = data;
+  const friends = data.friends || { scores: data.friendScores || [], reviews: [], nextCursor: null };
+  const community = data.community || { reviews: data.reviews || [], nextCursor: null };
+  return (
+    <section className={`section album-ratings ${className}`} id="critiques">
+      <header className="section__head"><h2>{t('reviews.title')}</h2></header>
+      <div className="album-ratings__grid">
+        <div className="panel" id="ma-note">
+          <h3 className="panel__title">{t('reviews.yours')}</h3>
+          <ReviewEditor key={`${type}:${id}`} data={data} save={save} remove={remove} />
+        </div>
+        <div className="panel album-ratings__community">
+          <h3 className="panel__title">{t('rating.community')}</h3>
+          {summary.count ? (
+            <>
+              <div className="community-score">
+                <RatingValue value={summary.average} average size={22} />
+                <span className="muted small">{t('rating.count', { n: summary.count })}</span>
+              </div>
+              <RatingHistogram distribution={summary.distribution} mine={data.mine?.score} />
+            </>
+          ) : <p className="muted">{t('rating.empty')}</p>}
+          <FriendScores scores={friends.scores} />
+        </div>
+      </div>
+      {friends.reviews.length > 0 && (
+        <ReviewGroup type={type} id={id} scope="friends" title={t('track.reviews.friends')} initial={friends.reviews} nextCursor={friends.nextCursor} />
+      )}
+      <ReviewGroup type={type} id={id} scope="community" title={t('track.reviews.community')} initial={community.reviews}
+        nextCursor={community.nextCursor} empty={t('track.reviews.communityEmpty')} />
+    </section>
   );
 }
 
 // ----- éléments notés (journal de notes, fil des amis, modération) -------------------------
 
+/** Adresse de la page d'un album ou d'un morceau. */
+export const itemPath = (type, id) => `/${type === 'album' ? 'album' : 'track'}/${encodeURIComponent(id)}`;
+
 /**
  * Album ou morceau noté : { title, artist, art, to }, lu dans le catalogue du site.
  * Les réponses de notes apportent les fiches des éléments cités ; un élément absent est chargé par lots (null en attendant).
+ * Un morceau (ou un single promo) mène à sa page morceau.
  */
 export function useRatedItem(type, id) {
   const album = useAlbum(type === 'album' ? id : null);
   const track = useTrack(type === 'track' ? id : null);
   const item = type === 'album' ? album : track;
   if (!item) return null;
-  // Un morceau mène à son album ; un single promo, à la page de son artiste (qui liste ses promos).
-  const to = type === 'album'
-    ? `/album/${encodeURIComponent(item.id)}`
-    : item.albumId ? `/album/${encodeURIComponent(item.albumId)}` : `/artist/${encodeURIComponent(item.artistId)}`;
-  return { title: item.title, artist: item.artist, art: item.art, to };
+  return { title: item.title, artist: item.artist, art: item.art, to: itemPath(type, item.id) };
 }
 
 /**

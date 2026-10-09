@@ -456,9 +456,17 @@ p {
   background: var(--stage-2);
 }
 
+/* .btn--quiet seul héritait du fond gris du navigateur (<button> en color-scheme dark) : « Réinitialiser les filtres »
+   de la Collection. Fond transparent ; le survol reprend celui des boutons fantômes. */
 .btn--quiet {
   border-color: transparent;
+  background: transparent;
   color: var(--haze);
+}
+
+.btn--quiet:hover:not(:disabled) {
+  color: var(--paper);
+  background: var(--stage-2);
 }
 
 .btn--danger {
@@ -680,6 +688,97 @@ p {
   flex: none;
 }
 
+/* =====================================================================================================
+   Chip unique (design-system-current §3.3) : taille × ton × type × interactif. Pour tout nouveau code :
+   <span class="chip chip--sm chip--gold">…</span>, <button class="chip chip--toggle is-on">… <span class="chip__n">12</span>.
+   Les anciennes classes restent des alias au rendu inchangé (voir plus bas) jusqu'à ce que chaque page passe au chip.
+   ===================================================================================================== */
+.chip {
+  --chip-h: 28px;
+  --chip-px: 11px;
+  --chip-fs: var(--fs-13);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-6);
+  min-height: var(--chip-h);
+  padding: 0 var(--chip-px);
+  border-radius: var(--rad-pill);
+  background: var(--stage-3);
+  color: var(--paper-dim);
+  font: var(--fw-semi) var(--chip-fs) / 1 var(--font-body);
+  white-space: nowrap;
+}
+
+.chip--sm { --chip-h: 22px; --chip-px: 8px; --chip-fs: var(--fs-12); gap: var(--s-4); }
+.chip--lg { --chip-h: 34px; --chip-px: 14px; }
+
+.chip--mono { font-family: var(--font-mono); font-size: var(--fs-12); font-stretch: var(--fst-label); font-variant-numeric: tabular-nums; }
+.chip--caps { text-transform: uppercase; letter-spacing: var(--ls-caps); font-weight: var(--fw-display); }
+
+.chip--quiet { background: var(--stage-2); }
+.chip--cue { background: color-mix(in oklab, var(--cue) 18%, transparent); color: var(--cue); }
+.chip--gold { background: color-mix(in oklab, var(--gold) 18%, transparent); color: var(--gold); }
+.chip--ok { background: color-mix(in oklab, var(--ok) 15%, transparent); color: var(--ok); }
+.chip--danger { background: color-mix(in oklab, var(--danger) 16%, transparent); color: var(--danger); }
+.chip--rarity { background: color-mix(in oklab, var(--rc) 14%, transparent); color: var(--rc); }
+.chip--paper { background: var(--paper); color: var(--ink); }
+.chip--gold-solid { background: var(--gold); color: var(--ink); font-weight: var(--fw-title); }
+.chip--solid-cue { background: var(--cue); color: var(--ink); }
+.chip--holo { background: var(--grad-holo); color: var(--ink); }
+
+/* interactif (filtres) ; .chip-btn est l'ancien nom (alias) */
+.chip--toggle,
+.chip-btn {
+  --chip-h: 34px;
+  --chip-px: 14px;
+  min-height: var(--chip-h);
+  padding: 0 var(--chip-px);
+  border-radius: var(--rad-pill);
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--haze);
+  font-weight: var(--fw-semi);
+  font-size: var(--fs-13);
+  cursor: pointer;
+  transition: color var(--dur-hover), background-color var(--dur-hover), border-color var(--dur-hover);
+}
+
+.chip--toggle:hover,
+.chip-btn:hover {
+  color: var(--paper);
+}
+
+.chip--toggle.is-on,
+.chip--toggle[aria-pressed='true'],
+.chip-btn.is-on {
+  background: var(--paper);
+  border-color: var(--paper);
+  color: var(--ink);
+}
+
+.chip__n {
+  font: var(--fw-medium) var(--fs-12) / 1 var(--font-mono);
+  font-stretch: var(--fst-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--haze);
+}
+
+.chip--toggle.is-on .chip__n { color: color-mix(in oklab, var(--ink) 72%, transparent); }
+
+@media (max-width: 640px) {
+  .chip--toggle { --chip-h: 40px; } /* cible tactile (l'alias .chip-btn garde ses 34 px jusqu'à sa migration) */
+}
+
+/* ----- alias : anciennes classes au rendu d'aujourd'hui (seul changement : coins en pilule) ------------------
+   .chip--new → .chip--cue · .tag (révélation) → .chip--sm.chip--caps (+ --solid-cue / --holo, ombre)
+   .level-chip → .chip--cue.chip--mono · .master-tag → .chip--sm.chip--gold · .role-tag → .chip--sm.chip--cue.chip--mono.chip--caps
+   .owned-chip → .chip--sm.chip--ok (×2 en .mono) · .friend-score → .chip--quiet · .home-how__price → .chip--sm
+   .album-tile__badge → .chip--sm.chip--gold-solid (posé sur la vignette) */
+.chip--new {
+  background: color-mix(in oklab, var(--cue) 20%, var(--stage));
+  color: var(--cue);
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -764,6 +863,33 @@ p {
   border-radius: 50%;
   background: var(--r-promo);
   box-shadow: 0 0 0 2px var(--ink);
+}
+
+.role-tag {
+  display: inline-flex;
+  align-items: center;
+  margin-left: var(--s-10);
+  padding: var(--s-2) var(--s-8);
+  border-radius: var(--rad-pill);
+  background: color-mix(in oklab, var(--cue) 18%, transparent);
+  color: var(--cue);
+  font: var(--fw-semi) var(--fs-12) var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  vertical-align: middle;
+}
+
+.master-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-4);
+  margin-left: var(--s-8);
+  padding: var(--s-2) var(--s-8);
+  border-radius: var(--rad-pill);
+  background: color-mix(in oklab, var(--gold) 18%, transparent);
+  color: var(--gold);
+  font: var(--fw-ui) var(--fs-12) var(--font-body);
+  vertical-align: middle;
 }
 
 .confirm-inline {
@@ -1207,6 +1333,12 @@ a:hover > .logo .logo__mark,
   width: 100%;
   height: 100%;
   display: block;
+}
+
+/* Une couleur par membre (avatarColor : AVATAR_COLORS tirée de l'identifiant, ou celle qu'il a choisie) ; l'anneau
+   sépare deux avatars qui se chevauchent (paires de Taste Match, piles d'amis). */
+.avatar--ring {
+  box-shadow: 0 0 0 2px var(--stage);
 }
 
 .cover {
@@ -2019,6 +2151,28 @@ button.card:hover {
   gap: var(--s-6);
   transform: translateX(-50%);
   animation: pop 0.3s 0.45s both;
+}
+
+.tag {
+  padding: 5px 11px;
+  border-radius: var(--rad-pill);
+  background: var(--stage-3);
+  color: var(--paper);
+  font: var(--fw-display) var(--fs-12) / 1 var(--font-body);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow: var(--shadow-chip);
+}
+
+.tag--new {
+  background: var(--cue);
+  color: var(--ink);
+}
+
+.tag--holo {
+  background: var(--grad-holo);
+  color: var(--ink);
 }
 
 .reveal-caption {
@@ -2955,6 +3109,14 @@ button.card:hover {
   flex: 1 1 120px;
 }
 
+.level-chip {
+  padding: var(--s-4) var(--s-10);
+  border-radius: var(--rad-pill);
+  background: color-mix(in oklab, var(--cue) 18%, transparent);
+  color: var(--cue);
+  font-size: var(--fs-12);
+}
+
 .masters {
   display: flex;
   flex-wrap: wrap;
@@ -3012,12 +3174,11 @@ button.card:hover {
   font-size: clamp(22px, 3vw, 30px);
 }
 
+/* Sous-titre de bloc (« Ma sélection », « Notes de tes amis ») : en casse normale, Archivo 16, plus d'étiquette mono
+   en majuscules (design-system-current §2, point 7). */
 .studio__label {
-  font: var(--fw-ui) var(--fs-12) var(--font-mono);
-  font-stretch: var(--fst-label);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--haze);
+  font: var(--fw-bold) var(--fs-16) / var(--lh-snug) var(--font-display);
+  color: var(--paper);
 }
 
 .studio__desk {
@@ -4231,6 +4392,8 @@ button.showcase__empty:hover {
     padding: 0 var(--s-10);
   }
 
+  /* Barre d'onglets opaque (le contenu ne transparaît plus). Une colonne égale par onglet : 5 avec la navigation
+     Boosters · Découvrir · Collection · Amis · Studio (repeat(5, 1fr)), sans case vide tant qu'il y en a moins. */
   .tabbar {
     position: fixed;
     left: 0;
@@ -4238,12 +4401,11 @@ button.showcase__empty:hover {
     bottom: 0;
     z-index: var(--z-sticky);
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
     height: calc(var(--tabbar) + env(safe-area-inset-bottom, 0px));
     padding-bottom: env(safe-area-inset-bottom, 0px);
-    background: color-mix(in oklab, var(--ink) 90%, transparent);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    background: var(--ink);
     border-top: 1px solid var(--line-soft);
   }
 
@@ -4253,7 +4415,7 @@ button.showcase__empty:hover {
     align-items: center;
     justify-content: center;
     gap: 3px;
-    color: var(--haze-2);
+    color: var(--haze);
     font-size: var(--fs-12);
     font-weight: var(--fw-ui);
   }
@@ -4449,8 +4611,6 @@ button.showcase__empty:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
   }
-
-
 
   .showcase {
     gap: var(--s-10);
@@ -4824,10 +4984,7 @@ button.showcase__empty:hover {
 }
 
 .tracklist th {
-  font: var(--fw-semi) var(--fs-12) var(--font-mono);
-  font-stretch: var(--fst-label);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font: var(--fw-semi) var(--fs-12) / 1 var(--font-body);
   color: var(--haze);
   background: var(--stage-2);
   white-space: nowrap;
@@ -4876,6 +5033,23 @@ button.showcase__empty:hover {
   white-space: nowrap;
 }
 
+.owned-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-2) var(--s-8);
+  border-radius: var(--rad-pill);
+  background: color-mix(in oklab, var(--ok) 15%, transparent);
+  color: var(--ok);
+  font: var(--fw-semi) var(--fs-12) var(--font-mono);
+  white-space: nowrap;
+}
+
+.owned-chip--holo {
+  background: linear-gradient(90deg, rgba(255, 79, 126, 0.22), rgba(63, 214, 196, 0.22), rgba(255, 211, 90, 0.22));
+  color: var(--paper);
+}
+
 .press-btn--inline {
   height: 26px;
   padding: 0 var(--s-10);
@@ -4909,6 +5083,16 @@ button.showcase__empty:hover {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s-6);
+}
+
+.friend-score {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-8);
+  padding: 5px var(--s-10);
+  border-radius: var(--rad-pill);
+  background: var(--stage-2);
+  font-size: var(--fs-13);
 }
 
 .friend-score__name {
@@ -5981,7 +6165,6 @@ button.card.card--cover:hover {
   display: none;
 }
 
-
 .card--cover .card__rarity .gem {
   margin-right: 1.4cqi;
   vertical-align: -0.12em;
@@ -6053,9 +6236,11 @@ button.card.card--cover:hover {
 
 /* =====================================================================================================
    Block B (design-system-current §2.0) : correctifs autorisés par la décision du propriétaire (même identité,
-   lisibilité et cohérence), chip unique, reflet de chargement unique, un seul bloc « mouvement réduit ».
+   lisibilité et cohérence), reflet de chargement unique, un seul bloc « mouvement réduit ».
    Les tailles minimales (rien sous 12 px dans l'interface, micro-étiquettes des cartes ≥ 10 px) sont appliquées
-   directement dans les règles d'origine ; --haze-2 est relevé dans :root.
+   directement dans les règles d'origine ; --haze-2 est relevé dans :root. Le chip unique et ses alias (.chip-btn,
+   .tag, .role-tag…) restent à la place des anciennes règles (composants, révélation, profil, page d'album) : les
+   règles de contexte écrites plus loin dans ce fichier (ex. .review__tag) continuent de les préciser.
    ===================================================================================================== */
 
 /* 1 · Boutons désactivés : contour atténué au lieu d'un aplat gris (qui lisait « cassé » à 3:1). */
@@ -6073,21 +6258,32 @@ button.card.card--cover:hover {
   opacity: 0.7;
 }
 
-/* 1 bis · .btn--quiet seul héritait du fond gris du navigateur (<button> en color-scheme dark) : « Réinitialiser
-   les filtres » de la Collection. Le fond devient transparent, le survol reprend celui des boutons fantômes. */
-.btn--quiet {
-  background: transparent;
-}
-
-.btn--quiet:hover:not(:disabled) {
-  color: var(--paper);
-  background: var(--stage-2);
-}
-
 /* 2 · Cartes : planchers ≥ 10 px (jetons --fs-card-*) et effacement progressif sur les petites cartes, au lieu de
    rapetisser. Chaque élément masqué reste lisible dans la fiche de la carte et sur la page du morceau. */
 .card--promo .card__rarity {
   color: var(--r-promo-text);
+}
+
+/* Petite carte et titre sur deux lignes : avec les planchers, artiste et pied prennent plus de place qu'avant et la
+   seconde ligne du titre se retrouvait coupée en deux. La ligne de l'artiste part alors dans une colonne hors champ
+   (masquée) et le titre reste entier ; avec un titre d'une ligne, rien ne change. Au-delà de 170 px, la place suffit. */
+@container (max-width: 169px) {
+  .card__body {
+    flex-flow: column wrap;
+    align-content: flex-start;
+    overflow: hidden;
+  }
+
+  .card__title,
+  .card__artist {
+    flex: none;
+    width: 100%;
+  }
+}
+
+/* Sous 118 px, deux lignes de titre ne tiennent plus au-dessus du pied : une seule, avec points de suspension. */
+@container (max-width: 117px) {
+  .card__title { -webkit-line-clamp: 1; }
 }
 
 @container (max-width: 149px) {
@@ -6128,217 +6324,18 @@ button.card.card--cover:hover {
   }
 }
 
-/* 4 · Barre d'onglets opaque (le contenu ne transparaît plus) et 5 entrées. */
-@media (max-width: 860px) {
-  .tabbar {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    background: var(--ink);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
+/* 4 · Barre d'onglets opaque, une colonne par onglet, libellés en --haze (7,6:1) : corrigée à sa place, dans la
+   règle « navigation mobile » (max-width: 860px). */
 
-  .tabbar__link {
-    font-size: var(--fs-12);
-    color: var(--haze);
-  }
-}
-
-/* 5 · Moins de majuscules mono décoratives : sous-titre de bloc en casse normale. L'eyebrow mono reste pour
-   le surtitre de page, les codes (AM-001 · ÉLECTRO · 2001), les compteurs et les en-têtes de groupe des menus. */
+/* 5 · Moins de majuscules mono décoratives : un sous-titre de bloc est un h3 ou un .label en casse normale
+   (.studio__label et .tracklist th sont corrigés à leur place). L'eyebrow mono reste pour le surtitre de page, les
+   codes (AM-001 · ÉLECTRO · 2001), les compteurs et les en-têtes de groupe des menus. */
 .label {
   display: inline-flex;
   align-items: center;
   gap: var(--s-6);
   font: var(--fw-semi) var(--fs-13) / var(--lh-ui) var(--font-body);
   color: var(--haze);
-}
-
-.studio__label {
-  font: var(--fw-bold) var(--fs-16) / var(--lh-snug) var(--font-display);
-  text-transform: none;
-  letter-spacing: 0;
-  color: var(--paper);
-}
-
-.tracklist th {
-  font: var(--fw-semi) var(--fs-12) / 1 var(--font-body);
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-/* =====================================================================================================
-   Chip unique (design-system-current §3.3) : taille × ton × type × interactif. Pour tout nouveau code :
-   <span class="chip chip--sm chip--gold">…</span>, <button class="chip chip--toggle is-on">… <span class="chip__n">12</span>.
-   Les anciennes classes restent des alias au rendu inchangé (voir plus bas) jusqu'à ce que chaque page passe au chip.
-   ===================================================================================================== */
-.chip {
-  --chip-h: 28px;
-  --chip-px: 11px;
-  --chip-fs: var(--fs-13);
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-6);
-  min-height: var(--chip-h);
-  padding: 0 var(--chip-px);
-  border-radius: var(--rad-pill);
-  background: var(--stage-3);
-  color: var(--paper-dim);
-  font: var(--fw-semi) var(--chip-fs) / 1 var(--font-body);
-  white-space: nowrap;
-}
-
-.chip--sm { --chip-h: 22px; --chip-px: 8px; --chip-fs: var(--fs-12); gap: var(--s-4); }
-.chip--lg { --chip-h: 34px; --chip-px: 14px; }
-
-.chip--mono { font-family: var(--font-mono); font-size: var(--fs-12); font-stretch: var(--fst-label); font-variant-numeric: tabular-nums; }
-.chip--caps { text-transform: uppercase; letter-spacing: var(--ls-caps); font-weight: var(--fw-display); }
-
-.chip--quiet { background: var(--stage-2); }
-.chip--cue { background: color-mix(in oklab, var(--cue) 18%, transparent); color: var(--cue); }
-.chip--gold { background: color-mix(in oklab, var(--gold) 18%, transparent); color: var(--gold); }
-.chip--ok { background: color-mix(in oklab, var(--ok) 15%, transparent); color: var(--ok); }
-.chip--danger { background: color-mix(in oklab, var(--danger) 16%, transparent); color: var(--danger); }
-.chip--rarity { background: color-mix(in oklab, var(--rc) 14%, transparent); color: var(--rc); }
-.chip--paper { background: var(--paper); color: var(--ink); }
-.chip--gold-solid { background: var(--gold); color: var(--ink); font-weight: var(--fw-title); }
-.chip--solid-cue { background: var(--cue); color: var(--ink); }
-.chip--holo { background: var(--grad-holo); color: var(--ink); }
-
-/* interactif (filtres) ; .chip-btn est l'ancien nom (alias) */
-.chip--toggle,
-.chip-btn {
-  --chip-h: 34px;
-  --chip-px: 14px;
-  min-height: var(--chip-h);
-  padding: 0 var(--chip-px);
-  border-radius: var(--rad-pill);
-  border: 1px solid var(--line);
-  background: transparent;
-  color: var(--haze);
-  font-weight: var(--fw-semi);
-  font-size: var(--fs-13);
-  cursor: pointer;
-  transition: color var(--dur-hover), background-color var(--dur-hover), border-color var(--dur-hover);
-}
-
-.chip--toggle:hover,
-.chip-btn:hover {
-  color: var(--paper);
-}
-
-.chip--toggle.is-on,
-.chip--toggle[aria-pressed='true'],
-.chip-btn.is-on {
-  background: var(--paper);
-  border-color: var(--paper);
-  color: var(--ink);
-}
-
-.chip__n {
-  font: var(--fw-medium) var(--fs-12) / 1 var(--font-mono);
-  font-stretch: var(--fst-mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--haze);
-}
-
-.chip--toggle.is-on .chip__n { color: color-mix(in oklab, var(--ink) 72%, transparent); }
-
-@media (max-width: 640px) {
-  .chip--toggle { --chip-h: 40px; } /* cible tactile (l'alias .chip-btn garde ses 34 px jusqu'à sa migration) */
-}
-
-/* ----- alias : anciennes classes au rendu d'aujourd'hui (seul changement : coins en pilule) ------------------
-   .chip--new → .chip--cue · .tag (révélation) → .chip--sm.chip--caps (+ --solid-cue / --holo, ombre)
-   .level-chip → .chip--cue.chip--mono · .master-tag → .chip--sm.chip--gold · .role-tag → .chip--sm.chip--cue.chip--mono.chip--caps
-   .owned-chip → .chip--sm.chip--ok (×2 en .mono) · .friend-score → .chip--quiet · .home-how__price → .chip--sm
-   .album-tile__badge → .chip--sm.chip--gold-solid (posé sur la vignette) */
-.chip--new {
-  background: color-mix(in oklab, var(--cue) 20%, var(--stage));
-  color: var(--cue);
-}
-
-.level-chip {
-  padding: var(--s-4) var(--s-10);
-  border-radius: var(--rad-pill);
-  background: color-mix(in oklab, var(--cue) 18%, transparent);
-  color: var(--cue);
-  font-size: var(--fs-12);
-}
-
-.role-tag {
-  display: inline-flex;
-  align-items: center;
-  margin-left: var(--s-10);
-  padding: var(--s-2) var(--s-8);
-  border-radius: var(--rad-pill);
-  background: color-mix(in oklab, var(--cue) 18%, transparent);
-  color: var(--cue);
-  font: var(--fw-semi) var(--fs-12) var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  vertical-align: middle;
-}
-
-.master-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-4);
-  margin-left: var(--s-8);
-  padding: var(--s-2) var(--s-8);
-  border-radius: var(--rad-pill);
-  background: color-mix(in oklab, var(--gold) 18%, transparent);
-  color: var(--gold);
-  font: var(--fw-ui) var(--fs-12) var(--font-body);
-  vertical-align: middle;
-}
-
-.owned-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-4);
-  padding: var(--s-2) var(--s-8);
-  border-radius: var(--rad-pill);
-  background: color-mix(in oklab, var(--ok) 15%, transparent);
-  color: var(--ok);
-  font: var(--fw-semi) var(--fs-12) var(--font-mono);
-  white-space: nowrap;
-}
-
-.owned-chip--holo {
-  background: linear-gradient(90deg, rgba(255, 79, 126, 0.22), rgba(63, 214, 196, 0.22), rgba(255, 211, 90, 0.22));
-  color: var(--paper);
-}
-
-.friend-score {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-8);
-  padding: 5px var(--s-10);
-  border-radius: var(--rad-pill);
-  background: var(--stage-2);
-  font-size: var(--fs-13);
-}
-
-.tag {
-  padding: 5px 11px;
-  border-radius: var(--rad-pill);
-  background: var(--stage-3);
-  color: var(--paper);
-  font: var(--fw-display) var(--fs-12) / 1 var(--font-body);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  box-shadow: var(--shadow-chip);
-}
-
-.tag--new {
-  background: var(--cue);
-  color: var(--ink);
-}
-
-.tag--holo {
-  background: var(--grad-holo);
-  color: var(--ink);
 }
 
 /* =====================================================================================================

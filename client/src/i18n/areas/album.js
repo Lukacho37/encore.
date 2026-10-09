@@ -1,7 +1,12 @@
-// Textes ajoutés pour le catalogue à grande échelle (zone : album). Fusionnés dans fr.js / en.js au chargement.
+// Textes de la zone « album » (P0-C) : catalogue à grande échelle, booster d'album, page artiste. Fusionnés dans
+// fr.js / en.js au chargement ; une clé d'ici peut préciser une clé existante (album.rewardBody : l'avatar débloqué est
+// le visuel AlbumMania de l'album, jamais sa vraie pochette, PLAN.md 7.1).
+const NNBSP = '\u202f';
+
 export default {
   fr: {
     album: {
+      rewardBody: '+{r} royalties, +{x} XP, le vinyle dans ta vinylthèque et le visuel AlbumMania de l’album en photo de profil.',
       loading: 'Chargement de l’album…',
       notFound: 'Album introuvable',
       notFoundBody: 'Cet album n’existe pas ou n’est plus au catalogue.',
@@ -14,9 +19,9 @@ export default {
         body: '5 cartes de cet album, celles qui te manquent d’abord — {price} royalties.',
         bodyFree: '5 cartes de cet album, celles qui te manquent d’abord — gratuit et illimité pour l’admin.',
         open: 'Ouvrir le booster',
-        missing: 'Il te manque {n} royalties : chaque nouvelle carte t’en rapporte, et recycler tes doublons aussi.',
-        complete: 'Album complet : tu as déjà toutes ses cartes.',
-        completeAdmin: 'Album complet : en admin, tu peux quand même en ouvrir pour tester.',
+        missing: `Il te manque {n} royalties${NNBSP}: chaque nouvelle carte t’en rapporte, et recycler tes doublons aussi.`,
+        complete: `Album complet${NNBSP}: tu as déjà toutes ses cartes.`,
+        completeAdmin: `Album complet${NNBSP}: en admin, tu peux quand même en ouvrir pour tester.`,
       },
     },
     artist: {
@@ -36,6 +41,7 @@ export default {
   },
   en: {
     album: {
+      rewardBody: '+{r} royalties, +{x} XP, the vinyl on your shelf and the album’s AlbumMania artwork as your profile picture.',
       loading: 'Loading album…',
       notFound: 'Album not found',
       notFoundBody: 'This album doesn’t exist or is no longer in the catalog.',

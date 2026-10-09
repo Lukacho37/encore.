@@ -1,0 +1,393 @@
+/* @prefix trk- */
+/* ---------- zone « track » (P0-C) : page morceau, panneau d'écoute, notes et critiques v2, fiche de carte ----------
+   Même identité que la page album (lueur de la palette derrière l'en-tête, panneaux d'encre, pilules ivoire,
+   titres Archivo, chiffres en Martian Mono). Jetons de app.css seulement ; .track-head* reprend le composant
+   canonique de design/current-v2/components.css (design-system-current §4.12). */
+
+/* ---------- page ---------- */
+
+.trk-page {
+  position: relative;
+}
+
+.trk-page::before {
+  content: '';
+  position: absolute;
+  inset: -40px 0 auto;
+  height: 420px;
+  background: radial-gradient(ellipse 50% 100% at 30% 0%, color-mix(in oklab, var(--album-c1, var(--r-super)) 26%, transparent), transparent 70%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* ---------- en-tête (composant canonique) ---------- */
+
+.track-head {
+  display: grid;
+  grid-template-columns: clamp(140px, 20vw, 220px) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: clamp(18px, 3vw, 36px);
+}
+
+.track-head__cover {
+  aspect-ratio: 1;
+  border-radius: var(--rad-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-cover-lg);
+}
+
+.track-head__info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-10);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.track-head__info h1 {
+  font-size: var(--fs-h1);
+}
+
+.track-head__artist {
+  margin: 0;
+  color: var(--paper-dim);
+  font-size: var(--fs-18);
+  font-weight: var(--fw-ui);
+}
+
+.track-head__artist a:hover {
+  color: var(--paper);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.track-head__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-8);
+}
+
+.track-head__card {
+  width: 168px;
+  display: flex;
+}
+
+.track-head__card .card {
+  width: 100%;
+}
+
+.trk-head {
+  margin-bottom: 36px;
+}
+
+.trk-head .trk-score {
+  align-self: auto;
+}
+
+.trk-feat {
+  font-size: var(--fs-15);
+}
+
+.trk-head__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-10);
+  margin-top: var(--s-4);
+}
+
+/* ---------- ma carte + écoute ---------- */
+
+.trk-panels {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--s-16);
+  align-items: start;
+}
+
+.trk-mine__body {
+  display: flex;
+  gap: var(--s-20);
+  align-items: flex-start;
+}
+
+/* La carte est déjà dans l'en-tête sur ordinateur ; sur téléphone (en-tête sans carte), elle vit ici. */
+.trk-mine__card {
+  display: none;
+  flex: none;
+  width: 150px;
+}
+
+.trk-mine__card .card {
+  width: 100%;
+}
+
+.trk-mine__facts {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.trk-mine__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-8);
+}
+
+.trk-mine__actions p {
+  margin: 0;
+}
+
+.trk-owners {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-6);
+}
+
+.trk-owners__link {
+  display: inline-flex;
+  border-radius: 50%;
+  transition: transform var(--dur-hover);
+}
+
+.trk-owners__link:hover {
+  transform: translateY(-2px);
+}
+
+.trk-owners__link:focus-visible {
+  outline: 2px solid var(--cue);
+  outline-offset: 2px;
+}
+
+/* ---------- panneau d'écoute (ListenPanel) ---------- */
+
+.trk-listen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-10);
+  min-width: 0;
+}
+
+.trk-listen__links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-8);
+}
+
+.trk-listen__links .label {
+  margin-right: var(--s-2);
+}
+
+.trk-listen__embed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-10) var(--s-12);
+  padding: var(--s-12) var(--s-14);
+  border-radius: var(--rad-md);
+  background: var(--stage-2);
+  border: 1px dashed var(--line);
+}
+
+.trk-listen__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--stage-3);
+  color: var(--cue);
+}
+
+.trk-listen__text {
+  flex: 1 1 220px;
+  margin: 0;
+  font-size: var(--fs-14);
+  line-height: var(--lh-ui);
+}
+
+.trk-listen__actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--s-6);
+}
+
+.trk-listen__frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: var(--rad-md);
+  background: var(--stage-2);
+}
+
+.trk-listen__frame--album {
+  height: 300px;
+}
+
+.trk-listen__frame--track {
+  height: 150px;
+}
+
+.trk-listen__credit {
+  margin: 0;
+}
+
+.trk-listen__credit a {
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 3px;
+}
+
+.trk-listen__credit a:hover {
+  color: var(--paper);
+}
+
+/* Dans l'en-tête d'album, le panneau suit la récompense. */
+.album-head__info .trk-listen {
+  margin-top: var(--s-4);
+}
+
+/* ---------- notes et critiques ---------- */
+
+.trk-subtitle {
+  font: var(--fw-bold) var(--fs-16) / var(--lh-snug) var(--font-display);
+  color: var(--paper);
+}
+
+.trk-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+  margin-top: 28px;
+}
+
+.trk-group__title {
+  font: var(--fw-title) var(--fs-18) / var(--lh-snug) var(--font-display);
+  letter-spacing: var(--ls-title);
+}
+
+.trk-group .load-more {
+  margin-top: 0;
+}
+
+.trk-review__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-10);
+  min-width: 0;
+}
+
+.trk-review__text {
+  white-space: pre-line;
+  color: var(--paper-dim);
+  max-width: 70ch;
+  overflow-wrap: anywhere;
+}
+
+.trk-moderated {
+  margin: 0;
+  padding: var(--s-8) var(--s-12);
+  border-radius: var(--rad-sm);
+  background: color-mix(in oklab, var(--danger) 12%, transparent);
+  color: var(--paper-dim);
+}
+
+/* Ancre #review-<id> : la critique visée est repérée d'un liseré turquoise. */
+.trk-group .review:target {
+  border-color: color-mix(in oklab, var(--cue) 55%, var(--line-soft));
+}
+
+/* ---------- autres morceaux (tracklist de la page morceau) ---------- */
+
+.trk-siblings {
+  margin-top: 40px;
+}
+
+.tracklist .trk-row--current td {
+  background: color-mix(in oklab, var(--cue) 8%, transparent);
+}
+
+.tracklist .trk-row--current .tracklist__title {
+  color: var(--paper);
+}
+
+/* ---------- fiche de carte (modale) ---------- */
+
+.trk-modal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-8);
+}
+
+/* ---------- tablette et téléphone ---------- */
+
+@media (max-width: 1020px) {
+  .trk-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 860px) {
+  .track-head {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    text-align: center;
+  }
+
+  .track-head__info {
+    align-items: center;
+    width: 100%;
+  }
+
+  .track-head__chips,
+  .trk-head__actions {
+    justify-content: center;
+  }
+
+  .track-head__cover {
+    width: min(240px, 64vw);
+  }
+
+  .track-head__card {
+    display: none;
+  }
+
+  .trk-mine__card {
+    display: block;
+  }
+}
+
+@media (max-width: 640px) {
+  .trk-head {
+    margin-bottom: var(--s-24);
+  }
+
+  .trk-mine__body {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .trk-mine__card {
+    width: min(180px, 52vw);
+  }
+
+  .trk-mine__facts {
+    width: 100%;
+  }
+
+  .trk-listen__embed {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .trk-head__actions .btn {
+    flex: 1 1 auto;
+  }
+}

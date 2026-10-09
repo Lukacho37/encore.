@@ -1,24 +1,24 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useGame } from '../state/GameContext.jsx';
 import { useI18n } from '../i18n/index.jsx';
 import Card, { RarityGem } from '../components/Card.jsx';
 import CoverArt from '../components/CoverArt.jsx';
-import PackOpening, { PackArt } from '../components/PackOpening.jsx';
+import { PackArt } from '../components/PackOpening.jsx';
 import { useCardModal } from '../components/CardModal.jsx';
+import ListenPanel from '../components/ListenPanel.jsx';
 import { Celebration } from '../components/Achievements.jsx';
-import { Icon, Modal, Progress, ProviderMark, RoyaltyIcon, useToast } from '../components/ui.jsx';
-import { PROVIDER_NAMES, realCover, useCovers } from '../state/CoversContext.jsx';
+import { Icon, Modal, Progress, RoyaltyIcon, useToast } from '../components/ui.jsx';
 import { Vinyl, TurntableModal, isHoloComplete } from '../components/Vinyl.jsx';
-import {
-  RatingHistogram, RatingInput, RatingValue, ReviewEditor, ReviewList, useItemRatings,
-} from '../components/Rating.jsx';
+import { RatingInput, RatingValue, RatingsSection, itemPath, useItemRatings } from '../components/Rating.jsx';
 import { getAlbum, useAlbumDetail, useTrack } from '../state/catalog.js';
+import { useBoosterFlow } from '../state/boosterFlow.js';
 import { ECONOMY, albumReward, pressCost } from '@shared/rules.js';
 import { post, api } from '../api.js';
 import { sound } from '../sound.js';
 import { storage } from '../storage.js';
 import '../styles/album.css';
+import '../styles/track.css';
 
 export function PressDialog({ trackId, onClose, onDone }) {
   const { t, error } = useI18n();
@@ -104,18 +104,21 @@ export function TrackGridSkeleton({ count = 12 }) {
   );
 }
 
-/** Tracklist façon fiche d'album : rareté, carte possédée, moyenne et ta note pour chaque morceau. */
-function Tracklist({ tracks, trackRatings, onPress }) {
+/**
+ * Tracklist façon fiche d'album : rareté, carte possédée, moyenne et ta note pour chaque morceau ; chaque titre mène
+ * à la page du morceau. `trackRatings` : `tracks` des notes de l'album ({ averages: { id: { avg, count } } }).
+ * `currentId` : morceau mis en avant (page morceau, « Autres morceaux de l'album »).
+ */
+export function Tracklist({ tracks, trackRatings, onPress, currentId = null }) {
   const { t, error } = useI18n();
-  const { owned, ratings, isAdmin, applyState } = useGame();
-  const openCard = useCardModal();
+  const { owned, ratings, isAdmin } = useGame();
   const toast = useToast();
   const pending = useRef({});
   const [resetKey, setResetKey] = useState(0);
   const send = async (trackId, score) => {
     try {
-      const res = await api('PUT', `/ratings/track/${encodeURIComponent(trackId)}`, { score });
-      applyState(res.state);
+      // L'état du joueur (state.ratings) est fusionné par api.js avec la réponse.
+      await api('PUT', `/ratings/track/${encodeURIComponent(trackId)}`, { score });
     } catch (err) {
       toast(error(err.code), 'error');
       setResetKey((k) => k + 1); // la note affichée revient à celle du serveur
@@ -154,16 +157,17 @@ function Tracklist({ tracks, trackRatings, onPress }) {
         <tbody>
           {tracks.map((tr) => {
             const mine = owned.get(tr.id);
-            const community = trackRatings?.[tr.id];
+            const community = trackRatings?.averages?.[tr.id];
             const cost = isAdmin ? 0 : pressCost(tr.rarity);
+            const current = tr.id === currentId;
             return (
-              <tr key={tr.id} className={mine ? 'is-owned' : ''}>
-                <td className="num mono muted">{tr.n}</td>
+              <tr key={tr.id} className={`${mine ? 'is-owned' : ''}${current ? ' trk-row--current' : ''}`} aria-current={current ? 'true' : undefined}>
+                <td className="num mono muted">{tr.kind === 'promo' ? `P${String(tr.n).padStart(2, '0')}` : tr.n}</td>
                 <td>
-                  <button type="button" className="tracklist__title" onClick={() => openCard(tr.id)}>
+                  <Link to={itemPath('track', tr.id)} className="tracklist__title">
                     {tr.title}
                     {tr.feat && <span className="muted small"> · feat. {tr.feat}</span>}
-                  </button>
+                  </Link>
                 </td>
                 <td><span className="tracklist__rarity"><RarityGem rarity={tr.rarity} size={12} /> {t(`rarity.${tr.rarity}`)}</span></td>
                 <td>
@@ -176,7 +180,7 @@ function Tracklist({ tracks, trackRatings, onPress }) {
                     </button>
                   ) : null}
                 </td>
-                <td>{community?.count ? <span className="tracklist__avg"><RatingValue value={community.average} average size={11} /> <span className="muted small mono">({community.count})</span></span> : <span className="muted">·</span>}</td>
+                <td>{community?.count ? <span className="tracklist__avg"><RatingValue value={community.avg} average size={11} /> <span className="muted small mono">({community.count})</span></span> : <span className="muted">·</span>}</td>
                 <td><RatingInput key={`${tr.id}-${resetKey}`} value={ratings.get(`track:${tr.id}`) ?? null} onChange={(v) => rateTrack(tr.id, v)} size={15} compact label={`${t('rating.yours')} · ${tr.title}`} /></td>
               </tr>
             );
@@ -184,53 +188,6 @@ function Tracklist({ tracks, trackRatings, onPress }) {
         </tbody>
       </table>
     </div>
-  );
-}
-
-function AlbumRatings({ albumId, ratingsApi }) {
-  const { t } = useI18n();
-  const { data, save, remove } = ratingsApi;
-  if (!data) return null;
-  const { summary } = data;
-  return (
-    <section className="section album-ratings" id="critiques">
-      <header className="section__head"><h2>{t('reviews.title')}</h2></header>
-      <div className="album-ratings__grid">
-        <div className="panel">
-          <h3 className="panel__title">{t('reviews.yours')}</h3>
-          <ReviewEditor key={albumId} data={data} save={save} remove={remove} />
-        </div>
-        <div className="panel album-ratings__community">
-          <h3 className="panel__title">{t('rating.community')}</h3>
-          {summary.count ? (
-            <>
-              <div className="community-score">
-                <RatingValue value={summary.average} average size={22} />
-                <span className="muted small">{t('rating.count', { n: summary.count })}</span>
-              </div>
-              <RatingHistogram distribution={summary.distribution} mine={data.mine?.score} />
-            </>
-          ) : <p className="muted">{t('rating.empty')}</p>}
-          {data.friendScores?.length > 0 && (
-            <div className="friend-scores">
-              <span className="studio__label">{t('rating.friends')}</span>
-              <ul>
-                {data.friendScores.map((f) => (
-                  <li key={f.user.id}>
-                    <Link to={`/u/${f.user.username}`} className="friend-score">
-                      <span className="friend-score__name">{f.user.username}</span>
-                      <RatingValue value={f.score} size={11} />
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      </div>
-      <h3 className="studio__label album-ratings__list-title">{t('reviews.list')}</h3>
-      <ReviewList reviews={data.reviews || []} />
-    </section>
   );
 }
 
@@ -306,36 +263,14 @@ function AlbumSkeleton() {
   );
 }
 
-/** Lien d'écoute de l'album : /api/covers pour les 20 albums de base, lien Deezer pour les albums importés. */
-function AlbumListen({ album }) {
-  const { t } = useI18n();
-  const covers = useCovers();
-  const seedLink = covers.all[album.id];
-  const link = seedLink || (album.url ? { url: album.url, provider: 'deezer' } : null);
-  const cover = realCover(album.art, covers);
-  if (!link && !cover) return null;
-  const name = link && (PROVIDER_NAMES[link.provider] || link.provider);
-  return (
-    <div className="cover-credit">
-      {link && (
-        <a href={link.url} target="_blank" rel="noreferrer noopener" className="btn btn--ghost btn--sm">
-          <ProviderMark provider={link.provider} /> {seedLink ? t('covers.listenAlbumOn', { p: name }) : t('covers.listenOn', { p: name })}
-        </a>
-      )}
-      {cover && <span className="small muted">{t('covers.credit', { p: PROVIDER_NAMES[cover.provider] || cover.provider })}</span>}
-    </div>
-  );
-}
-
 function AlbumView({ id }) {
-  const { t, date, error } = useI18n();
+  const { t, date } = useI18n();
   const { achievements, owned, ratings, albumProgress } = useGame();
-  const toast = useToast();
   const [pressing, setPressing] = useState(null);
   const [celebrate, setCelebrate] = useState([]);
   const [view, setView] = useState(() => storage.get('albummania.albumView') || 'cards');
   const [turntable, setTurntable] = useState(null);
-  const [opening, setOpening] = useState(null);
+  const booster = useBoosterFlow();
   const detail = useAlbumDetail(id);
   const loaded = detail.data?.album?.id === id ? detail.data : null;
   // Album déjà croisé ailleurs (liste, recherche, booster) : l'en-tête s'affiche pendant que les cartes arrivent.
@@ -358,17 +293,6 @@ function AlbumView({ id }) {
       reload();
     }
   }, [trackSignature, reload]);
-
-  const openBooster = useCallback(() => {
-    if (!album) return;
-    sound.unlock();
-    setOpening({ promise: post('/packs/album', { albumId: album.id }), key: Date.now() });
-  }, [album]);
-
-  const closeOpening = useCallback((err) => {
-    setOpening(null);
-    if (err) toast(error(err.code), 'error');
-  }, [toast, error]);
 
   const notFound = detail.error && (detail.error.status === 404 || detail.error.code === 'unknown_album');
   if (!album || notFound) {
@@ -415,7 +339,6 @@ function AlbumView({ id }) {
           {eyebrow && <span className="eyebrow mono">{eyebrow}</span>}
           <h1>{album.title}</h1>
           <Link to={`/artist/${encodeURIComponent(album.artistId)}`} className="album-head__artist">{album.artist}</Link>
-          <AlbumListen album={album} />
           {summary?.count > 0 && (
             <a href="#critiques" className="album-head__score">
               <RatingValue value={summary.average} average size={16} />
@@ -433,15 +356,16 @@ function AlbumView({ id }) {
             </p>
           ) : (
             <div className="reward-box">
-              <span className="eyebrow">{t('album.reward')}</span>
+              <span className="label">{t('album.reward')}</span>
               <p>{t('album.rewardBody', { r: reward.royalties, x: reward.xp })}</p>
               <p className="small muted">{t('album.pressHint')}</p>
             </div>
           )}
+          <ListenPanel kind="album" item={album} />
         </div>
       </header>
 
-      <AlbumBooster album={album} complete={complete} onOpen={openBooster} />
+      <AlbumBooster album={album} complete={complete} onOpen={() => booster.openAlbum(album)} />
 
       <div className="toolbar">
         <div className="seg" role="group" aria-label={t('album.view')}>
@@ -467,14 +391,12 @@ function AlbumView({ id }) {
         ? <TrackGrid tracks={tracks} onPress={setPressing} />
         : <Tracklist tracks={tracks} trackRatings={ratingsApi.data?.tracks} onPress={setPressing} />}
 
-      <AlbumRatings albumId={id} ratingsApi={ratingsApi} />
+      <RatingsSection type="album" id={id} ratingsApi={ratingsApi} />
 
       <PressDialog trackId={pressing} onClose={() => setPressing(null)} onDone={(res) => setCelebrate(res.achievements || [])} />
       <Celebration achievements={celebrate} onClose={() => setCelebrate([])} />
       <TurntableModal vinyl={turntable} onClose={() => setTurntable(null)} />
-      {opening && (
-        <PackOpening key={opening.key} promise={opening.promise} album={album} onClose={closeOpening} onAgain={openBooster} />
-      )}
+      {booster.overlay}
     </div>
   );
 }

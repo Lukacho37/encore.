@@ -1,4 +1,110 @@
-// Textes de la zone « track » (P0-C) : page morceau. Fusionnés dans fr.js / en.js au chargement
-// (i18n/index.jsx) ; une clé d'ici peut aussi préciser une clé existante. Chaque clé existe en FR et en EN
-// (tutoiement, espace fine insécable avant ; : ! ? % et dans « »). Squelette posé par K0 (scripts/scaffold.mjs).
-export default { fr: {}, en: {} };
+// Textes de la zone « track » (P0-C) : page morceau, panneau d'écoute, notes et critiques v2 (groupes « Vos amis » /
+// « Communauté AlbumMania »), fiche de carte. Fusionnés dans fr.js / en.js au chargement (i18n/index.jsx) ; une clé
+// d'ici peut aussi préciser une clé existante. Chaque clé existe en FR et en EN (tutoiement, espace fine insécable
+// avant ; : ! ? % et dans « »).
+const NNBSP = ' ';
+
+export default {
+  fr: {
+    track: {
+      loading: 'Chargement du morceau…',
+      loadError: 'Impossible de charger ce morceau',
+      kicker: 'Morceau · piste {n}/{total}',
+      kickerPromo: 'Promo',
+      owned: 'Possédée',
+      rate: 'Noter',
+      rateAgain: 'Modifier ma note',
+      listenOn: 'Écouter sur {p}',
+      cardTitle: 'Fiche de la carte',
+      openPage: 'Voir la page du morceau',
+      owners: { one: 'Possédée par {n} joueur', other: 'Possédée par {n} joueurs' },
+      ownersFriends: { one: 'dont {n} ami', other: 'dont {n} amis' },
+      ownersFriendsLabel: 'Tes amis qui ont cette carte',
+      completedBy: { one: 'Complété par {n} joueur', other: 'Complété par {n} joueurs' },
+      siblings: 'Les autres morceaux de l’album',
+      siblingsPromo: 'Les autres promos de {artist}',
+      albumLink: 'Voir l’album',
+      mine: {
+        title: 'Ma carte',
+        since: 'Obtenue le',
+        collectors: 'Collection',
+        promoHint: 'Les promos ne se pressent pas : on ne les trouve qu’en booster.',
+      },
+      listen: {
+        title: 'Écouter',
+        on: 'Écouter sur',
+        directTitle: 'Ouvrir la page officielle sur {p}',
+        searchTitle: 'Chercher sur {p}',
+        embedTitle: 'Écouter avec Deezer',
+        embedBody: 'Le lecteur Deezer dépose des cookies.',
+        load: 'Charger le lecteur',
+        always: 'Toujours charger',
+        frameTitle: `Lecteur Deezer${NNBSP}: {title}`,
+        coverCredit: `Pochette${NNBSP}: {p}`,
+      },
+      reviews: {
+        friends: 'Vos amis',
+        community: 'Communauté AlbumMania',
+        communityEmpty: 'Aucune critique de la communauté pour l’instant.',
+        more: 'Voir plus de critiques',
+        moderated: 'Ta critique est masquée par la modération : les autres joueurs ne la voient plus.',
+      },
+    },
+    errors: {
+      duplicate_review: 'Tu as déjà publié exactement ce texte dans une autre critique.',
+      unknown_track: 'Ce morceau n’existe pas ou n’est plus au catalogue.',
+      quota_exceeded: `Tu as atteint la limite du jour${NNBSP}: réessaie demain.`,
+    },
+  },
+  en: {
+    track: {
+      loading: 'Loading track…',
+      loadError: 'Couldn’t load this track',
+      kicker: 'Track · {n}/{total}',
+      kickerPromo: 'Promo',
+      owned: 'Owned',
+      rate: 'Rate',
+      rateAgain: 'Edit my rating',
+      listenOn: 'Listen on {p}',
+      cardTitle: 'Card details',
+      openPage: 'Open the track page',
+      owners: { one: 'Owned by {n} player', other: 'Owned by {n} players' },
+      ownersFriends: { one: 'including {n} friend', other: 'including {n} friends' },
+      ownersFriendsLabel: 'Your friends who have this card',
+      completedBy: { one: 'Completed by {n} player', other: 'Completed by {n} players' },
+      siblings: 'The other tracks of the album',
+      siblingsPromo: 'More promos by {artist}',
+      albumLink: 'See the album',
+      mine: {
+        title: 'My card',
+        since: 'First pulled',
+        collectors: 'Collectors',
+        promoHint: 'Promos can’t be pressed: you only find them in packs.',
+      },
+      listen: {
+        title: 'Listen',
+        on: 'Listen on',
+        directTitle: 'Open the official page on {p}',
+        searchTitle: 'Search on {p}',
+        embedTitle: 'Listen with Deezer',
+        embedBody: 'The Deezer player sets cookies.',
+        load: 'Load the player',
+        always: 'Always load',
+        frameTitle: 'Deezer player: {title}',
+        coverCredit: 'Cover: {p}',
+      },
+      reviews: {
+        friends: 'Your friends',
+        community: 'AlbumMania community',
+        communityEmpty: 'No community review yet.',
+        more: 'More reviews',
+        moderated: 'Your review was hidden by moderation: other players can no longer see it.',
+      },
+    },
+    errors: {
+      duplicate_review: 'You already posted exactly this text in another review.',
+      unknown_track: 'This track doesn’t exist or is no longer in the catalog.',
+      quota_exceeded: 'You reached today’s limit: try again tomorrow.',
+    },
+  },
+};

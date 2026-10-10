@@ -169,9 +169,10 @@ export function createAuth(db, mailer, services, { bus = null, now = Date.now } 
       // Une adresse jamais vérifiée ne bloque pas son vrai propriétaire : le compte inachevé est remplacé
       // (sinon quelqu'un pourrait réserver ton adresse, et donc l'accès admin, avec son propre mot de passe).
       if (existing) q('DELETE FROM users WHERE id = ? AND email_verified_at IS NULL').run(existing.id);
+      // avatar_color 'auto' : couleur propre à chaque joueur, tirée de son identifiant (pas le rose par défaut pour tous).
       const { lastInsertRowid } = q(`INSERT INTO users (email, username, password_hash, role, lang, royalties, bonus_packs, packs, packs_at,
-          created_at, last_mail_at, signup_secret, terms_accepted_at, terms_version)
-        VALUES (?, ?, ?, 'player', ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`).run(
+          created_at, last_mail_at, signup_secret, terms_accepted_at, terms_version, avatar_color)
+        VALUES (?, ?, ?, 'player', ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, 'auto')`).run(
         email, username, hash, lang, services.welcome.royalties, services.welcome.packs, at, at, at, sha256(secret), at, config.termsVersion,
       );
       return services.getUser(Number(lastInsertRowid));

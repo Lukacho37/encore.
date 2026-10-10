@@ -578,21 +578,25 @@ test('tâches de nuit : purges de rétention, chaque tâche isolée, 04:10 à Pa
   assert.ok(!jobs.stale().includes('counter'));
 });
 
-test('mots de passe : scrypt N = 2^17 visé (2^14 en test), re-hachage des anciens coûts, hachage illisible refusé sans erreur', async () => {
-  assert.equal(SCRYPT_COST.N, 2 ** 17);
+test('mots de passe : scrypt N = 2^16, p = 2 visé (N = 2^14 en test), re-hachage des anciens coûts, hachage illisible refusé sans erreur', async () => {
+  assert.equal(SCRYPT_COST.N, 2 ** 16);
+  assert.equal(SCRYPT_COST.p, 2);
   const current = await hashPassword('motdepasse123');
-  assert.match(current, /^scrypt\$16384\$8\$1\$/);
+  assert.match(current, /^scrypt\$16384\$8\$2\$/);
   assert.equal(needsRehash(current), false);
   assert.equal(await verifyPassword('motdepasse123', current), true);
   assert.equal(await verifyPassword('autre', current), false);
   const weak = await hashPassword('motdepasse123', { N: 2 ** 12 });
   assert.equal(needsRehash(weak), true);
+  // Ancien format (p = 1) : toujours lisible, re-haché à la connexion.
+  const legacy = current.replace(/^scrypt\$16384\$8\$2\$/, 'scrypt$16384$8$1$');
+  assert.equal(needsRehash(legacy), true);
   assert.equal(await verifyPassword('motdepasse123', weak), true);
   const strong = await hashPassword('motdepasse123', { N: 2 ** 17 });
   assert.match(strong, /^scrypt\$131072\$/);
   assert.equal(await verifyPassword('motdepasse123', strong), true, 'plafond de mémoire suffisant pour 2^17');
   // Hachage factice : même coût qu'un vrai compte, ne correspond à aucun mot de passe.
-  assert.match(dummyHash(), /^scrypt\$16384\$8\$1\$/);
+  assert.match(dummyHash(), /^scrypt\$16384\$8\$2\$/);
   assert.equal(needsRehash(dummyHash()), false);
   assert.equal(await verifyPassword('motdepasse123', dummyHash()), false);
   for (const bad of ['', 'md5$abc', 'scrypt$abc$8$1$AA==$AA==', 'scrypt$3$8$1$AA==$AA==', `scrypt$${2 ** 24}$8$1$AA==$AA==`, null]) {

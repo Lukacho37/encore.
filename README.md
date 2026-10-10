@@ -73,7 +73,7 @@ npm start          # sert le site et l'API sur le port $PORT
 | `LEGAL_EDITOR_NAME`, `LEGAL_EDITOR_ADDRESS`, `LEGAL_EDITOR_EMAIL`, `LEGAL_PUBLICATION_DIRECTOR`, `LEGAL_HOST_NAME`, `LEGAL_HOST_ADDRESS`, `LEGAL_HOST_PHONE`, `LEGAL_CONTACT_EMAIL` | Coordonnées affichées dans les **mentions légales** (`/legal/mentions`, obligatoires en France) |
 | `TERMS_VERSION`, `TERMS_UPDATED_AT` | Version (date) des CGU en vigueur ; la changer affiche le bandeau d'acceptation aux comptes existants |
 | `COVERS` | Vraies pochettes : `auto` (par défaut, Deezer) ou `deezer`, `off` pour revenir aux visuels générés |
-| `SHARE_COVERS` | `deezer` : vraies pochettes dans les images partagées (composées dans le navigateur) ; sinon visuels générés |
+| `SHARE_COVERS` | Vraies pochettes dans les images partagées (par défaut, composées dans le navigateur) ; `off` : visuels générés |
 | `DEV_MAILBOX=1` | Boîte e-mail de test (`/dev/mailbox`), seulement avec une adresse `APP_URL` locale (le serveur refuse de démarrer sinon) |
 
 Fichiers fournis : `render.yaml` (blueprint Render) et `Dockerfile` (Railway, Fly.io, VPS).

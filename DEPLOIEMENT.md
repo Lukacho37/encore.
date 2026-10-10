@@ -91,7 +91,7 @@ Sans rien configurer, le serveur récupère les vraies pochettes et les liens d'
 
 Les images ne sont jamais copiées sur ton serveur : le site affiche celles hébergées par Deezer, sans les modifier, avec la mention de la source et un lien vers la plateforme. Une carte pas encore obtenue garde le visuel généré. Pour tout couper (par exemple si une plateforme ou un ayant droit le demande), mets `COVERS=off` : le site revient aux visuels générés.
 
-`SHARE_COVERS=deezer` autorise les vraies pochettes dans les images à partager (« Mes 9 albums »…) : elles sont composées dans le navigateur du joueur, jamais sur ton serveur, avec repli sur le visuel généré quand une image ne peut pas être utilisée.
+Les images à partager (« Mes 9 albums »…) utilisent aussi les vraies pochettes (par défaut, `SHARE_COVERS=deezer`) : elles sont composées dans le navigateur du joueur, jamais sur ton serveur, avec repli sur le visuel généré quand une image ne peut pas être utilisée. `SHARE_COVERS=off` les remplace par les visuels générés.
 
 **Spotify.** Le service des pochettes sait utiliser l'API Web de Spotify quand ses clés sont configurées (`SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, application créée sur [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) avec un compte Premium actif), mais **cette version du serveur ignore ces clés** : les conditions de Spotify interdisent les jeux et les quiz (« Do not create a game, including trivia quizzes »). Les pochettes viennent donc de Deezer. Les liens « Écouter sur Spotify » (recherche sur open.spotify.com) restent proposés : ils n'utilisent pas l'API.
 

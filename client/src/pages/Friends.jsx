@@ -66,6 +66,7 @@ function PickedMember({ user, busy, onSend, onClose }) {
         <span className="friend__actions">
           {action}
           <Link to={`/u/${encodeURIComponent(user.username)}`} className="btn btn--ghost btn--sm">{t('search.friends.view')}</Link>
+          {user.relation !== 'self' && <SafetyMenu target={{ type: 'user', id: user.id }} user={user} />}
           <button type="button" className="icon-btn" onClick={onClose} aria-label={t('search.friends.close')}><Icon name="close" size={16} /></button>
         </span>
       </li>

@@ -3,14 +3,31 @@ import { promisify } from 'node:util';
 import { HttpError } from './services.js';
 import { dayStart, nextDayStart } from '../shared/periods.js';
 
-const scrypt = promisify(crypto.scrypt);
+const scryptRaw = promisify(crypto.scrypt);
+// File d'attente : au plus deux calculs scrypt simultanés, pour borner la mémoire lors d'une rafale de connexions.
+let scryptRunning = 0;
+const scryptQueue = [];
+async function scrypt(...args) {
+  // La place libérée passe directement au suivant de la file : aucun nouvel appel ne peut s'intercaler entre les deux.
+  if (scryptRunning >= 2) await new Promise((resolve) => scryptQueue.push(resolve));
+  else scryptRunning += 1;
+  try {
+    return await scryptRaw(...args);
+  } finally {
+    const next = scryptQueue.shift();
+    if (next) next();
+    else scryptRunning -= 1;
+  }
+}
 
 /**
- * Coût de scrypt (PLAN.md 7.2) : N = 2^17 (128 Mo de mémoire par calcul), r = 8, p = 1. Les tests gardent 2^14 pour
- * rester rapides. Un mot de passe haché avec un coût plus faible (les comptes d'avant, en 2^14) est re-haché à la
- * connexion : `needsRehash(stored)` le dit, auth.js appelle alors hashPassword (P0-D).
+ * Coût de scrypt (PLAN.md 7.2) : N = 2^16, r = 8, p = 2, l'équivalent OWASP de N = 2^17, p = 1 pour le même temps de
+ * calcul avec deux fois moins de mémoire (64 Mo par calcul). Au plus deux calculs à la fois : 128 Mo au maximum,
+ * compatible avec une petite instance de 512 Mo. Les tests gardent N = 2^14 pour rester rapides. Un mot de passe haché
+ * avec d'autres paramètres (les comptes d'avant, en 2^14) est re-haché à la connexion : `needsRehash(stored)` le dit,
+ * auth.js appelle alors hashPassword (P0-D).
  */
-export const SCRYPT_COST = { N: 2 ** 17, r: 8, p: 1, keylen: 64 };
+export const SCRYPT_COST = { N: 2 ** 16, r: 8, p: 2, keylen: 64 };
 /** N visé pour un nouveau hachage. */
 export const scryptN = () => (process.env.NODE_ENV === 'test' ? 2 ** 14 : SCRYPT_COST.N);
 // Plafond de mémoire de node:crypto (32 Mo par défaut, trop peu au-delà de N = 2^14) : 128 × N × r × p, avec une marge.

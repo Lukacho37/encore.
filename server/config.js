@@ -108,7 +108,8 @@ export const config = {
   spotify: null,
   // Vraies pochettes dans les images partagées (Mes 9 albums, Rétro…) : "deezer" pour les autoriser (composées dans
   // le navigateur seulement), sinon false = visuels AlbumMania générés (par défaut, PLAN.md 7.1).
-  shareCovers: /^\s*deezer\s*$/i.test(env.SHARE_COVERS || '') ? 'deezer' : false,
+  // Vraies pochettes dans les images de partage (décision du propriétaire) ; SHARE_COVERS=off les remplace par les visuels générés.
+  shareCovers: /^\s*off\s*$/i.test(env.SHARE_COVERS || '') ? false : 'deezer',
 
   // Mentions légales (/legal/mentions, GET /api/legal/info) : éditeur, directeur de la publication, hébergeur.
   legal: {

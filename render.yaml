@@ -34,15 +34,29 @@ services:
         sync: false
       - key: MAIL_FROM # ex. AlbumMania <no-reply@ton-domaine.fr>
         sync: false
-      - key: BLINDTEST_AUDIO # "off" : les conditions d'Apple interdisent les extraits iTunes dans un jeu
-        value: "off"
-      - key: COVERS # "auto" : Spotify si les clés ci-dessous sont renseignées, sinon Deezer ; "off" pour tout couper
+      - key: COVERS # "auto" : pochettes de Deezer (jamais copiées) ; "off" pour tout couper
         value: auto
+      - key: SHARE_COVERS # "deezer" : vraies pochettes dans les images à partager ; "off" : visuels générés
+        value: deezer
+      - key: LEGAL_EDITOR_NAME # mentions légales, voir DEPLOIEMENT.md
+        sync: false
+      - key: LEGAL_EDITOR_ADDRESS
+        sync: false
+      - key: LEGAL_EDITOR_EMAIL
+        sync: false
+      - key: LEGAL_PUBLICATION_DIRECTOR
+        sync: false
+      - key: LEGAL_HOST_NAME
+        sync: false
+      - key: LEGAL_HOST_ADDRESS
+        sync: false
+      - key: LEGAL_HOST_PHONE
+        sync: false
+      - key: LEGAL_CONTACT_EMAIL
+        sync: false
+      - key: TERMS_VERSION # date des CGU en vigueur, ex. 2026-10-06
+        sync: false
       - key: CATALOG_IMPORT # "deezer" : le serveur importe tout seul ~20 000 albums depuis Deezer ; "off" pour s'en tenir aux 20 albums de base
         value: deezer
       - key: CATALOG_TARGET # nombre d'albums à importer
         value: "20000"
-      - key: SPOTIFY_CLIENT_ID # facultatif, voir DEPLOIEMENT.md
-        sync: false
-      - key: SPOTIFY_CLIENT_SECRET
-        sync: false

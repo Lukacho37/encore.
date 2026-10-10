@@ -615,6 +615,18 @@
   list-style: none;
 }
 
+/* Membre : menu ⋯ Signaler / Bloquer à côté du lien (jamais dans le lien). */
+.gs-rows__member {
+  display: flex;
+  align-items: center;
+  gap: var(--s-6);
+}
+
+.gs-rows__member > .gs-row {
+  flex: 1;
+  min-width: 0;
+}
+
 .gs-row {
   grid-template-columns: 48px minmax(0, 1fr) auto;
   min-height: 62px;

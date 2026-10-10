@@ -3,6 +3,7 @@
 //   node scripts/check-owners.mjs p0            fichiers modifiés, rangés par chantier ; hors propriété → code 1
 //   node scripts/check-owners.mjs p0 P0-E       idem, avec la liste du seul chantier P0-E mise en avant
 //   node scripts/check-owners.mjs p0 --list P0-E    fichiers et dossiers que possède P0-E
+//   node scripts/check-owners.mjs p1 --since a6ca099  compte aussi les fichiers des commits de sauvegarde depuis a6ca099
 // Lecture seule : ne modifie ni l'arbre ni l'index git.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,7 +14,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const owners = JSON.parse(fs.readFileSync(path.join(root, 'scripts/owners.json'), 'utf8'));
 const args = process.argv.slice(2);
 const listMode = args.includes('--list');
-const [levelArg, wsArg] = args.filter((a) => a !== '--list');
+const sinceAt = args.indexOf('--since');
+const since = sinceAt >= 0 ? args[sinceAt + 1] : null;
+const [levelArg, wsArg] = args.filter((a, i) => a !== '--list' && (sinceAt < 0 || (i !== sinceAt && i !== sinceAt + 1)));
 const levels = owners.levels;
 const level = Object.keys(levels).find((l) => l.toLowerCase() === String(levelArg || '').toLowerCase());
 if (!level) {
@@ -58,6 +61,12 @@ for (const line of status.split('\n').filter(Boolean)) {
   const unquote = (p) => (p.startsWith('"') ? JSON.parse(p) : p);
   if (file.includes(' -> ')) changed.push(...file.split(' -> ').map(unquote));
   else changed.push(unquote(file));
+}
+
+// --since <révision> : les fichiers modifiés par les commits depuis cette révision comptent aussi (sauvegardes en cours de niveau).
+if (since) {
+  const committed = execFileSync('git', ['diff', '--name-only', '--no-renames', since, 'HEAD'], { cwd: root, encoding: 'utf8' });
+  for (const file of committed.split('\n').filter(Boolean)) if (!changed.includes(file)) changed.push(file);
 }
 
 const byOwner = new Map();

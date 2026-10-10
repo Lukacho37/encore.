@@ -889,7 +889,7 @@ export function adminRoutes(r, deps) {
     if (!row) throw new deps.HttpError(404, 'review_not_found');
     api().decide(req.user, {
       targetType: 'review', targetId: row.id, action: 'delete', ground: 'rules:respect',
-      statement: 'Ta critique a été retirée par la modération : elle ne respecte pas les règles de la communauté AlbumMania.',
+      statement: 'Ta critique a été retirée par la modération\u202f: elle ne respecte pas les règles de la communauté AlbumMania.',
     });
     res.json(api().recentReviews(req.user));
   });

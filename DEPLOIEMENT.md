@@ -41,7 +41,26 @@ Plus tard, avec un nom de domaine à toi, authentifie-le dans Brevo (SPF, DKIM) 
 
 Personne d'autre ne peut devenir admin : le serveur compare l'adresse vérifiée du compte à `ADMIN_EMAILS` à chaque requête. Il n'y a ni bouton « passer admin », ni rôle stocké en base qu'on pourrait modifier.
 
-## 4. Le catalogue : 20 000 albums, tout seul
+## 4. Mentions légales et CGU
+
+La loi française (LCEN) impose d'afficher qui édite et qui héberge le site. AlbumMania les affiche dans **Mentions légales** (`/legal/mentions`, lien en bas de chaque page), à partir de ces variables, à ajouter dans **Environment** :
+
+| Variable | Quoi mettre |
+|---|---|
+| `LEGAL_EDITOR_NAME` | Ton nom (ou celui de ta société) |
+| `LEGAL_EDITOR_ADDRESS` | Ton adresse postale (un particulier peut, sous conditions, ne donner que celle de son hébergeur : vérifie auprès d'un juriste) |
+| `LEGAL_EDITOR_EMAIL` | Une adresse de contact |
+| `LEGAL_PUBLICATION_DIRECTOR` | Le directeur de la publication (toi, en général) |
+| `LEGAL_HOST_NAME`, `LEGAL_HOST_ADDRESS`, `LEGAL_HOST_PHONE` | L'hébergeur (pour Render : nom, adresse et téléphone indiqués dans ses conditions) |
+| `LEGAL_CONTACT_EMAIL` | Adresse de contact pour les signalements et les demandes sur les données personnelles (par défaut : `LEGAL_EDITOR_EMAIL`) |
+| `TERMS_VERSION` | Date de la version des CGU en vigueur, par exemple `2026-10-06` |
+| `TERMS_UPDATED_AT` | Date affichée en tête des CGU (par défaut : `TERMS_VERSION`) |
+
+Une valeur manquante s'affiche « non renseigné » (et, pour toi seulement, le nom de la variable à remplir).
+
+Les textes (CGU, confidentialité, règles de la communauté, cookies) sont dans `client/src/i18n/areas/legal.js`, en français et en anglais. **Quand tu modifies les CGU**, change aussi `TERMS_VERSION` : chaque joueur voit alors un bandeau « Nos conditions d'utilisation ont changé » ; il peut continuer à jouer, mais doit accepter la nouvelle version pour publier (critiques, demandes d'ami). Les nouveaux comptes acceptent la version en vigueur à l'inscription, avec la case « J'accepte les CGU et j'ai 15 ans ou plus ».
+
+## 5. Le catalogue : 20 000 albums, tout seul
 
 Rien à faire : au premier démarrage, le serveur commence à importer des albums depuis l'**API publique de Deezer** (sans clé), jusqu'à **20 000 albums** (environ 250 000 cartes) :
 
@@ -66,21 +85,19 @@ Avec autant d'albums, deux choses aident les joueurs à en finir un : une partie
 
 > Les conditions de l'API Deezer réservent son usage aux applications non commerciales et n'autorisent pas à recopier son catalogue dans sa propre base. Importer 20 000 albums est donc, comme les pochettes, un risque que tu choisis de prendre : en cas de demande de Deezer, mets `CATALOG_IMPORT=off` (plus aucun appel), puis retire les albums importés depuis le **Shell** de Render avec `npm run catalog:purge -- --yes`, puis redémarre le service (**Manual Deploy → Restart**) ; les 20 albums de base restent.
 
-## 5. Pochettes et liens Spotify (facultatif)
+## 6. Pochettes
 
-Sans rien configurer, le serveur récupère les vraies pochettes et les liens d'écoute auprès de **Deezer** (API publique, sans clé) quelques secondes après le démarrage, puis une fois par jour. Pour passer à **Spotify**, avec un bouton « Écouter sur Spotify » qui ouvre directement chaque morceau :
+Sans rien configurer, le serveur récupère les vraies pochettes et les liens d'écoute auprès de **Deezer** (API publique, sans clé) quelques secondes après le démarrage, puis une fois par jour. Dans l'espace **Admin**, le bloc **Pochettes** indique combien de pochettes ont été trouvées et lesquelles manquent ; le bouton **Actualiser les pochettes** relance la recherche.
 
-1. Va sur [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard), connecte-toi avec ton compte Spotify et clique sur **Create app**. Depuis février 2026, Spotify exige un abonnement **Premium actif** pour le propriétaire d'une application de développement : sans lui, l'API refuse les requêtes et le site reste sur Deezer (l'espace admin affiche alors l'erreur « spotify 403 »).
-2. Nom : `AlbumMania` ; description : au choix ; *Redirect URI* : l'adresse de ton site (elle n'est pas utilisée) ; coche **Web API**, accepte les conditions et enregistre.
-3. Dans **Settings**, copie le **Client ID** et le **Client secret**.
-4. Sur Render, dans **Environment**, ajoute `SPOTIFY_CLIENT_ID` et `SPOTIFY_CLIENT_SECRET`, puis enregistre (le site redémarre).
-5. Dans l'espace **Admin**, le bloc **Pochettes** indique combien de pochettes ont été trouvées et lesquelles manquent ; le bouton **Actualiser les pochettes** relance la recherche.
+Les images ne sont jamais copiées sur ton serveur : le site affiche celles hébergées par Deezer, sans les modifier, avec la mention de la source et un lien vers la plateforme. Une carte pas encore obtenue garde le visuel généré. Pour tout couper (par exemple si une plateforme ou un ayant droit le demande), mets `COVERS=off` : le site revient aux visuels générés.
 
-Les images ne sont jamais copiées sur ton serveur : le site affiche celles hébergées par Spotify ou Deezer, sans les modifier, avec la mention de la source et un lien vers la plateforme. Une carte pas encore obtenue garde le visuel généré. Pour tout couper (par exemple si une plateforme ou un ayant droit le demande), mets `COVERS=off` : le site revient aux visuels générés.
+`SHARE_COVERS=deezer` autorise les vraies pochettes dans les images à partager (« Mes 9 albums »…) : elles sont composées dans le navigateur du joueur, jamais sur ton serveur, avec repli sur le visuel généré quand une image ne peut pas être utilisée.
 
-> Les conditions de Spotify interdisent les jeux et les quiz (« Do not create a game, including trivia quizzes »), et celles de Deezer limitent l'API à un usage privé. Afficher les vraies pochettes dans AlbumMania reste donc un risque que tu choisis de prendre : en cas de demande de retrait, coupe-les avec `COVERS=off`.
+**Spotify.** Le service des pochettes sait utiliser l'API Web de Spotify quand ses clés sont configurées (`SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, application créée sur [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) avec un compte Premium actif), mais **cette version du serveur ignore ces clés** : les conditions de Spotify interdisent les jeux et les quiz (« Do not create a game, including trivia quizzes »). Les pochettes viennent donc de Deezer. Les liens « Écouter sur Spotify » (recherche sur open.spotify.com) restent proposés : ils n'utilisent pas l'API.
 
-## 6. Nom de domaine (facultatif)
+> Les conditions de Deezer limitent son API à un usage privé et non commercial. Afficher les vraies pochettes et importer le catalogue dans AlbumMania reste donc un risque que tu choisis de prendre : en cas de demande de retrait, coupe les pochettes avec `COVERS=off` (ou retire une seule pochette depuis l'espace admin) et l'import avec `CATALOG_IMPORT=off`.
+
+## 7. Nom de domaine (facultatif)
 
 Dans Render : **Settings → Custom Domains**, ajoute ton domaine et suis les instructions DNS. Mets ensuite à jour `APP_URL` avec la nouvelle adresse.
 
@@ -94,3 +111,28 @@ Le fichier `Dockerfile` permet de déployer partout où Docker est accepté (Rai
 ## Sauvegardes
 
 Toute la base tient dans un seul fichier, `albummania.db` (une centaine de Mo avec le catalogue complet), sur le disque persistant. Render propose des instantanés du disque ; tu peux aussi télécharger le fichier de temps en temps depuis le **Shell** de Render.
+
+## Avant d'ouvrir au public : liste de vérification
+
+Ce n'est pas un avis juridique : fais relire le projet par un juriste spécialisé (propriété intellectuelle, données personnelles) avant un lancement public ou commercial.
+
+- [ ] Les variables `LEGAL_*` sont remplies : `/legal/mentions` n'affiche plus « non renseigné ».
+- [ ] Les CGU, la politique de confidentialité, les règles de la communauté et la page cookies (`client/src/i18n/areas/legal.js`) ont été relues et adaptées ; `TERMS_VERSION` correspond à la version publiée.
+- [ ] `APP_URL` est en `https://` (les cookies de session passent alors en `Secure`) et `DEV_MAILBOX` n'est pas défini (le serveur refuse de démarrer avec `DEV_MAILBOX=1` et une adresse publique).
+- [ ] Un vrai serveur d'envoi d'e-mails est configuré (`SMTP_*`) : confirmations, mots de passe, décisions de modération et accusés de réception des signalements en dépendent.
+- [ ] `LEGAL_CONTACT_EMAIL` est une adresse que tu lis : c'est le point de contact des autorités et des utilisateurs (règlement européen sur les services numériques, DSA).
+- [ ] Tu as testé le formulaire public de signalement (`/report`, lien « Signaler » en bas de page) et la file de modération de l'espace admin.
+- [ ] Catalogue et pochettes : tu acceptes le risque lié aux conditions de Deezer (voir les sections 5 et 6) et tu sais les couper (`CATALOG_IMPORT=off`, `COVERS=off`).
+- [ ] Rien n'est vendu contre de l'argent réel (boosters, royalties, cartes) : les CGU le disent, et c'est ce qui garde le jeu hors du champ des jeux d'argent.
+- [ ] Les inscriptions exigent 15 ans ou plus (case de l'inscription) : n'ajoute pas de fonction qui viserait des enfants plus jeunes.
+
+## Menace pour la vie ou la sécurité d'une personne (DSA, article 18)
+
+Si un contenu signalé (critique, profil, message) fait craindre une infraction grave menaçant la vie ou la sécurité d'une personne (menace de mort, de suicide, d'attentat, mise en danger d'un enfant…) :
+
+1. **Ne supprime pas tout de suite** : la file de modération garde une copie du contenu au moment du signalement ; note la date, l'heure, le pseudo, l'adresse de la page et le texte exact.
+2. **Masque le contenu** depuis la file de modération (action « Masquer »), et suspends le compte si la menace continue.
+3. **Préviens immédiatement les autorités** : en cas d'urgence, appelle le **17** ou le **112** ; sinon, signale le contenu sur **PHAROS** (<https://www.internet-signalement.gouv.fr>), la plateforme de la police et de la gendarmerie. Pour une personne en détresse suicidaire, le **3114** (numéro national de prévention du suicide) peut aussi conseiller.
+4. **Garde une trace** de ton signalement (numéro, date) avec la décision de modération, et réponds aux demandes des enquêteurs (la base conserve l'adresse IP liée aux contenus publiés pendant un an).
+5. N'informe l'auteur de la décision que si cela ne gêne pas l'enquête ; la notification envoyée par la modération peut attendre.
+

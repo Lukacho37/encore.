@@ -15,15 +15,23 @@ import '../../styles/safety.css';
 const POLL_MS = 90_000;
 const PHONE = '(max-width: 859px)';
 
+/** Requête « téléphone » (une seule pour toutes les cloches), ou null sans matchMedia. */
+let phoneQuery;
+const getPhoneQuery = () => {
+  if (phoneQuery === undefined) phoneQuery = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(PHONE) : null;
+  return phoneQuery;
+};
+
 function usePhone() {
-  const query = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(PHONE) : null;
-  const [phone, setPhone] = useState(() => !!query?.matches);
+  const [phone, setPhone] = useState(() => !!getPhoneQuery()?.matches);
   useEffect(() => {
+    const query = getPhoneQuery();
     if (!query) return undefined;
     const on = () => setPhone(query.matches);
+    on();
     query.addEventListener?.('change', on);
     return () => query.removeEventListener?.('change', on);
-  }, [query]);
+  }, []);
   return phone;
 }
 

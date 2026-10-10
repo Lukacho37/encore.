@@ -89,7 +89,7 @@ function rich(t, key, vars) {
 }
 
 /** Titre de l'élément d'une décision (« ta critique de Discovery »). */
-function useItemTitle(data) {
+export function useItemTitle(data) {
   const album = useAlbum(data?.itemType === 'album' ? data.itemId : null);
   const track = useTrack(data?.itemType === 'track' ? data.itemId : null);
   return data?.itemType === 'album' ? album?.title : data?.itemType === 'track' ? track?.title : null;
@@ -190,7 +190,7 @@ function DecisionDetail({ n, decision, onAppealed }) {
         </blockquote>
       )}
       {data.excerpt && (
-        <p className="small muted sf-excerpt">{t('notify.excerpt')} : « {data.excerpt}{data.excerpt.length >= 140 ? '…' : ''} »</p>
+        <p className="small muted sf-excerpt">{t('safety.excerptLine', { text: `${data.excerpt}${data.excerpt.length >= 140 ? '…' : ''}` })}</p>
       )}
       {appeal ? (
         <p className="small">

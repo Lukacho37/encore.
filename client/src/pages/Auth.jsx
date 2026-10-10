@@ -8,6 +8,9 @@ import Card, { CardBack } from '../components/Card.jsx';
 import { validateUsername, PASSWORD_MIN } from '@shared/rules.js';
 import { PROVIDER_NAMES, useCovers } from '../state/CoversContext.jsx';
 import { requestTracks, useTracks } from '../state/catalog.js';
+import { safeFrom } from '../components/shell/redirect.js';
+import { LegalLinks } from '../components/shell/LegalLinks.jsx';
+import '../styles/shell.css';
 
 // Éventail de l'écran de connexion : trois cartes du catalogue, lisibles sans compte (GET /api/catalog/tracks).
 const FAN = [
@@ -88,6 +91,7 @@ function AuthLayout({ children }) {
             <p className="demo-banner"><strong>{t('common.demo')}</strong> · {t('auth.demoHint')}</p>
           )}
           {children}
+          <p className="sh-auth-legal"><LegalLinks pages={['mentions', 'terms', 'privacy', 'cookies']} /></p>
         </div>
       </section>
     </div>
@@ -122,6 +126,9 @@ export function Login() {
   const { t } = useI18n();
   const { applyState } = useGame();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Page demandée avant la connexion (routes.jsx, GuestCatchAll) : rouverte après, si c'est une page interne.
+  const from = safeFrom(location.state?.from);
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState(null);
@@ -134,7 +141,7 @@ export function Login() {
     try {
       const state = await post('/auth/login', { identifier, password });
       applyState(state);
-      navigate('/');
+      navigate(from, { replace: true });
     } catch (error) {
       setErr(error);
     } finally {
@@ -163,7 +170,7 @@ export function Login() {
         <button type="submit" className="btn btn--primary btn--lg btn--block" disabled={busy || !identifier || !password}>
           {busy ? <Spinner /> : t('auth.login.submit')}
         </button>
-        <p className="auth__switch">{t('auth.login.noAccount')} <Link to="/signup">{t('auth.login.signup')}</Link></p>
+        <p className="auth__switch">{t('auth.login.noAccount')} <Link to="/signup" state={location.state}>{t('auth.login.signup')}</Link></p>
       </form>
     </AuthLayout>
   );
@@ -192,7 +199,10 @@ function useUsernameCheck(username) {
 export function Signup() {
   const { t, error, lang } = useI18n();
   const navigate = useNavigate();
+  const location = useLocation();
   const [form, setForm] = useState({ email: '', username: '', password: '', confirm: '' });
+  // « J'accepte les CGU et j'ai 15 ans ou plus » (PLAN.md 7.1) : une case, envoyée comme acceptTerms et age15.
+  const [terms, setTerms] = useState(false);
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
   const [touched, setTouched] = useState({});
@@ -202,7 +212,7 @@ export function Signup() {
 
   const mismatch = touched.confirm && form.confirm && form.confirm !== form.password;
   const shortPw = touched.password && form.password && form.password.length < PASSWORD_MIN;
-  const canSubmit = form.email && form.username && form.password.length >= PASSWORD_MIN && form.password === form.confirm && check.status !== 'invalid';
+  const canSubmit = form.email && form.username && form.password.length >= PASSWORD_MIN && form.password === form.confirm && check.status !== 'invalid' && terms;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -210,7 +220,7 @@ export function Signup() {
     setBusy(true);
     setErr(null);
     try {
-      const res = await post('/auth/signup', { email: form.email, username: form.username.trim(), password: form.password, lang });
+      const res = await post('/auth/signup', { email: form.email, username: form.username.trim(), password: form.password, lang, acceptTerms: terms, age15: terms });
       navigate('/check-email', { state: { email: res.email, devMailbox: res.devMailbox, demoEmail: res.demoEmail } });
     } catch (error2) {
       setErr(error2);
@@ -240,10 +250,19 @@ export function Signup() {
         <Field id="su-confirm" label={t('auth.signup.confirm')} error={mismatch ? error('password_mismatch') : null}>
           <input id="su-confirm" className="input" type="password" autoComplete="new-password" value={form.confirm} onChange={set('confirm')} onBlur={touch('confirm')} required />
         </Field>
+        <label className="sh-terms" htmlFor="su-terms">
+          <input id="su-terms" type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} required aria-describedby="su-terms-hint" />
+          <span>
+            {t('shell.signup.termsBefore')}
+            <Link to="/legal/terms" target="_blank" rel="noopener">{t('shell.signup.termsLink')}</Link>
+            {t('shell.signup.termsAfter')}
+          </span>
+          <span className="sh-terms__hint" id="su-terms-hint">{t('shell.signup.termsHint')}</span>
+        </label>
         <button type="submit" className="btn btn--primary btn--lg btn--block" disabled={busy || !canSubmit}>
           {busy ? <Spinner /> : t('auth.signup.submit')}
         </button>
-        <p className="auth__switch">{t('auth.signup.hasAccount')} <Link to="/login">{t('auth.signup.login')}</Link></p>
+        <p className="auth__switch">{t('auth.signup.hasAccount')} <Link to="/login" state={location.state}>{t('auth.signup.login')}</Link></p>
       </form>
     </AuthLayout>
   );

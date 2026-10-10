@@ -12,18 +12,22 @@ Le jeu de collection de morceaux de musique : ouvre des boosters, collectionne l
 
 | | |
 |---|---|
-| Comptes | Inscription par e-mail + nom d'utilisateur unique + mot de passe, **vérification de l'adresse e-mail**, connexion par e-mail ou pseudo, mot de passe oublié |
-| Boosters | 1 booster gratuit toutes les 30 min (stock max 5), 5 cartes par booster, 7 raretés, variantes **holo** ; une partie de chaque booster vise les albums que tu as commencés ; **booster d'album** (5 cartes d'un album choisi, 300 royalties) ; chaque nouvelle carte rapporte des droits d'auteur (2 à 75 royalties selon sa rareté) |
+| Navigation | Barre du haut : **Boosters · Découvrir · Collection · Amis · Studio**, recherche globale, pastilles des boosters et des royalties, FR/EN et son (à partir de 1280 px de large ; dans le menu du compte en dessous), cloche des notifications, menu du compte. Sur téléphone : barre d'onglets Boosters · Découvrir · Collection · Amis · Studio (le nombre de boosters prêts s'affiche sur l'onglet Boosters) |
+| Comptes | Inscription par e-mail + nom d'utilisateur unique + mot de passe, case **« J'accepte les CGU et j'ai 15 ans ou plus »**, **vérification de l'adresse e-mail**, connexion par e-mail ou pseudo (freinée après 5 échecs en 15 minutes sur un même identifiant), mot de passe oublié ; une page demandée sans être connecté se rouvre après la connexion |
+| Paramètres | Langue, échelle de notation, effets sonores, plateforme d'écoute préférée, lecteurs intégrés, membres bloqués, export des données, suppression du compte, liens légaux |
+| Pages légales | Mentions légales, CGU, confidentialité, règles de la communauté, cookies (`/legal/…`), lisibles sans compte, en français et en anglais ; bandeau d'acceptation quand les CGU changent |
+| Boosters | 1 booster gratuit toutes les 30 min (stock max 5), 5 cartes par booster, 7 raretés, variantes **holo** ; une partie de chaque booster vise les albums que tu as commencés ; **booster d'album** (5 cartes d'un album choisi, 300 royalties) ; chaque nouvelle carte rapporte des royalties, la monnaie du jeu (2 à 75 selon sa rareté) |
 | Catalogue | Import automatique depuis l'API Deezer (albums studio, sans live ni compilation), recherche plein texte, filtres par genre et décennie, rareté calibrée sur la popularité réelle de chaque morceau |
 | Raretés | Indice de popularité 0-100 affiché sur chaque carte, rareté calculée automatiquement, guide des raretés avec les chances par booster |
 | Ouverture | Booster à déchirer, cartes retournées une à une, halo d'anticipation selon la rareté, rayons + confettis pour les grosses cartes, **effets sonores** synthétisés (aucun fichier audio) |
 | Collection | Recherche dans les 20 000 albums, mes cartes, artistes commencés, promos, progression par genre / décennie, recyclage des doublons en royalties, **pressage** d'une carte manquante |
-| Mon profil & Studio | Accessible via la photo de profil en haut à droite. **Vinylthèque** en tête du profil (un vinyle par album complété, édition holo si toutes ses cartes sont holo, platine tourne-disque au clic), **sélection** de 6 cartes, notes et critiques |
+| Studio | Onglet **Studio** (ou menu de la photo de profil). **Vinylthèque** en tête du profil (un vinyle par album complété, édition holo si toutes ses cartes sont holo, platine tourne-disque au clic), **sélection** de 6 cartes, notes et critiques |
 | Notes & critiques | Albums et morceaux, ★ sur 5 ou /10 selon ta préférence, moyenne et répartition des notes, critiques (celles de tes amis d'abord), tracklist notée, activité de tes amis sur l'accueil |
 | Photo de profil | Initiale + couleur, ou **pochette d'un album que tu as complété** |
 | Amis | Ajout par nom d'utilisateur, demandes reçues / envoyées, visite du Studio de ses amis |
+| Découvrir | Albums populaires, genres, décennies, blind test, recherche |
 | Blind test | Choix du genre (rap, pop, rock, électro…), 5 manches chronométrées, jusqu'à **3 boosters** gagnés (3 parties récompensées par jour) |
-| Langues | Français et anglais (sélecteur en haut à droite) |
+| Langues | Français et anglais (sélecteur en haut à droite sur grand écran, menu du compte ou Paramètres) |
 | Admin | **Réservé à l'adresse de `ADMIN_EMAILS`**. Boosters illimités, blind test récompensé sans limite avec la réponse affichée, pressage gratuit (promos comprises), toutes les pochettes en photo de profil, modération des critiques, outils de test, liste des joueurs |
 
 ## Démarrer en local
@@ -66,6 +70,11 @@ npm start          # sert le site et l'API sur le port $PORT
 | `DATABASE_FILE` | Fichier SQLite, à placer sur un **disque persistant** |
 | `TRUST_PROXY=true` | Derrière un reverse proxy (Render, Railway, Nginx…) |
 | `CATALOG_IMPORT`, `CATALOG_TARGET` | Import automatique du catalogue depuis Deezer (`deezer` par défaut ; `off`, ou toute autre valeur, pour s'en tenir aux 20 albums de base) et nombre d'albums visé (20000) |
+| `LEGAL_EDITOR_NAME`, `LEGAL_EDITOR_ADDRESS`, `LEGAL_EDITOR_EMAIL`, `LEGAL_PUBLICATION_DIRECTOR`, `LEGAL_HOST_NAME`, `LEGAL_HOST_ADDRESS`, `LEGAL_HOST_PHONE`, `LEGAL_CONTACT_EMAIL` | Coordonnées affichées dans les **mentions légales** (`/legal/mentions`, obligatoires en France) |
+| `TERMS_VERSION`, `TERMS_UPDATED_AT` | Version (date) des CGU en vigueur ; la changer affiche le bandeau d'acceptation aux comptes existants |
+| `COVERS` | Vraies pochettes : `auto` (par défaut, Deezer) ou `deezer`, `off` pour revenir aux visuels générés |
+| `SHARE_COVERS` | `deezer` : vraies pochettes dans les images partagées (composées dans le navigateur) ; sinon visuels générés |
+| `DEV_MAILBOX=1` | Boîte e-mail de test (`/dev/mailbox`), seulement avec une adresse `APP_URL` locale (le serveur refuse de démarrer sinon) |
 
 Fichiers fournis : `render.yaml` (blueprint Render) et `Dockerfile` (Railway, Fly.io, VPS).
 
@@ -96,12 +105,13 @@ Fichiers fournis : `render.yaml` (blueprint Render) et `Dockerfile` (Railway, Fl
 
 ## Droits d'auteur : ce que fait le jeu
 
-- **Pochettes** : le serveur récupère les vraies pochettes et les liens d'écoute auprès de Spotify (si `SPOTIFY_CLIENT_ID` et `SPOTIFY_CLIENT_SECRET` sont renseignés) ou de Deezer (sans clé). Seules les adresses sont gardées en base : les images restent hébergées par la plateforme, affichées sans modification, avec la source et un lien direct vers l'album ou le morceau. Une carte non obtenue garde le visuel généré. Attention : les conditions de Spotify (« Do not create a game, including trivia quizzes ») et de Deezer (usage privé) ne prévoient pas ce type de jeu ; `COVERS=off` coupe tout en cas de demande de retrait.
+- **Pochettes** : le serveur récupère les vraies pochettes et les liens d'écoute auprès de Deezer (sans clé). Seules les adresses sont gardées en base : les images restent hébergées par la plateforme, affichées sans modification, avec la source et un lien direct vers l'album ou le morceau. Une carte non obtenue garde le visuel généré. Le service des pochettes (`server/covers.js`) sait aussi utiliser Spotify si ses clés sont configurées (choix du propriétaire), mais cette version du serveur ignore `SPOTIFY_CLIENT_ID` et `SPOTIFY_CLIENT_SECRET` : les conditions de Spotify interdisent les jeux (« Do not create a game, including trivia quizzes »). Celles de Deezer limitent l'API à un usage privé ; `COVERS=off` coupe tout en cas de demande de retrait.
 - **Critiques** : les textes sont écrits par les joueurs ; l'admin peut supprimer une critique depuis l'espace admin.
 - **Catalogue** : les 20 000 albums viennent de l'API publique de Deezer (titres, artistes, années, ordre des pistes, popularité, adresses des pochettes et des pages Deezer). Chaque album et chaque morceau renvoie vers Deezer pour l'écoute, et la source est créditée en bas de page. Les conditions de Deezer réservent l'API aux usages non commerciaux et n'autorisent pas à recopier le catalogue : c'est un risque assumé, `CATALOG_IMPORT=off` arrête tout appel.
 - **Métadonnées** : seuls les titres, artistes, années et ordres de pistes sont utilisés, à titre d'information. Les titres comportant une insulte sont censurés comme sur les plateformes (`B**** Please II`).
 - **Écoute** : chaque carte propose un lien direct vers le morceau sur la plateforme qui fournit la pochette, puis des liens de recherche vers les autres (Spotify, Deezer, Apple Music, YouTube) ; aucun fichier audio n'est hébergé.
-- **Blind test** : par défaut (`BLINDTEST_AUDIO=off`), il fonctionne en mode indices, sans audio. Le mode `itunes` récupère les extraits de 30 s de l'API iTunes Search, mais les conditions d'Apple les réservent à la promotion de l'iTunes Store (« not used for independent entertainment value ») : ne l'active pas sans autorisation écrite d'Apple.
+- **Blind test** : il fonctionne en mode indices, sans audio. L'ancien mode `BLINDTEST_AUDIO=itunes` (extraits iTunes de 30 s) est supprimé : les conditions d'Apple réservent ces extraits à la promotion de l'iTunes Store.
+- **Pages légales et CGU** : mentions légales, CGU (les royalties et les éléments de jeu n'ont aucune valeur monétaire ni aucun lien avec les droits d'auteur), confidentialité, règles de la communauté et cookies sont dans `client/src/i18n/areas/legal.js` ; les coordonnées viennent des variables `LEGAL_*` (`GET /api/legal/info`). L'inscription exige l'acceptation des CGU et l'âge de 15 ans. La liste de vérification avant une ouverture publique est dans [DEPLOIEMENT.md](DEPLOIEMENT.md).
 
 Avant un lancement public ou commercial, fais relire le projet par un juriste spécialisé en propriété intellectuelle, en particulier pour les vraies pochettes, les extraits audio ou ajouter de l'argent réel (achat de boosters, revente de cartes).
 
@@ -117,8 +127,9 @@ scripts/  emballage de la démo, parcours de test dans un vrai navigateur
 ## Tests
 
 ```bash
-npm test                                   # tests de l'API (comptes, boosters, amis, blind test, notes, admin réservé, import du catalogue avec un faux Deezer, jeu sur catalogue importé)
+npm test                                   # tests de l'API (comptes, CGU et pages légales, boosters, amis, blind test, notes, admin réservé, import du catalogue avec un faux Deezer, jeu sur catalogue importé)
 BASE=http://localhost:3000 node scripts/e2e.mjs   # parcours complet dans Chromium avec captures (serveur lancé avec ADMIN_EMAILS=luka@example.com)
+BASE=http://localhost:5104 OUT=/tmp/shots node scripts/e2e/p0-d.mjs   # navigation, menu du compte, pages légales, retour après connexion
 ```
 
 ## Prochaines étapes

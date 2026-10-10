@@ -1,7 +1,9 @@
 // Vraies pochettes et liens d'écoute, fournis par une plateforme de streaming.
 //
-// - Spotify (Web API, identifiants SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET) en priorité, Deezer (API publique,
-//   sans clé) sinon ou en secours.
+// - Deezer (API publique, sans clé) par défaut. Spotify (Web API) seulement si ses clés sont configurées
+//   (`config.spotify` non nul) : décision du propriétaire du 2026-10-09 (DESIGN-OVERRIDE.md, point 5 : « Deezer, ou
+//   Spotify si les clés sont configurées »), qui l'emporte sur la suppression prévue par PLAN.md 7.1. Sans clés,
+//   COVERS=auto = Deezer seul et le code Spotify n'est jamais appelé.
 // - Les images ne sont jamais téléchargées ni copiées : on garde seulement leur adresse sur le serveur de la
 //   plateforme (affichage direct) et le lien vers l'album ou le morceau, rafraîchis régulièrement.
 // - COVERS=off coupe tout : le site revient aux visuels générés (par exemple sur demande d'un ayant droit).

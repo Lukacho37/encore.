@@ -10,6 +10,7 @@
 import { lazy, Suspense } from 'react';
 import { Navigate, Route, useLocation } from 'react-router';
 import { Spinner } from './components/ui.jsx';
+import { safeFrom } from './components/shell/redirect.js';
 // Feuilles des pages désormais chargées à la demande : importées ici, à la place qu'elles avaient quand App.jsx
 // importait toutes les pages, pour que l'ordre de la cascade (donc le rendu) ne change pas. P0-B remet l'ordre à
 // plat (main.jsx importera app.css en premier).
@@ -111,10 +112,24 @@ function Redirect({ to }) {
   return <Navigate to={`${to}${search}${hash}`} replace />;
 }
 
+// Retour après la connexion : la page gardée dans state.from n'est rouverte que si c'est une adresse interne.
+export { safeFrom };
+
 /** Visiteur sur une page réservée aux joueurs : connexion d'abord, la page demandée est gardée dans state.from. */
 function GuestCatchAll() {
-  const location = useLocation();
-  return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  const { pathname, search, hash } = useLocation();
+  return <Navigate to="/login" replace state={{ from: `${pathname}${search}${hash}` }} />;
+}
+
+/**
+ * Joueur connecté sur une page réservée aux visiteurs (connexion, inscription…) : vers la page demandée avant la
+ * connexion (state.from), sinon l'accueil. C'est aussi ce qui s'affiche juste après la connexion, avant que la
+ * navigation de la page de connexion ne s'applique (react-router la passe en transition) : les deux mènent au même
+ * endroit.
+ */
+function GuestOnly() {
+  const { state } = useLocation();
+  return <Navigate to={safeFrom(state?.from)} replace />;
 }
 
 function elementOf(route) {
@@ -132,7 +147,7 @@ export const guestRoutes = [
 /** Routes d'un joueur connecté (à placer dans <Routes>, dans la coque du site). */
 export const userRoutes = [
   ...ROUTES.map((r) => (
-    <Route key={r.path} path={r.path} element={r.guest === 'only' ? <Navigate to="/" replace /> : elementOf(r)} />
+    <Route key={r.path} path={r.path} element={r.guest === 'only' ? <GuestOnly /> : elementOf(r)} />
   )),
   <Route key="*" path="*" element={<NotFound />} />,
 ];

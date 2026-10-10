@@ -1,208 +1,13 @@
-import { useEffect, useRef, useState, Suspense } from 'react';
-import { Routes, NavLink, Link, useLocation, useNavigate } from 'react-router';
+import { useEffect, Suspense } from 'react';
+import { Routes, useLocation } from 'react-router';
 import { useGame } from './state/GameContext.jsx';
-import { useI18n, LANGS } from './i18n/index.jsx';
-import { Avatar, Icon, Logo, Modal, Royalties, formatDuration, useNow, Spinner, useToast } from './components/ui.jsx';
-import { ScaleSwitch } from './components/Rating.jsx';
-import { post } from './api.js';
-import { sound } from './sound.js';
-import { PROVIDER_NAMES, useCovers } from './state/CoversContext.jsx';
-import { useApi } from './state/catalog.js';
+import { Logo, Spinner } from './components/ui.jsx';
+// Coquille du site (P0-D) : barre du haut, menu du compte, barre d'onglets, bandeau des CGU, pied de page.
+import { Header } from './components/shell/Header.jsx';
+import { Footer } from './components/shell/Footer.jsx';
+import { TermsBanner } from './components/shell/TermsBanner.jsx';
 // Pages : table des routes (chargement à la demande sauf accueil et connexion).
 import { guestRoutes, userRoutes } from './routes.jsx';
-
-function useSound() {
-  const [muted, setMuted] = useState(sound.isMuted());
-  useEffect(() => sound.subscribe(setMuted), []);
-  return [muted, () => sound.setMuted(!muted)];
-}
-
-function LangSwitch({ className = '' }) {
-  const { lang, setLang, t } = useI18n();
-  return (
-    <div className={`seg ${className}`} role="group" aria-label={t('nav.language')}>
-      {LANGS.map((l) => (
-        <button key={l.id} type="button" className={`seg__btn${lang === l.id ? ' is-on' : ''}`} aria-pressed={lang === l.id} onClick={() => setLang(l.id)} title={l.name}>
-          {l.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function PackPill() {
-  const { packs, now, refresh } = useGame();
-  const { t } = useI18n();
-  useNow(1000);
-  const remaining = packs?.nextAt ? packs.nextAt - now() : null;
-  const fired = useRef(false);
-  useEffect(() => {
-    if (remaining != null && remaining <= 0 && !fired.current) {
-      fired.current = true;
-      refresh().finally(() => {
-        fired.current = false;
-      });
-    }
-  }, [remaining, refresh]);
-  if (!packs) return null;
-  return (
-    <Link to="/" className={`pill pill--packs${packs.available > 0 || packs.unlimited ? ' has-packs' : ''}`} title={t('header.packs', { n: packs.available })}>
-      <Icon name="pack" size={16} />
-      <span className="mono">{packs.unlimited ? '∞' : packs.available}</span>
-      {!packs.unlimited && remaining != null && remaining > 0 && <span className="pill__timer mono">{formatDuration(remaining)}</span>}
-    </Link>
-  );
-}
-
-/** Démo uniquement : l'accès admin se déverrouille avec le code secret du propriétaire. */
-function DemoAdminUnlock({ open, onClose }) {
-  const { t, error } = useI18n();
-  const { applyState } = useGame();
-  const toast = useToast();
-  const [code, setCode] = useState('');
-  const [err, setErr] = useState(null);
-  const submit = async (e) => {
-    e.preventDefault();
-    setErr(null);
-    try {
-      const res = await post('/demo/unlock-admin', { code });
-      applyState(res.state);
-      toast(t('demo.unlocked'), 'success');
-      setCode('');
-      onClose();
-    } catch (ex) {
-      setErr(error(ex.code));
-    }
-  };
-  return (
-    <Modal open={open} onClose={onClose} title={t('demo.unlock')} className="modal--narrow">
-      <form className="auth__form" onSubmit={submit}>
-        <p className="muted small">{t('demo.hint')}</p>
-        <label className="field__label" htmlFor="demo-admin-code">{t('demo.code')}</label>
-        <input id="demo-admin-code" className="input mono" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} autoComplete="off" spellCheck={false} data-autofocus />
-        {err && <p className="form-error">{err}</p>}
-        <button type="submit" className="btn btn--primary" disabled={!code.trim()}>{t('demo.submit')}</button>
-      </form>
-    </Modal>
-  );
-}
-
-function AccountMenu() {
-  const { user, logout, isAdmin, pendingFriends } = useGame();
-  const { t } = useI18n();
-  const [open, setOpen] = useState(false);
-  const [unlock, setUnlock] = useState(false);
-  const [muted, toggleMuted] = useSound();
-  const ref = useRef(null);
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  useEffect(() => setOpen(false), [location.pathname]);
-  useEffect(() => {
-    if (!open) return undefined;
-    const onDown = (e) => !ref.current?.contains(e.target) && setOpen(false);
-    const onKey = (e) => e.key === 'Escape' && setOpen(false);
-    document.addEventListener('pointerdown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('pointerdown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
-  return (
-    <div className="account" ref={ref}>
-      <button type="button" className="account__btn" aria-haspopup="menu" aria-expanded={open} aria-label={t('nav.menu')} onClick={() => setOpen((o) => !o)}>
-        <Avatar user={user} size={38} />
-        {pendingFriends > 0 && <span className="dot-badge" aria-hidden="true" />}
-      </button>
-      {open && (
-        <div className="menu" role="menu">
-          <Link to="/profile" className="menu__head" role="menuitem">
-            <Avatar user={user} size={46} />
-            <span>
-              <strong>{user.username}</strong>
-              <span className="muted small">{t('profile.level', { n: user.level.level })}</span>
-            </span>
-          </Link>
-          <Link to="/profile" className="menu__item" role="menuitem"><Icon name="user" /> {t('nav.studio')}</Link>
-          <Link to="/friends" className="menu__item" role="menuitem">
-            <Icon name="users" /> {t('nav.friends')}
-            {pendingFriends > 0 && <span className="count-badge">{pendingFriends}</span>}
-          </Link>
-          {isAdmin && <Link to="/admin" className="menu__item" role="menuitem"><Icon name="shield" /> {t('nav.admin')}</Link>}
-          <div className="menu__row">
-            <span className="menu__label"><Icon name="globe" /> {t('nav.language')}</span>
-            <LangSwitch />
-          </div>
-          <div className="menu__row">
-            <span className="menu__label"><Icon name="star" /> {t('nav.scale')}</span>
-            <ScaleSwitch />
-          </div>
-          {__DEMO__ && !isAdmin && (
-            <button type="button" className="menu__item" role="menuitem" onClick={() => { setOpen(false); setUnlock(true); }}>
-              <Icon name="lock" /> {t('demo.unlock')}
-            </button>
-          )}
-          <button type="button" className="menu__item" role="menuitemcheckbox" aria-checked={!muted} onClick={toggleMuted}>
-            <Icon name={muted ? 'mute' : 'sound'} /> {t('nav.sound')}
-            <span className={`switch${muted ? '' : ' is-on'}`} aria-hidden="true" />
-          </button>
-          <button type="button" className="menu__item menu__item--danger" role="menuitem" onClick={async () => { await logout(); navigate('/login'); }}>
-            <Icon name="logout" /> {t('nav.logout')}
-          </button>
-        </div>
-      )}
-      {__DEMO__ && <DemoAdminUnlock open={unlock} onClose={() => setUnlock(false)} />}
-    </div>
-  );
-}
-
-function Header() {
-  const { user, pendingFriends } = useGame();
-  const { t } = useI18n();
-  const [muted, toggleMuted] = useSound();
-  const links = [
-    { to: '/', label: t('nav.boosters'), icon: 'pack', end: true },
-    { to: '/collection', label: t('nav.collection'), icon: 'grid' },
-    { to: '/blindtest', label: t('nav.blindtest'), icon: 'headphones' },
-    { to: '/friends', label: t('nav.friends'), icon: 'users', badge: pendingFriends },
-  ];
-  return (
-    <>
-      <header className="topbar">
-        <div className="topbar__inner">
-          <Link to="/" className="topbar__logo" aria-label="AlbumMania"><Logo /></Link>
-          <nav className="topnav" aria-label="Navigation">
-            {links.map((l) => (
-              <NavLink key={l.to} to={l.to} end={l.end} className="topnav__link">
-                {l.label}
-                {l.badge > 0 && <span className="count-badge">{l.badge}</span>}
-              </NavLink>
-            ))}
-          </nav>
-          <div className="topbar__right">
-            <PackPill />
-            <Royalties value={user.royalties} className="pill pill--royalties" />
-            <LangSwitch className="hide-mobile" />
-            <button type="button" className="icon-btn hide-mobile" onClick={toggleMuted} aria-label={muted ? t('header.soundOff') : t('header.soundOn')} title={muted ? t('header.soundOff') : t('header.soundOn')}>
-              <Icon name={muted ? 'mute' : 'sound'} />
-            </button>
-            <AccountMenu />
-          </div>
-        </div>
-      </header>
-      <nav className="tabbar" aria-label="Navigation">
-        {links.map((l) => (
-          <NavLink key={l.to} to={l.to} end={l.end} className="tabbar__link">
-            <span className="tabbar__icon"><Icon name={l.icon} size={22} />{l.badge > 0 && <span className="dot-badge" />}</span>
-            <span>{l.label}</span>
-          </NavLink>
-        ))}
-      </nav>
-    </>
-  );
-}
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -214,24 +19,6 @@ function ScrollToTop() {
   return null;
 }
 
-function Footer() {
-  const { t } = useI18n();
-  const { status } = useGame();
-  const covers = useCovers();
-  // Albums importés de Deezer : leurs données et pochettes viennent de Deezer (crédit affiché pour les joueurs connectés).
-  const info = useApi(status === 'ready' ? '/catalog/info' : null).data;
-  const imported = info?.totals?.imported > 0;
-  const sources = [...new Set([...Object.values(covers.items).map((c) => PROVIDER_NAMES[c.provider]), imported && 'Deezer'].filter(Boolean))];
-  return (
-    <footer className="footer">
-      <Logo className="logo--sm" />
-      <p>{sources.length ? t('footer.legalCovers', { p: sources.join(' / ') }) : t('footer.legal')}</p>
-      {imported && <p>{t('footer.legalCatalog')}</p>}
-      {__DEMO__ && <p className="footer__demo">{t('common.demoNote')}</p>}
-    </footer>
-  );
-}
-
 export default function App() {
   const { status } = useGame();
 
@@ -239,6 +26,7 @@ export default function App() {
     return <div className="boot"><Logo /><Spinner /></div>;
   }
 
+  // Visiteur : pages de connexion, pages légales et formulaire de signalement, sans la coquille.
   if (status === 'guest') {
     return (
       <>
@@ -252,7 +40,8 @@ export default function App() {
     <div className="shell">
       <ScrollToTop />
       <Header />
-      <main className="page">
+      <TermsBanner />
+      <main className="page sh-main" id="main" tabIndex={-1}>
         <Suspense fallback={<div className="boot boot--inline"><Spinner /></div>}>
           <Routes>{userRoutes}</Routes>
         </Suspense>

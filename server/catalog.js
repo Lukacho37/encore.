@@ -221,16 +221,30 @@ export function createCatalog(db, { covers = () => config.covers !== 'off', seed
   function rebuildIndex() {
     const byRarity = new Map(RARITIES.map((r) => [r, []]));
     const byGenre = new Map();
+    // Boosters thématiques (PLAN.md 6.10) : par décennie, et par genre × décennie ; promos par artiste (ciblage
+    // de l'emplacement promo, PLAN.md 6.4).
+    const byDecade = new Map();
+    const byGenreDecade = new Map();
+    const promoByArtist = new Map();
     const all = [];
-    for (const r of q('SELECT id, rarity, genre, pop FROM cat_tracks').iterate()) {
+    const push = (map, k, id) => {
+      const list = map.get(k);
+      if (list) list.push(id);
+      else map.set(k, [id]);
+    };
+    for (const r of q('SELECT id, rarity, genre, pop, year, artist_id, kind FROM cat_tracks').iterate()) {
       byRarity.get(r.rarity)?.push(r.id);
-      const k = `${r.genre}|${r.rarity}`;
-      if (!byGenre.has(k)) byGenre.set(k, []);
-      byGenre.get(k).push(r.id);
-      all.push(r);
+      push(byGenre, `${r.genre}|${r.rarity}`, r.id);
+      if (r.year) {
+        const d = decadeOf(r.year);
+        push(byDecade, `${d}|${r.rarity}`, r.id);
+        push(byGenreDecade, `${r.genre}|${d}|${r.rarity}`, r.id);
+      }
+      if (r.kind === 'promo') push(promoByArtist, r.artist_id, r.id);
+      all.push({ id: r.id, genre: r.genre, pop: r.pop });
     }
     // `known` : listes « genre + popularité minimale » du blind test, calculées à la demande puis gardées.
-    index = { byRarity, byGenre, all, known: new Map() };
+    index = { byRarity, byGenre, byDecade, byGenreDecade, promoByArtist, all, known: new Map() };
     focusPools = new WeakMap();
     cachedTotals = null;
     aggregates = {};
@@ -262,20 +276,39 @@ export function createCatalog(db, { covers = () => config.covers !== 'off', seed
   }
 
   /**
-   * Une carte au hasard d'une rareté donnée, dans tout le catalogue, un genre ou une liste d'albums.
-   * `exclude` évite les doublons dans un même booster.
+   * Une carte au hasard d'une rareté donnée, dans tout le catalogue, un genre, une décennie (ou les deux), une liste
+   * d'albums ou les promos de certains artistes (`artistIds`, rareté promo seulement). `exclude` (objet avec has())
+   * écarte des cartes : celles déjà tirées dans ce booster, celles que le joueur possède déjà…
    */
-  function randomTrack({ rarity, genre, albumIds, exclude } = {}, rng = Math.random) {
+  function randomTrack({ rarity, genre, decade, albumIds, artistIds, exclude } = {}, rng = Math.random) {
     if (!index) rebuildIndex();
     let id = null;
     if (albumIds?.length) {
       id = pickFrom(focusPool(albumIds).get(rarity), rng, exclude);
+    } else if (artistIds?.length) {
+      if (rarity !== 'promo') return null;
+      const pool = [];
+      for (const a of artistIds.slice(0, 5000)) {
+        const list = index.promoByArtist.get(a);
+        if (list) pool.push(...list);
+      }
+      id = pickFrom(pool, rng, exclude);
+    } else if (genre && decade != null) {
+      id = pickFrom(index.byGenreDecade.get(`${genre}|${decade}|${rarity}`), rng, exclude);
+    } else if (decade != null) {
+      id = pickFrom(index.byDecade.get(`${decade}|${rarity}`), rng, exclude);
     } else if (genre) {
       id = pickFrom(index.byGenre.get(`${genre}|${rarity}`), rng, exclude);
     } else {
       id = pickFrom(index.byRarity.get(rarity), rng, exclude);
     }
     return id ? track(id) : null;
+  }
+
+  /** Artistes qui ont au moins une promo (ciblage de l'emplacement promo). */
+  function promoArtists() {
+    if (!index) rebuildIndex();
+    return [...index.promoByArtist.keys()];
   }
 
   /** Morceaux connus au hasard (blind test) : au-dessus d'un indice de popularité, éventuellement d'un genre. */
@@ -487,7 +520,7 @@ export function createCatalog(db, { covers = () => config.covers !== 'off', seed
 
   return {
     track, tracks, album, artist, albumTracks, artistAlbums, artistTracks, albumTrackIds, artistTrackIds,
-    randomTrack, randomTracks, totals, rarityTotals, genres, decades, searchAlbums, promos, stats, groupStats, ownedTracks,
+    randomTrack, randomTracks, promoArtists, totals, rarityTotals, genres, decades, searchAlbums, promos, stats, groupStats, ownedTracks,
     rebuildIndex, refreshCounts, indexAlbum, nextCatalogNumber, decadeOf,
     invalidate() {
       cachedTotals = null;

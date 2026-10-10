@@ -12,9 +12,11 @@ import { decodeCursor, keysetPage } from './paging.js';
 import { dayStart as parisDayStart } from '../shared/periods.js';
 import {
   rollPack, rollAlbumPack, newAchievements, xpForCard, newCardRoyalties, recycleValue, pressCost, levelFromXp,
-  ECONOMY, BLINDTEST, SHOWCASE_SLOTS, AVATAR_COLORS, RARITIES, packOdds, PACK_SLOTS,
+  ECONOMY, BLINDTEST, AVATAR_COLORS, RARITIES, packOdds, PACK_SLOTS,
   buildBlindtest, blindtestClues, blindtestPoints, blindtestReward,
+  ADVANCED_ALBUMS, isHit, levelRewards, showcaseSlots, wishlistMax, parseBoosterTheme, themeFilterOf, THEME_GENRES,
 } from '../shared/rules.js';
+import { cleanSelection, cosmeticsBetween, cosmeticsForLevel } from '../shared/cosmetics.js';
 
 export class HttpError extends Error {
   constructor(status, code, extra) {
@@ -198,7 +200,15 @@ export function createServices(db, catalog, { bus = null } = {}) {
   /** CGU en vigueur acceptées (version courante). */
   const termsOk = (user) => !!user.terms_accepted_at && user.terms_version === config.termsVersion;
 
+  /** Cosmétiques débloqués (identifiants complets) : ceux du niveau, plus ceux de user_cosmetics (badges, P2). */
+  function unlockedCosmeticIds(user) {
+    const ids = cosmeticsForLevel(levelFromXp(user.xp).level).map((c) => c.id);
+    for (const r of q('SELECT cosmetic_id FROM user_cosmetics WHERE user_id = ?').all(user.id)) ids.push(r.cosmetic_id);
+    return ids;
+  }
+
   function selfPayload(user) {
+    const level = levelFromXp(user.xp);
     return {
       id: user.id,
       username: user.username,
@@ -209,8 +219,12 @@ export function createServices(db, catalog, { bus = null } = {}) {
       avatar: user.avatar,
       avatarColor: user.avatar_color,
       royalties: user.royalties,
-      level: levelFromXp(user.xp),
+      level,
       showcase: parseJson(user.showcase, []),
+      // Jeu de collection (PLAN.md 6.4 à 6.6) : places selon le niveau, compteur de pitié, cosmétiques choisis.
+      slots: { wishlist: wishlistMax(level.level), showcase: showcaseSlots(level.level) },
+      pity: user.pity ?? 0,
+      cosmetics: cleanSelection(parseJson(user.cosmetics, {}), unlockedCosmeticIds(user)),
       createdAt: user.created_at,
       prefs: prefsOf(user),
       onboarded: user.onboarded_at != null,

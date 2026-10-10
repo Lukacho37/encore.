@@ -80,12 +80,19 @@ export const staticCatalog = {
   albumTrackIds: (albumId) => (TRACKS_BY_ALBUM[own(albumId)] || []).map((t) => t.id),
   artistTrackIds: (artistId) => (TRACKS_BY_ARTIST[own(artistId)] || []).map((t) => t.id),
 
-  randomTrack({ rarity, genre, albumIds, exclude } = {}, rng = Math.random) {
+  randomTrack({ rarity, genre, decade, albumIds, artistIds, exclude } = {}, rng = Math.random) {
     let list = TRACKS.filter((t) => t.rarity === rarity);
     if (albumIds?.length) list = list.filter((t) => albumIds.includes(t.albumId));
-    else if (genre) list = list.filter((t) => t.genre === genre);
+    else if (artistIds?.length) list = rarity === 'promo' ? list.filter((t) => artistIds.includes(t.artistId)) : [];
+    else {
+      if (genre) list = list.filter((t) => t.genre === genre);
+      if (decade != null) list = list.filter((t) => t.year && decadeOf(t.year) === Number(decade));
+    }
     return trackView(pick(list, rng, exclude));
   },
+
+  /** Artistes qui ont au moins une promo (ciblage de l'emplacement promo). */
+  promoArtists: () => [...new Set(PROMO_TRACKS.map((t) => t.artistId))],
 
   randomTracks({ genre, minPop = 0, count = 5, exclude } = {}, rng = Math.random) {
     const list = TRACKS.filter((t) => t.pop >= minPop && (!genre || genre === 'all' || t.genre === genre) && !exclude?.has(t.id));

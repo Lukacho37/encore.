@@ -306,3 +306,17 @@ test('indication Premium conservée si une autre erreur Spotify suit le 403', as
   assert.equal(status.modeInvalid, null);
   db.close();
 });
+
+test('configuration du serveur : COVERS=auto = Deezer seul, l’API Web de Spotify n’est jamais appelée (PLAN.md 7.1)', async () => {
+  // SPOTIFY_CLIENT_ID et SPOTIFY_CLIENT_SECRET sont ignorés par server/config.js : `spotify` y reste null.
+  const { config } = await import('../config.js');
+  assert.equal(config.spotify, null);
+  const db = openDb(':memory:');
+  const calls = [];
+  const covers = createCovers(db, { cfg: { ...config, covers: 'auto', deezerApiUrl: BASE.deezerApiUrl }, fetchImpl: fakeDeezer({ calls }), pauseMs: 0 });
+  assert.deepEqual(covers.order, ['deezer']);
+  await covers.warm();
+  assert.ok(calls.length > 0, 'Deezer contacté');
+  assert.ok(calls.every((c) => c.includes('deezer.test')), `appel hors Deezer : ${calls.find((c) => !c.includes('deezer.test'))}`);
+  db.close();
+});

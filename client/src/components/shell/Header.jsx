@@ -32,7 +32,8 @@ function useHomeClick() {
 
 /** Entrées de la navigation principale (barre du haut et barre d'onglets). */
 export function useNavLinks() {
-  const { pendingFriends } = useGame();
+  const { counts } = useGame();
+  const pendingFriends = counts?.pendingFriends ?? 0;
   const { t } = useI18n();
   return [
     { id: 'boosters', to: '/', label: t('nav.boosters'), icon: 'pack', end: true },
@@ -108,7 +109,8 @@ function DemoAdminUnlock({ open, onClose }) {
  * déverrouillage admin (démo) · Se déconnecter.
  */
 function AccountMenu() {
-  const { user, logout, isAdmin, pendingFriends } = useGame();
+  const { user, logout, isAdmin, counts } = useGame();
+  const pendingFriends = counts?.pendingFriends ?? 0;
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [unlock, setUnlock] = useState(false);
@@ -230,7 +232,7 @@ export function Header() {
           <div className="sh-search"><GlobalSearch /></div>
           <div className="topbar__right">
             <PackPill />
-            <Royalties value={user.royalties} className="pill pill--royalties" />
+            <Royalties value={user.royalties} className="pill pill--royalties sh-royalties" />
             <LangSwitch className="sh-wide" />
             <SoundButton className="sh-wide" />
             <NotificationBell />

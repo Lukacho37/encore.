@@ -981,6 +981,12 @@
   margin-left: var(--s-6);
 }
 
+/* Joueurs (admin) : les trois actions (dons, suspension) passent à la ligne plutôt que de sortir du tableau. */
+.sf-users .table__actions {
+  flex-wrap: wrap;
+  min-width: 200px;
+}
+
 @media (max-width: 860px) {
   .sf-case__body {
     grid-template-columns: minmax(0, 1fr);

@@ -61,7 +61,11 @@ test('inscription, vérification e-mail et connexion', async () => {
   assert.equal(v.body.user.username, 'alice');
   assert.equal(v.body.user.role, 'admin', 'adresse listée dans ADMIN_EMAILS = admin');
   assert.equal(v.body.packs.bonus, 5);
-  assert.equal((await call('POST', '/api/auth/signup', { acceptTerms: true, age15: true, email: 'alice@example.com', username: 'alice2', password: 'motdepasse123' })).body.error, 'email_taken');
+  // Adresse déjà vérifiée : réponse identique à une inscription normale (pas d'énumération des comptes),
+  // aucun compte n'est créé et le titulaire est prévenu par e-mail.
+  const dup = await call('POST', '/api/auth/signup', { acceptTerms: true, age15: true, email: 'alice@example.com', username: 'alice2', password: 'motdepasse123' });
+  assert.equal(dup.status, 201);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM users WHERE username = 'alice2'").get().n, 0);
 
   assert.equal((await call('GET', '/api/state')).status, 200);
   await call('POST', '/api/auth/logout');
@@ -333,7 +337,10 @@ test('adresse réservée par quelqu’un d’autre : le vrai propriétaire la r�
   assert.equal(ok.status, 200);
   assert.equal(ok.body.user.username, 'alice2');
   // Une adresse vérifiée, elle, ne peut plus être reprise.
-  assert.equal((await attacker('POST', '/api/auth/signup', { acceptTerms: true, age15: true, email: 'alice2@example.com', username: 'encoreuntest', password: 'piratepirate' })).body.error, 'email_taken');
+  const retake = await attacker('POST', '/api/auth/signup', { acceptTerms: true, age15: true, email: 'alice2@example.com', username: 'encoreuntest', password: 'piratepirate' });
+  assert.equal(retake.status, 201);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM users WHERE username = 'encoreuntest'").get().n, 0);
+  assert.equal(db.prepare("SELECT username FROM users WHERE email = 'alice2@example.com'").get().username, 'alice2');
 });
 
 test('vérifier depuis un autre appareil demande le mot de passe', async () => {

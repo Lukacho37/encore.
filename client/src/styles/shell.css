@@ -65,6 +65,42 @@
   }
 }
 
+/* Tablette (861 à 1079 px) : les cinq entrées, l'icône de recherche, les pastilles, la cloche et l'avatar doivent tenir
+   sans défilement horizontal. La barre se resserre (espaces, marges des liens), la pastille des boosters garde son
+   nombre sans le minuteur ; sous 980 px, le logo rétrécit un peu et les royalties passent dans l'en-tête du menu du
+   compte (comme sur téléphone). */
+@media (min-width: 861px) and (max-width: 1079px) {
+  .sh-topbar .topbar__inner {
+    gap: var(--s-12);
+  }
+
+  .sh-topnav {
+    gap: 0;
+  }
+
+  .sh-topnav .topnav__link {
+    padding-inline: var(--s-10);
+  }
+
+  .sh-topbar .topbar__right {
+    gap: var(--s-8);
+  }
+
+  .sh-packs .pill__timer {
+    display: none;
+  }
+}
+
+@media (min-width: 861px) and (max-width: 979px) {
+  .sh-logo .logo {
+    font-size: var(--fs-18);
+  }
+
+  .sh-royalties {
+    display: none;
+  }
+}
+
 /* Téléphone : recherche (icône) près de la cloche ; à 640 px et moins, le nombre de boosters passe sur l'onglet. */
 @media (max-width: 860px) {
   .sh-search {
@@ -241,6 +277,24 @@
 .sh-searchbox .search {
   flex: 1;
   min-width: 0;
+}
+
+.sh-searchbox__go svg {
+  display: none;
+}
+
+@media (max-width: 480px) {
+  .sh-searchbox__go {
+    padding-inline: var(--s-14);
+  }
+
+  .sh-searchbox__go-text {
+    display: none;
+  }
+
+  .sh-searchbox__go svg {
+    display: block;
+  }
 }
 
 /* ---------- page introuvable ---------- */

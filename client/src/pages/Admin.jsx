@@ -219,7 +219,7 @@ function UsersSection({ first, onGrant }) {
   };
 
   return (
-    <section className="section">
+    <section className="section sf-users">
       <header className="section__head"><h2>{t('admin.users')}</h2></header>
       <div className="table-wrap">
         <table className="table">

@@ -1,0 +1,751 @@
+/* @prefix gs- */
+/* =====================================================================================================
+   Recherche globale — chantier P0-E (PLAN.md 5.1, design-system-current §4.1).
+   Les classes canoniques (.gsearch*, .search-trigger, .search-sheet*, .hl, .kbd, .stack-thumb) viennent de
+   design/current-v2/components.css ; les autres portent le préfixe gs-. Même famille que .menu (encre, bordure
+   forte, ombre, rayon 18), pilules et chips actuelles, titres Archivo, compteurs Martian Mono. Jetons de app.css.
+   ===================================================================================================== */
+
+/* ---------- emplacement dans la barre du haut ---------- */
+
+.gs-global {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+.gs-inline {
+  position: relative;
+  flex: 1 1 240px;
+  min-width: 180px;
+  max-width: 360px;
+}
+
+.gs-global .search-trigger {
+  display: none;
+  flex: none;
+}
+
+/* Pas la place d'un champ (tablette : cinq entrées, pastilles, cloche) ou téléphone : l'icône. */
+@container sh-search (max-width: 179px) {
+  .gs-global .gs-inline { display: none; }
+  .gs-global .search-trigger { display: inline-grid; }
+}
+
+@media (max-width: 860px) {
+  .gs-global { justify-content: flex-end; }
+  .gs-global .gs-inline { display: none; }
+  .gs-global .search-trigger { display: inline-grid; }
+}
+
+/* ---------- champ ---------- */
+
+.gsearch {
+  position: relative;
+  width: 100%;
+}
+
+.gsearch__field {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.gsearch__icon {
+  position: absolute;
+  left: 13px;
+  display: inline-flex;
+  color: var(--haze);
+  pointer-events: none;
+}
+
+.gsearch__input {
+  width: 100%;
+  height: 38px;
+  padding: 0 40px 0 38px;
+  border-radius: var(--rad-pill);
+  border: 1px solid var(--line-soft);
+  background: var(--stage-2);
+  color: var(--paper);
+  font: var(--fw-medium) var(--fs-14) / 1 var(--font-body);
+  transition: border-color var(--dur-hover), background-color var(--dur-hover);
+}
+
+.gsearch__input::placeholder { color: var(--haze-2); }
+.gsearch__input:hover { border-color: var(--line); }
+
+.gsearch__input:focus,
+.gsearch.is-open .gsearch__input {
+  outline: none;
+  border-color: var(--cue);
+  background: var(--ink);
+  box-shadow: var(--ring-focus);
+}
+
+.gsearch__input::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
+
+.gsearch__kbd,
+.kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 var(--s-6);
+  border-radius: var(--rad-xs);
+  border: 1px solid var(--line);
+  background: var(--stage);
+  color: var(--haze);
+  font: var(--fw-semi) var(--fs-12) / 1 var(--font-mono);
+  font-stretch: var(--fst-mono);
+}
+
+.gsearch__kbd {
+  position: absolute;
+  right: var(--s-8);
+  pointer-events: none;
+}
+
+.gsearch.is-open .gsearch__kbd { display: none; }
+
+.gsearch__clear {
+  position: absolute;
+  right: 3px;
+  width: 32px;
+  height: 32px;
+}
+
+/* Champ de page (Collection, Amis, page de résultats, Découvrir) : hauteur des champs actuels (46 px). */
+.gs-combo--inline .gsearch__input {
+  height: 46px;
+  padding-left: 42px;
+  font-size: var(--fs-15);
+}
+
+.gs-combo--inline .gsearch__icon { left: 14px; }
+.gs-combo--inline .gsearch__clear { right: 7px; }
+
+/* ---------- liste déroulante : même famille que .menu (rayon 18 = 10 + 8) ---------- */
+
+.gsearch__panel {
+  position: absolute;
+  z-index: var(--z-dropdown);
+  top: calc(100% + 10px);
+  left: 0;
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(70vh, 620px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--s-8);
+  border-radius: var(--rad-menu);
+  background: var(--stage);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-pop);
+  animation: pop 0.16s ease-out;
+}
+
+.gs-combo--inline .gsearch__panel {
+  width: 100%;
+  min-width: min(420px, calc(100vw - 32px));
+}
+
+.gs-listbox {
+  transition: opacity var(--dur-fade);
+}
+
+/* Réponse en route pour la requête suivante : les suggestions précédentes restent, un peu estompées. */
+.gs-listbox.is-stale { opacity: 0.62; }
+
+.gs-spinner {
+  position: absolute;
+  top: var(--s-12);
+  right: var(--s-12);
+  color: var(--haze);
+}
+
+.gsearch__group + .gsearch__group {
+  margin-top: var(--s-4);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--line-soft);
+}
+
+.gsearch__group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-8);
+  padding: var(--s-8) var(--s-10) var(--s-6);
+}
+
+.gsearch__more {
+  color: var(--cue);
+  font: var(--fw-semi) var(--fs-13) / 1 var(--font-body);
+}
+
+/* Bouton au rendu de lien (Tout voir, Effacer, Vouliez-vous dire…). */
+.gs-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cue);
+  cursor: pointer;
+}
+
+.gs-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+.gsearch__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.gsearch__opt {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-12);
+  min-height: 52px;
+  padding: var(--s-6) var(--s-10) var(--s-6) var(--s-6);
+  border-radius: var(--rad-sm);
+  color: var(--paper-dim);
+  cursor: pointer;
+}
+
+.gsearch__opt:hover,
+.gsearch__opt.is-active {
+  background: var(--stage-2);
+  color: var(--paper);
+}
+
+.gsearch__opt.is-active { box-shadow: inset 0 0 0 1px var(--line); }
+
+.gsearch__thumb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--rad-xs);
+  overflow: hidden;
+  box-shadow: var(--shadow-cover-sm);
+  background: var(--stage-3);
+  color: var(--haze);
+}
+
+.gsearch__thumb > .cover {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.gsearch__thumb--round { border-radius: 50%; }
+
+/* Pastille d'artiste et avatar remplissent la vignette ronde. */
+.gsearch__thumb--round > .artist-badge,
+.gs-thumb--avatar > .avatar {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.gs-thumb--icon {
+  box-shadow: none;
+  background: var(--stage-2);
+}
+
+.gsearch__thumb .gem {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+}
+
+.gsearch__text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.gsearch__title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: var(--fw-bold) var(--fs-15) / var(--lh-snug) var(--font-display);
+  color: var(--paper);
+}
+
+.gs-approx {
+  color: var(--haze);
+  font-family: var(--font-mono);
+  font-weight: var(--fw-medium);
+}
+
+.gsearch__sub {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--fs-13);
+  color: var(--haze);
+}
+
+/* La partie tapée : soulignée en turquoise, comme les liens (.link-btn). */
+.hl {
+  background: none;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--cue);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.gsearch__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-8);
+  color: var(--haze);
+  font-size: var(--fs-13);
+  white-space: nowrap;
+}
+
+.gs-meta--quiet { color: var(--haze-2); }
+
+.gs-meta__bar {
+  display: inline-flex;
+  width: 56px;
+  --pc: var(--r-rare);
+}
+
+.gsearch__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-8) var(--s-16);
+  margin-top: var(--s-6);
+  padding: var(--s-12) var(--s-10) var(--s-6);
+  border-top: 1px solid var(--line-soft);
+}
+
+.gsearch__all {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-6);
+  min-width: 0;
+  color: var(--cue);
+  font: var(--fw-semi) var(--fs-14) / 1.2 var(--font-body);
+  text-align: left;
+}
+
+.gsearch__keys {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-6);
+  color: var(--haze-2);
+  font-size: var(--fs-12);
+}
+
+.gsearch__keys .kbd {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 var(--s-4);
+}
+
+.gsearch__keys .kbd + span { margin-right: var(--s-6); }
+
+@media (hover: none) {
+  .gsearch__keys { display: none; }
+}
+
+.gsearch__fuzzy {
+  padding: var(--s-6) var(--s-10) var(--s-2);
+  color: var(--haze);
+  font-size: var(--fs-13);
+}
+
+.gsearch__fuzzy b { color: var(--paper); }
+
+.gs-fuzzy__btn {
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--cue);
+  text-underline-offset: 3px;
+}
+
+.gs-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-10);
+  margin: 0;
+  padding: var(--s-12) var(--s-10);
+  color: var(--haze);
+  font-size: var(--fs-13);
+}
+
+.gs-empty {
+  padding: var(--s-16) var(--s-10) var(--s-10);
+}
+
+.gs-empty__title {
+  margin: 0 0 var(--s-4);
+  color: var(--paper);
+  font: var(--fw-bold) var(--fs-15) / var(--lh-snug) var(--font-display);
+  overflow-wrap: anywhere;
+}
+
+.gs-empty__body {
+  margin: 0;
+  color: var(--haze);
+  font-size: var(--fs-13);
+}
+
+/* Lignes de chargement : même reflet que les cartes. */
+.gs-skel { cursor: default; }
+.gs-skel:hover { background: none; }
+
+.gs-skel .gsearch__thumb,
+.gs-skel__line {
+  background: var(--grad-skeleton);
+  background-size: 200% 100%;
+  animation: card-loading 1.4s ease-in-out infinite;
+  box-shadow: none;
+}
+
+.gs-skel__line {
+  display: block;
+  width: 70%;
+  height: 11px;
+  border-radius: var(--rad-pill);
+}
+
+.gs-skel__line--short { width: 42%; }
+
+/* pochettes empilées (listes) */
+.stack-thumb {
+  position: relative;
+  width: var(--gs-stack, 40px);
+  height: var(--gs-stack, 40px);
+}
+
+.stack-thumb > span {
+  position: absolute;
+  width: 75%;
+  height: 75%;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--stage-3);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.stack-thumb > span > .cover {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.stack-thumb > span:nth-child(1) { left: 0; top: 0; }
+.stack-thumb > span:nth-child(2) { left: 12.5%; top: 12.5%; }
+.stack-thumb > span:nth-child(3) { left: 25%; top: 25%; }
+
+.stack-thumb > .gs-stack-empty {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: var(--haze);
+}
+
+/* ---------- panneau ouvert depuis l'icône (tablette) ---------- */
+
+.gs-pop {
+  position: absolute;
+  z-index: var(--z-dropdown);
+  top: calc(100% + 12px);
+  right: 0;
+  width: min(560px, calc(100vw - 32px));
+  padding: var(--s-8);
+  border-radius: var(--rad-menu);
+  background: var(--stage);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-pop);
+  animation: pop 0.16s ease-out;
+}
+
+.gs-pop .gsearch__panel {
+  position: static;
+  width: auto;
+  max-height: min(64vh, 560px);
+  margin-top: var(--s-6);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  animation: none;
+}
+
+/* ---------- feuille de recherche plein écran (téléphone) ---------- */
+
+.search-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-sheet);
+  display: flex;
+  flex-direction: column;
+  background: var(--ink);
+  animation: fade-in var(--dur-fade) ease-out;
+}
+
+.search-sheet__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  padding: calc(var(--s-10) + env(safe-area-inset-top, 0px)) var(--s-16) var(--s-10);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.search-sheet__head .gsearch__field { flex: 1; min-width: 0; }
+
+.search-sheet__head .gsearch__input {
+  height: 46px;
+  font-size: var(--fs-16); /* 16 px : pas de zoom automatique sur iOS */
+}
+
+.search-sheet .gs-cancel {
+  flex: none;
+  padding-inline: var(--s-10);
+}
+
+.search-sheet__tabs {
+  display: flex;
+  flex: none;
+  gap: var(--s-6);
+  padding: var(--s-12) var(--s-16) var(--s-4);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, var(--black) calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, var(--black) calc(100% - 28px), transparent);
+}
+
+.search-sheet__tabs::-webkit-scrollbar { display: none; }
+
+.search-sheet__tabs .chip { flex: none; }
+
+.search-sheet__body {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--s-4) var(--s-8) calc(var(--s-24) + env(safe-area-inset-bottom, 0px));
+}
+
+.search-sheet .gsearch__opt {
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  min-height: 62px;
+}
+
+.search-sheet .gsearch__thumb {
+  width: 48px;
+  height: 48px;
+}
+
+/* ---------- page de résultats (/search) ---------- */
+
+.gs-page .page-head h1 {
+  overflow-wrap: anywhere;
+}
+
+.gs-page__field {
+  max-width: 640px;
+  margin-bottom: var(--s-20);
+}
+
+.gs-page__tabs {
+  margin-bottom: var(--s-20);
+}
+
+.gs-page__section + .gs-page__section {
+  margin-top: var(--s-32);
+}
+
+.gs-page__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-12);
+  margin-bottom: var(--s-12);
+}
+
+.gs-page__head h2 {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s-10);
+  font-size: var(--fs-h2);
+}
+
+.gs-page__n {
+  color: var(--haze);
+  font: var(--fw-medium) var(--fs-13) / 1 var(--font-mono);
+  font-stretch: var(--fst-mono);
+}
+
+.gs-rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
+  gap: var(--s-6) var(--s-12);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gs-row {
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  min-height: 62px;
+  padding: var(--s-8) var(--s-12) var(--s-8) var(--s-8);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--rad-md);
+  background: var(--stage);
+  text-decoration: none;
+}
+
+.gs-row .gsearch__thumb {
+  width: 48px;
+  height: 48px;
+}
+
+.gs-row:hover,
+.gs-row:focus-visible {
+  border-color: var(--line);
+  background: var(--stage-2);
+}
+
+.gs-page__fuzzy {
+  margin: 0 0 var(--s-16);
+  color: var(--haze);
+}
+
+.gs-page__fuzzy b { color: var(--paper); }
+
+.gs-page__tabs .tabs__tab .gs-page__n {
+  margin-left: var(--s-6);
+}
+
+/* ---------- feuilles « Statistiques » et « Filtres » (Collection, téléphone) ---------- */
+
+@media (max-width: 640px) {
+  .modal.gs-sheet {
+    align-self: end;
+    width: calc(100% + 2 * var(--s-16));
+    max-width: none;
+    max-height: 88dvh;
+    margin: 0 calc(-1 * var(--s-16)) calc(-1 * var(--s-16));
+    padding-bottom: calc(var(--s-24) + env(safe-area-inset-bottom, 0px));
+    border-radius: var(--rad-lg) var(--rad-lg) 0 0;
+    border-bottom: 0;
+    animation: gs-sheet-up var(--dur-rise) var(--ease-out);
+  }
+}
+
+@keyframes gs-sheet-up {
+  from { transform: translateY(24px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.gs-sheet .coll-summary { margin-bottom: var(--s-16); }
+
+.gs-sheet__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-10);
+  margin-top: var(--s-16);
+}
+
+.gs-filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-14);
+}
+
+.gs-filters .select,
+.gs-filters .select select {
+  width: 100%;
+}
+
+/* ---------- Collection : champ à suggestions, ligne de progression et bouton Filtres (téléphone) ---------- */
+
+.coll-toolbar .gs-collection-search {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+/* Même hauteur que l'ancien champ de la barre d'outils (42 px), à côté des listes et de l'interrupteur. */
+.gs-collection-search .gsearch__input {
+  height: 42px;
+}
+
+.gs-filters .coll-chips {
+  flex-wrap: wrap;
+  overflow: visible;
+  padding: 0;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.gs-filter-btn .count-badge {
+  margin-left: var(--s-2);
+}
+
+.gs-coll-line {
+  display: none;
+}
+
+.gs-filter-btn {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .gs-coll-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-4) var(--s-8);
+    margin: calc(-1 * var(--s-12)) 0 var(--s-16);
+    color: var(--haze);
+    font-size: var(--fs-13);
+  }
+
+  .gs-coll-line strong {
+    color: var(--paper);
+    font-weight: var(--fw-semi);
+  }
+
+  .gs-coll-line .gs-link {
+    font: var(--fw-semi) var(--fs-13) / 1.3 var(--font-body);
+  }
+
+  .gs-coll-wide {
+    display: none !important;
+  }
+
+  .gs-filter-btn {
+    display: inline-flex;
+    flex: none;
+  }
+
+  .coll-toolbar .gs-collection-search {
+    flex: 1 1 0;
+  }
+}
+
+/* ---------- Amis : membre choisi ---------- */
+
+.gs-friend-pick {
+  margin-top: var(--s-12);
+}
+
+.gs-friend-pick .friend {
+  margin: 0;
+}

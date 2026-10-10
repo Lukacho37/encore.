@@ -1,4 +1,7 @@
 // Textes ajoutés pour le catalogue à grande échelle (zone : collection). Fusionnés dans fr.js / en.js au chargement.
+// P0-E : champ à suggestions de l'onglet Albums, ligne de progression et feuilles « Statistiques » et « Filtres » du
+// téléphone (tutoiement, espace fine insécable avant ; : ! ? % et dans « »).
+const NNBSP = '\u202f';
 export default {
   fr: {
     collection: {
@@ -9,8 +12,21 @@ export default {
       search: {
         label: 'Rechercher',
         albums: 'Album ou artiste…',
+        combo: 'Album, morceau…',
+        filter: `Filtrer la grille avec «${NNBSP}{q}${NNBSP}»`,
         cards: 'Titre, artiste ou album…',
         clear: 'Effacer la recherche',
+      },
+      filters: 'Filtres',
+      filtersTitle: 'Filtrer les albums',
+      filtersReset: 'Réinitialiser',
+      filtersShow: { one: 'Voir {n} album', other: 'Voir les {n} albums' },
+      filtersDone: 'Terminé',
+      stats: 'Statistiques',
+      statsTitle: 'Ma collection en chiffres',
+      line: {
+        started: { one: '{n} album commencé', other: '{n} albums commencés' },
+        done: { one: '{n} complété', other: '{n} complétés' },
       },
       genre: 'Genre',
       decade: 'Décennie',
@@ -49,8 +65,21 @@ export default {
       search: {
         label: 'Search',
         albums: 'Album or artist…',
+        combo: 'Album, track…',
+        filter: 'Filter the grid with “{q}”',
         cards: 'Title, artist or album…',
         clear: 'Clear search',
+      },
+      filters: 'Filters',
+      filtersTitle: 'Filter albums',
+      filtersReset: 'Reset',
+      filtersShow: { one: 'Show {n} album', other: 'Show {n} albums' },
+      filtersDone: 'Done',
+      stats: 'Stats',
+      statsTitle: 'My collection in numbers',
+      line: {
+        started: { one: '{n} album started', other: '{n} albums started' },
+        done: { one: '{n} completed', other: '{n} completed' },
       },
       genre: 'Genre',
       decade: 'Decade',

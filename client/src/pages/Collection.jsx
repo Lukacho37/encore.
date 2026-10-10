@@ -1,21 +1,30 @@
 // Page « Ma collection » : progression globale, puis un onglet par façon de parcourir la collection.
 // Avec 20 000 albums au catalogue, rien n'est chargé d'un bloc : chaque liste interroge l'API page par page,
 // avec recherche et filtres gardés dans l'adresse (le bouton précédent les retrouve).
+// Onglet Albums (P0-E) : le champ propose des albums et des morceaux dès 2 lettres (SearchCombobox) ; Entrée sans
+// suggestion choisie filtre la grille avec le texte (le filtre ?q= d'avant). Sur téléphone : une ligne de progression
+// et la feuille « Statistiques », un bouton « Filtres » qui ouvre une feuille (PLAN.md 2.5).
+// Listes, vignettes et états vides : les pièces partagées de P0-B (state/paged.js, AlbumTile, feedback.jsx).
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigationType, useParams, useSearchParams } from 'react-router';
-import { get } from '../api.js';
 import { useGame } from '../state/GameContext.jsx';
 import { useI18n } from '../i18n/index.jsx';
 import { apiPath, registerCatalog, useApi, useArtists, useCatalogInfo } from '../state/catalog.js';
-import { realCover, useCovers } from '../state/CoversContext.jsx';
+import { usePagedList } from '../state/paged.js';
 import Card, { RarityGem } from '../components/Card.jsx';
-import CoverArt from '../components/CoverArt.jsx';
+import { AlbumTile } from '../components/AlbumTile.jsx';
+import { EmptyState, ErrorBox, LoadMore, Skeleton } from '../components/feedback.jsx';
 import { useCardModal } from '../components/CardModal.jsx';
-import { Icon, Progress, Spinner } from '../components/ui.jsx';
+import { Icon, Modal, Progress, Spinner } from '../components/ui.jsx';
 import { RarityGuideButton } from '../components/RarityGuide.jsx';
+import { SearchCombobox } from '../components/search/SearchCombobox.jsx';
+import { ArtistBadge } from '../components/search/ArtistBadge.jsx';
 import { ECONOMY, FOCUS_CHANCE, RARITIES, RARITY } from '@shared/rules.js';
-import { generatedArt } from '@shared/art.js';
 import '../styles/collection.css';
+import '../styles/search.css';
+
+// La pastille d'artiste a rejoint components/search/ (résultats de recherche) ; ArtistPage l'importe encore d'ici.
+export { ArtistBadge };
 
 const TABS = ['albums', 'cards', 'artists', 'promos', 'genres', 'decades'];
 const SORTS = ['progress', 'popular', 'title', 'year', 'recent'];
@@ -23,6 +32,8 @@ const PAGE = { albums: 48, cards: 60, promos: 60, artists: 48 };
 // Le serveur ne pagine pas au-delà de 10 000 résultats : il faut alors affiner la recherche.
 const MAX_OFFSET = 10_000;
 const SKELETONS = Array.from({ length: 12 }, (_, i) => i);
+const ALBUM_SKELETONS = <Skeleton kind="tile" count={12} />;
+const CARD_SKELETONS = <Skeleton kind="card" count={12} />;
 
 // Les listes de l'API apportent les données complètes : on les range dans le catalogue du site
 // (cartes et fiches album s'affichent ensuite sans nouvelle requête).
@@ -45,15 +56,6 @@ function usePct() {
       return fmt[0].format(Math.min(x, 0.99)); // jamais « 100 % » avant d'avoir tout
     };
   }, [lang]);
-}
-
-/** Couleur de barre lisible sur le fond sombre : la teinte vive de la palette, ou la claire si elle est trop sombre. */
-function accent(palette = []) {
-  const light = (hex) => {
-    const n = parseInt(String(hex).replace('#', ''), 16);
-    return !Number.isNaN(n) && (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255 >= 0.35;
-  };
-  return [palette[1], palette[2]].find((c) => c && light(c)) || 'var(--paper)';
 }
 
 /** Nom d'un genre ; un genre absent des dictionnaires garde son identifiant. */
@@ -173,193 +175,24 @@ function useScrollMemory(id, restorable) {
 
 // ----- listes paginées ----------------------------------------------------------------------
 
-// Dernier état de chaque liste : en revenant sur l'onglet, les pages déjà chargées réapparaissent sans requête,
-// tant que la collection n'a pas changé entre-temps (signature). Si elle a changé (booster ouvert sur une fiche
-// album…), la liste d'avant reste affichée le temps de recharger d'un coup ses pages (jusqu'à RELOAD_PAGES) :
-// la page garde sa hauteur et le bouton précédent retrouve la position de défilement.
-const snapshots = new Map();
-const RELOAD_PAGES = 5;
-const EMPTY_LIST = { key: null, items: [], total: null, end: false, sig: null, loading: true, error: null };
-
-const pageUrl = (key, offset, limit) => `${key}${key.includes('?') ? '&' : '?'}offset=${offset}&limit=${limit}`;
-
-/**
- * Liste paginée d'une adresse de l'API (`key`, filtres compris) : { items, total, more, … }.
- * Les pages suivantes s'ajoutent aux précédentes ; une réponse arrivée après un changement de filtres est ignorée.
- */
-function usePagedList(id, key, pageSize, register, signature) {
-  const [initial] = useState(() => {
-    const snap = snapshots.get(id);
-    if (!snap || snap.key !== key) return null;
-    if (snap.sig === signature) return { ...snap, loading: false, error: null };
-    return snap.items.length <= pageSize * RELOAD_PAGES ? { ...snap, loading: true, error: null } : null;
-  });
-  const [state, setState] = useState(initial || EMPTY_LIST);
-  const req = useRef(0);
-  const latest = useRef(state);
-  const sig = useRef(signature);
-  useEffect(() => {
-    latest.current = state;
-    sig.current = signature;
-  });
-
-  const load = useCallback((offset) => {
-    const ticket = ++req.current;
-    setState((s) => ({ ...s, loading: true, error: null }));
-    get(pageUrl(key, offset, pageSize))
-      .then((res) => {
-        if (ticket !== req.current) return; // réponse d'une recherche dépassée
-        const list = Array.isArray(res?.items) ? res.items : [];
-        register(list);
-        setState((s) => {
-          const kept = offset > 0 && s.key === key ? s.items : [];
-          const seen = new Set(kept.map((x) => x.id));
-          const items = [...kept, ...list.filter((x) => !seen.has(x.id))];
-          return {
-            key,
-            items,
-            total: Number.isFinite(res.total) ? res.total : items.length,
-            end: list.length < pageSize,
-            sig: sig.current,
-            loading: false,
-            error: null,
-          };
-        });
-      })
-      .catch((error) => {
-        if (ticket === req.current) setState((s) => ({ ...s, loading: false, error }));
-      });
-  }, [key, pageSize, register]);
-
-  // Recharge les `count` premiers éléments en une fois ; la liste affichée reste en place jusqu'à la réponse.
-  const reloadAll = useCallback((count) => {
-    const ticket = ++req.current;
-    const offsets = [];
-    for (let offset = 0; offset < count; offset += pageSize) offsets.push(offset);
-    setState((s) => ({ ...s, loading: true, error: null }));
-    Promise.all(offsets.map((offset) => get(pageUrl(key, offset, pageSize))))
-      .then((pages) => {
-        if (ticket !== req.current) return;
-        const seen = new Set();
-        const items = [];
-        for (const res of pages) {
-          const list = Array.isArray(res?.items) ? res.items : [];
-          register(list);
-          for (const x of list) {
-            if (seen.has(x.id)) continue;
-            seen.add(x.id);
-            items.push(x);
-          }
-        }
-        const last = pages[pages.length - 1];
-        const lastCount = Array.isArray(last?.items) ? last.items.length : 0;
-        setState({
-          key,
-          items,
-          total: Number.isFinite(last?.total) ? last.total : items.length,
-          end: lastCount < pageSize,
-          sig: sig.current,
-          loading: false,
-          error: null,
-        });
-      })
-      .catch(() => {
-        // La liste d'avant reste affichée ; elle sera rechargée à la prochaine visite.
-        if (ticket === req.current) setState((s) => ({ ...s, loading: false }));
-      });
-  }, [key, pageSize, register]);
-
-  useEffect(() => {
-    const s = latest.current;
-    if (s.key === key && s.items.length && !s.error) {
-      if (s.sig !== sig.current) {
-        reloadAll(s.items.length);
-        return;
-      }
-      // Liste déjà là : une réponse encore en route pour d'autres filtres ne doit plus s'afficher.
-      req.current += 1;
-      if (s.loading) setState((prev) => ({ ...prev, loading: false }));
-      return;
-    }
-    load(0);
-  }, [key, load, reloadAll]);
-
-  useEffect(() => () => {
-    const s = latest.current;
-    if (s.key && s.items.length) snapshots.set(id, { key: s.key, items: s.items, total: s.total, end: s.end, sig: s.sig });
-  }, [id]);
-
-  const fresh = state.key === key;
-  const count = fresh ? state.items.length : 0;
-  const more = fresh && !state.end && count < state.total;
-  return {
-    items: state.items,
-    total: fresh ? state.total : null,
-    loading: state.loading,
-    error: state.error,
-    initial: state.key === null,
-    stale: !fresh && state.items.length > 0,
-    restored: !!initial,
-    hasMore: more && count < MAX_OFFSET,
-    capped: more && count >= MAX_OFFSET,
-    remaining: fresh ? Math.max(0, state.total - count) : 0,
-    more: () => load(count),
-    retry: () => load(count),
-  };
-}
-
-function ErrorBox({ onRetry }) {
-  const { t } = useI18n();
-  return (
-    <div className="empty coll-empty" role="alert">
-      <p>{t('collection.loadError')}</p>
-      <button type="button" className="btn btn--ghost btn--sm" onClick={onRetry}>{t('collection.retry')}</button>
-    </div>
-  );
-}
-
 function Empty({ children, action = false }) {
   const { t } = useI18n();
   return (
-    <div className="empty coll-empty">
-      <p>{children}</p>
-      {action && <Link to="/" className="btn btn--primary btn--sm"><Icon name="pack" size={16} /> {t('collection.openPack')}</Link>}
-    </div>
-  );
-}
-
-function LoadMore({ list }) {
-  const { t } = useI18n();
-  if (list.error && list.items.length) {
-    return (
-      <div className="coll-more" role="alert">
-        <span className="muted small">{t('collection.loadError')}</span>
-        <button type="button" className="btn btn--ghost btn--sm" onClick={list.retry}>{t('collection.retry')}</button>
-      </div>
-    );
-  }
-  if (list.capped) return <p className="coll-more muted small">{t('collection.refine')}</p>;
-  if (!list.hasMore) return null;
-  return (
-    <div className="coll-more">
-      <button type="button" className="btn btn--ghost" onClick={list.more} disabled={list.loading}>
-        {list.loading ? <Spinner /> : <Icon name="plus" size={16} />}
-        {t('collection.loadMore')}
-        <span className="coll-more__n">· {t('collection.remaining', { n: list.remaining })}</span>
-      </button>
-    </div>
+    <EmptyState className="coll-empty" body={children}
+      action={action ? { label: t('collection.openPack'), to: '/', icon: 'pack' } : null} />
   );
 }
 
 /** Corps d'une liste : emplacements vides au premier chargement, liste estompée pendant un changement de filtres. */
 function ListBody({ list, className, skeleton, empty, children }) {
-  if (list.error && !list.items.length) return <ErrorBox onRetry={list.retry} />;
+  if (list.error && !list.items.length) return <ErrorBox error={list.error} onRetry={list.retry} className="coll-empty" />;
   if (list.initial) return <div className={className} aria-busy="true">{skeleton}</div>;
   if (!list.stale && list.total === 0) return empty;
   return (
     <>
       <div className={`${className}${list.stale ? ' is-stale' : ''}`} aria-busy={list.loading || undefined}>{children}</div>
-      <LoadMore list={list} />
+      <LoadMore hasMore={list.hasMore} loading={list.loading} onClick={list.more} remaining={list.remaining} capped={list.capped}
+        error={list.error && list.items.length ? list.error : null} onRetry={list.retry} />
     </>
   );
 }
@@ -388,18 +221,6 @@ function SearchBox({ id, value, onChange, placeholder }) {
 }
 
 // ----- éléments partagés --------------------------------------------------------------------
-
-/** Pastille d'artiste : son initiale sur un visuel généré (palette tirée de son identifiant, ou `art` d'un album). */
-export function ArtistBadge({ artist, size = 44, art }) {
-  const seed = art?.seed || artist?.id || 'artist';
-  const visual = art?.palette ? { ...art, seed } : { ...generatedArt(seed), seed };
-  return (
-    <span className="artist-badge" style={{ width: size, height: size }}>
-      <CoverArt art={visual} generated />
-      <span className="artist-badge__initial" style={{ fontSize: size * 0.42 }}>{artist?.name?.[0] || '?'}</span>
-    </span>
-  );
-}
 
 function RarityBar({ byRarity = {} }) {
   const { t, num } = useI18n();
@@ -470,73 +291,89 @@ const CardCell = memo(function CardCell({ trackId, variant, count, ghost = false
   );
 });
 
-const CardSkeletons = SKELETONS.map((i) => <div key={i} className="card-cell"><span className="card card--loading" aria-hidden="true" /></div>);
 
 // ----- onglet Albums ------------------------------------------------------------------------
 
-const AlbumTile = memo(function AlbumTile({ album, owned }) {
-  const { t } = useI18n();
-  const covers = useCovers();
-  const total = album.trackCount || 0;
-  const done = total > 0 && owned >= total;
-  // Le badge « Vinyle » ne se pose pas sur une vraie pochette : il passe sous l'image.
-  const real = !!realCover(album.art, covers);
-  const badge = done && <span className="album-tile__badge"><Icon name="disc" size={14} /> {t('collection.completed')}</span>;
-  return (
-    <Link to={`/album/${album.id}`} className={`album-tile${done ? ' album-tile--done' : ''}`}>
-      <span className="album-tile__cover">
-        <CoverArt art={album.art} sizes="(max-width: 700px) 45vw, 270px" />
-        {!real && badge}
-      </span>
-      <span className="album-tile__meta">
-        <span className="album-tile__title">{album.title}</span>
-        <span className="album-tile__artist">{album.artist}{album.year ? <> · <span className="mono">{album.year}</span></> : null}</span>
-        <span className="album-tile__progress">
-          <Progress value={owned} max={total} color={accent(album.art?.palette)} size="sm" label={`${album.title} · ${owned}/${total}`} />
-          <span className="mono small">{owned}/{total}</span>
-          {real && badge}
-        </span>
-      </span>
-    </Link>
+/** Filtres de l'onglet Albums (décennie, tri, « mes albums », genres) : { controls, chips }, pour la barre en ligne
+ * ou la feuille du téléphone. */
+function useAlbumFilters({ idPrefix, decade, sort, mine, genre, update, sheet = false }) {
+  const { t, num } = useI18n();
+  const info = useCatalogInfo();
+  const genreLabel = useGenreLabel();
+  const genres = [{ id: '', albums: info?.totals?.albums }, ...(info?.genres || [])];
+  const wide = sheet ? '' : ' gs-coll-wide';
+  const controls = (
+    <>
+      <label className={`select${wide}`}>
+        <span className={sheet ? 'field__label' : 'sr-only'}>{t('collection.decade')}</span>
+        <select id={`${idPrefix}-decade`} value={decade} onChange={(e) => update({ decade: e.target.value })}>
+          <option value="">{t('collection.allDecades')}</option>
+          {(info?.decades || []).map((d) => (
+            <option key={d.decade} value={d.decade}>{t('decade', { d: d.decade })}</option>
+          ))}
+        </select>
+      </label>
+      <label className={`select${wide}`}>
+        <span className={sheet ? 'field__label' : 'sr-only'}>{t('collection.sort.label')}</span>
+        <select id={`${idPrefix}-sort`} value={sort} onChange={(e) => update({ sort: e.target.value === 'progress' ? null : e.target.value })}>
+          {SORTS.map((s) => <option key={s} value={s}>{t(`collection.sort.${s}`)}</option>)}
+        </select>
+      </label>
+      <button type="button" role="switch" aria-checked={mine} className={`coll-toggle${mine ? ' is-on' : ''}${wide}`} onClick={() => update({ mine: mine ? null : '1' })}>
+        <span className={`switch${mine ? ' is-on' : ''}`} aria-hidden="true" />
+        {t('collection.mine')}
+      </button>
+    </>
   );
-});
-
-function AlbumSkeleton() {
-  return (
-    <span className="album-tile coll-skel" aria-hidden="true">
-      <span className="album-tile__cover coll-skel__block" />
-      <span className="coll-skel__line" />
-      <span className="coll-skel__line coll-skel__line--short" />
-    </span>
+  const chips = (
+    <div className={`chips coll-chips${sheet ? ' gs-filters__genres' : wide}`} role="group" aria-label={t('collection.genre')}>
+      {genres.map((g) => (
+        <button key={g.id || 'all'} type="button" className={`chip-btn${genre === g.id ? ' is-on' : ''}`} aria-pressed={genre === g.id} onClick={() => update({ genre: g.id })}>
+          {g.id ? genreLabel(g.id) : t('collection.all')}
+          {g.albums != null && <span className="coll-chip__n">{num(g.albums)}</span>}
+        </button>
+      ))}
+    </div>
   );
+  return { controls, chips };
 }
 
-const AlbumSkeletons = SKELETONS.map((i) => <AlbumSkeleton key={i} />);
-
 function AlbumsTab() {
-  const { t, num } = useI18n();
+  const { t } = useI18n();
   const { stats } = useGame();
-  const info = useCatalogInfo();
   const pct = usePct();
-  const genreLabel = useGenreLabel();
   const signature = useSignature();
   const [params, update] = useFilters();
-  const [text, setText] = useSearchText(params, update);
   const q = (params.get('q') || '').trim();
   const genre = params.get('genre') || '';
   const decade = /^\d{4}$/.test(params.get('decade') || '') ? params.get('decade') : '';
   const sort = SORTS.includes(params.get('sort')) ? params.get('sort') : 'progress';
   const mine = params.get('mine') === '1';
   const key = apiPath('/catalog/albums', { q, genre, decade, sort, mine: mine ? 1 : null });
-  const list = usePagedList('albums', key, PAGE.albums, registerAlbums, signature);
+  const list = usePagedList(key, { id: 'albums', pageSize: PAGE.albums, register: registerAlbums, signature, maxOffset: MAX_OFFSET });
   useScrollMemory('albums', list.restored);
   const filtered = !!(q || genre || decade || mine);
-  const genres = [{ id: '', albums: info?.totals?.albums }, ...(info?.genres || [])];
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const active = (genre ? 1 : 0) + (decade ? 1 : 0) + (mine ? 1 : 0) + (sort !== 'progress' ? 1 : 0);
+
+  // Le champ propose des albums et des morceaux ; Entrée (sans suggestion choisie) filtre la grille avec le texte,
+  // gardé dans l'adresse (?q=). Champ vidé : le filtre part tout de suite. Précédent / suivant : le champ suit l'adresse.
+  const [text, setText] = useState(q);
+  useEffect(() => {
+    setText(q);
+  }, [q]);
+  const onText = (value) => {
+    setText(value);
+    if (!value.trim() && q) update({ q: null });
+  };
+  const applyText = (value) => update({ q: value.trim() || null });
 
   const reset = () => {
     setText('');
     update({ q: null, genre: null, decade: null, mine: null });
   };
+  const inline = useAlbumFilters({ idPrefix: 'collection', decade, sort, mine, genre, update });
+  const inSheet = useAlbumFilters({ idPrefix: 'collection-sheet', decade, sort, mine, genre, update, sheet: true });
 
   return (
     <>
@@ -545,44 +382,56 @@ function AlbumsTab() {
         <span>{t('collection.howTo', { p: pct(FOCUS_CHANCE), n: ECONOMY.albumPackPrice })}</span>
       </p>
       <div className="coll-toolbar">
-        <SearchBox id="collection-album-search" value={text} onChange={setText} placeholder={t('collection.search.albums')} />
-        <label className="select">
-          <span className="sr-only">{t('collection.decade')}</span>
-          <select id="collection-decade" value={decade} onChange={(e) => update({ decade: e.target.value })}>
-            <option value="">{t('collection.allDecades')}</option>
-            {(info?.decades || []).map((d) => (
-              <option key={d.decade} value={d.decade}>{t('decade', { d: d.decade })}</option>
-            ))}
-          </select>
-        </label>
-        <label className="select">
-          <span className="sr-only">{t('collection.sort.label')}</span>
-          <select id="collection-sort" value={sort} onChange={(e) => update({ sort: e.target.value === 'progress' ? null : e.target.value })}>
-            {SORTS.map((s) => <option key={s} value={s}>{t(`collection.sort.${s}`)}</option>)}
-          </select>
-        </label>
-        <button type="button" role="switch" aria-checked={mine} className={`coll-toggle${mine ? ' is-on' : ''}`} onClick={() => update({ mine: mine ? null : '1' })}>
-          <span className={`switch${mine ? ' is-on' : ''}`} aria-hidden="true" />
-          {t('collection.mine')}
+        <div className="gs-collection-search" role="search">
+          <SearchCombobox variant="inline" scope="album,track" id="collection-album-search" value={text} onChange={onText}
+            onSubmit={applyText} placeholder={t('collection.search.combo')} label={t('collection.search.label')}
+            submitLabel={(v) => t('collection.search.filter', { q: v })} recent={false} />
+        </div>
+        {inline.controls}
+        <button type="button" className="btn btn--ghost gs-filter-btn" aria-haspopup="dialog" onClick={() => setFiltersOpen(true)}>
+          <FilterIcon /> {t('collection.filters')}
+          {active > 0 && <span className="count-badge">{active}</span>}
         </button>
       </div>
-      <div className="chips coll-chips" role="group" aria-label={t('collection.genre')}>
-        {genres.map((g) => (
-          <button key={g.id || 'all'} type="button" className={`chip-btn${genre === g.id ? ' is-on' : ''}`} aria-pressed={genre === g.id} onClick={() => update({ genre: g.id })}>
-            {g.id ? genreLabel(g.id) : t('collection.all')}
-            {g.albums != null && <span className="coll-chip__n">{num(g.albums)}</span>}
-          </button>
-        ))}
-      </div>
+      {inline.chips}
       <div className="coll-count">
         <span aria-live="polite">{list.total != null ? t('collection.albums', { n: list.total }) : (list.loading ? <Spinner /> : null)}</span>
         {filtered && <button type="button" className="btn btn--quiet btn--xs" onClick={reset}>{t('collection.resetFilters')}</button>}
       </div>
-      <ListBody list={list} className="album-grid" skeleton={AlbumSkeletons}
+      <ListBody list={list} className="album-grid" skeleton={ALBUM_SKELETONS}
         empty={<Empty action={mine && !q && !genre && !decade}>{mine && !q && !genre && !decade ? t('collection.empty.mine') : t('collection.empty.albums')}</Empty>}>
         {list.items.map((a) => <AlbumTile key={a.id} album={a} owned={stats.albums[a.id]?.owned ?? a.owned ?? 0} />)}
       </ListBody>
+
+      <Modal open={filtersOpen} onClose={() => setFiltersOpen(false)} title={t('collection.filtersTitle')} className="gs-sheet">
+        <div className="gs-filters">
+          {inSheet.controls}
+          <span className="field__label">{t('collection.genre')}</span>
+          {inSheet.chips}
+        </div>
+        <div className="gs-sheet__actions">
+          {active > 0 && (
+            <button type="button" className="btn btn--ghost" onClick={() => update({ genre: null, decade: null, mine: null, sort: null })}>
+              {t('collection.filtersReset')}
+            </button>
+          )}
+          <button type="button" className="btn btn--primary" onClick={() => setFiltersOpen(false)} data-autofocus>
+            {list.total != null ? t('collection.filtersShow', { n: list.total }) : t('collection.filtersDone')}
+          </button>
+        </div>
+      </Modal>
     </>
+  );
+}
+
+/** Icône « Filtres » (curseurs), au trait des icônes du site. */
+function FilterIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+      <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />
+      <circle cx="16" cy="7" r="2" />
+      <circle cx="10" cy="17" r="2" />
+    </svg>
   );
 }
 
@@ -597,7 +446,7 @@ function CardsTab() {
   const [text, setText] = useSearchText(params, update);
   const q = (params.get('q') || '').trim();
   const rarity = RARITIES.includes(params.get('rarity')) ? params.get('rarity') : '';
-  const list = usePagedList('cards', apiPath('/catalog/mine', { q, rarity }), PAGE.cards, registerTracks, signature);
+  const list = usePagedList(apiPath('/catalog/mine', { q, rarity }), { id: 'cards', pageSize: PAGE.cards, register: registerTracks, signature, maxOffset: MAX_OFFSET });
   useScrollMemory('cards', list.restored);
 
   return (
@@ -622,7 +471,7 @@ function CardsTab() {
       <div className="coll-count">
         <span aria-live="polite">{list.total != null ? t('collection.cards', { n: list.total }) : (list.loading ? <Spinner /> : null)}</span>
       </div>
-      <ListBody list={list} className="card-grid" skeleton={CardSkeletons}
+      <ListBody list={list} className="card-grid" skeleton={CARD_SKELETONS}
         empty={q || rarity ? <Empty>{t('collection.empty.cards')}</Empty> : <Empty action>{t('collection.empty.cardsStart')}</Empty>}>
         {list.items.map((tr) => {
           const mine = owned.get(tr.id);
@@ -725,7 +574,7 @@ function PromosTab() {
   const { stats, owned } = useGame();
   const openCard = useCardModal();
   // La liste des promos ne dépend pas du joueur : ce qu'il possède vient de useGame(), toujours à jour.
-  const list = usePagedList('promos', '/catalog/promos', PAGE.promos, registerTracks, 'catalog');
+  const list = usePagedList('/catalog/promos', { id: 'promos', pageSize: PAGE.promos, register: registerTracks, signature: 'catalog', maxOffset: MAX_OFFSET });
   useScrollMemory('promos', list.restored);
   return (
     <>
@@ -733,7 +582,7 @@ function PromosTab() {
       <div className="coll-count">
         <span>{t('collection.promoCount', { owned: stats.promos?.owned || 0, total: stats.promos?.total || 0 })}</span>
       </div>
-      <ListBody list={list} className="card-grid" skeleton={CardSkeletons} empty={<Empty>{t('collection.empty.promos')}</Empty>}>
+      <ListBody list={list} className="card-grid" skeleton={CARD_SKELETONS} empty={<Empty>{t('collection.empty.promos')}</Empty>}>
         {list.items.map((tr) => {
           const mine = owned.get(tr.id);
           return (
@@ -752,7 +601,7 @@ function GroupsTab({ by }) {
   const { t } = useI18n();
   const genreLabel = useGenreLabel();
   const { data, error, reload } = useApi(`/catalog/groups?by=${by}`);
-  if (error && !data) return <ErrorBox onRetry={reload} />;
+  if (error && !data) return <ErrorBox error={error} onRetry={reload} />;
   if (!data) {
     return <ul className="rows" aria-busy="true">{SKELETONS.slice(0, 8).map((i) => <li key={i} className="row coll-skel-row" />)}</ul>;
   }
@@ -809,6 +658,9 @@ export default function Collection() {
     tabsOffset = navRef.current ? navRef.current.getBoundingClientRect().top : null;
   };
 
+  const [statsOpen, setStatsOpen] = useState(false);
+  const started = Object.keys(stats.albums || {}).length;
+
   return (
     <div className="collection">
       <header className="page-head">
@@ -822,9 +674,24 @@ export default function Collection() {
         </div>
       </header>
 
-      <Summary />
-      <RarityBar byRarity={stats.byRarity} />
-      <div className="rarity-help"><RarityGuideButton /></div>
+      {/* Téléphone : une ligne au lieu des trois compteurs et des raretés, détaillés dans la feuille « Statistiques ». */}
+      <p className="gs-coll-line">
+        <span>{t('collection.line.started', { n: started })}</span>
+        <span aria-hidden="true">·</span>
+        <span>{t('collection.line.done', { n: stats.albumsCompleted || 0 })}</span>
+        <span aria-hidden="true">·</span>
+        <button type="button" className="gs-link" aria-haspopup="dialog" onClick={() => setStatsOpen(true)}>{t('collection.stats')}</button>
+      </p>
+      <div className="gs-coll-wide">
+        <Summary />
+        <RarityBar byRarity={stats.byRarity} />
+        <div className="rarity-help"><RarityGuideButton /></div>
+      </div>
+      <Modal open={statsOpen} onClose={() => setStatsOpen(false)} title={t('collection.statsTitle')} className="gs-sheet collection">
+        <Summary />
+        <RarityBar byRarity={stats.byRarity} />
+        <div className="rarity-help"><RarityGuideButton /></div>
+      </Modal>
 
       <nav className="tabs coll-tabs" aria-label={t('collection.title')} ref={navRef}>
         {TABS.map((id) => (

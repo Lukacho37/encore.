@@ -11,9 +11,9 @@ import { lazy, Suspense } from 'react';
 import { Navigate, Route, useLocation } from 'react-router';
 import { Spinner } from './components/ui.jsx';
 import { safeFrom } from './components/shell/redirect.js';
-// Feuilles des pages désormais chargées à la demande : importées ici, à la place qu'elles avaient quand App.jsx
-// importait toutes les pages, pour que l'ordre de la cascade (donc le rendu) ne change pas. P0-B remet l'ordre à
-// plat (main.jsx importera app.css en premier).
+// Feuilles des pages chargées à la demande : importées ici aussi (premier chargement), à la place qu'elles avaient
+// quand App.jsx importait toutes les pages, pour que l'ordre de la cascade (donc le rendu) ne dépende pas de l'ordre
+// dans lequel on visite les pages. main.jsx importe app.css avant tout le reste (P0-B).
 import './styles/collection.css';
 import './styles/album.css';
 import './styles/profile.css';

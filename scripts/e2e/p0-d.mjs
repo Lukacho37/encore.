@@ -102,6 +102,8 @@ for (const [name, viewport] of Object.entries(VIEWPORTS)) {
     await page.check('#su-terms');
     expect(!(await page.isDisabled('.auth__form button[type=submit]')), `[guest-${name}] inscription bloquée malgré la case`);
     expect(await page.locator('.sh-auth-legal a').count() >= 3, `[guest-${name}] liens légaux de l'écran de connexion`);
+    // Capture après la transition du bouton (fond ivoire une fois activé).
+    await page.waitForTimeout(300);
     await shot(page, `${p}-06-signup`);
     await checkNoHorizontalScroll(page, `guest-${name} signup`);
   });
@@ -179,11 +181,20 @@ await run('desktop', VIEWPORTS.desktop, async (page) => {
   await page.setViewportSize({ width: 1200, height: 900 });
   expect(!(await page.locator('.topbar .seg.sh-wide').isVisible()), '[desktop] FR/EN encore dans la barre à 1200 px');
   await checkNoHorizontalScroll(page, 'desktop 1200');
+  // Tablette : la barre complète (cinq entrées, pastilles, cloche, avatar) tient sans défilement jusqu'à 861 px.
+  for (const width of [1079, 980, 979, 900, 861]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.locator('.topnav').isVisible(), `[desktop] navigation du haut absente à ${width} px`);
+    await checkNoHorizontalScroll(page, `desktop ${width}`);
+    const over = await page.$eval('.topbar__inner', (el) => el.scrollWidth - el.clientWidth);
+    expect(over <= 0, `[desktop] barre du haut trop large de ${over} px à ${width} px`);
+  }
   await page.setViewportSize(VIEWPORTS.desktop);
 
   // Menu du compte.
   await page.click('.account__btn');
   await page.waitForSelector('.menu');
+  await page.waitForTimeout(250); // fin de l'animation d'ouverture (pop) avant la capture
   const items = await page.$$eval('.menu a, .menu button, .menu .menu__row', (els) => els.map((e) => e.textContent.trim()));
   for (const label of ['Mon Studio', 'Amis', 'Paramètres', 'Langue', 'Notation', 'Effets sonores', 'Se déconnecter']) {
     expect(items.some((x) => x.includes(label)), `[desktop] menu du compte sans « ${label} »`);
@@ -262,6 +273,7 @@ await run('phone', VIEWPORTS.phone, async (page) => {
   }
   await page.click('.account__btn');
   await page.waitForSelector('.menu');
+  await page.waitForTimeout(250); // fin de l'animation d'ouverture (pop) avant la capture
   expect(await page.locator('.menu .menu__row .seg').count() >= 1, '[phone] FR/EN dans le menu du compte');
   await shot(page, 'm-30-menu');
   await page.click('.menu a[href="/settings"]');

@@ -46,7 +46,11 @@ function PlainSearch({ placeholder, onSubmit, autoFocus }) {
         <input className="input" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder}
           autoFocus={autoFocus} enterKeyHint="search" maxLength={100} />
       </label>
-      <button type="submit" className="btn btn--ghost" disabled={!q.trim()}>{t('shell.search.submit')}</button>
+      {/* Sur un petit téléphone, le bouton se réduit à une flèche : le champ garde la place du texte saisi. */}
+      <button type="submit" className="btn btn--ghost sh-searchbox__go" disabled={!q.trim()} aria-label={t('shell.search.submit')}>
+        <span className="sh-searchbox__go-text" aria-hidden="true">{t('shell.search.submit')}</span>
+        <Icon name="chevron" />
+      </button>
     </form>
   );
 }

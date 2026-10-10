@@ -76,7 +76,9 @@ await run('desktop', { width: 1280, height: 820 }, async (page) => {
   const scrollAfter = await page.evaluate(() => Math.round(window.scrollY));
   if (scrollBefore > 100 && Math.abs(scrollAfter - scrollBefore) > 2) errors.push(`[desktop] collection scroll not restored after back (${scrollBefore} -> ${scrollAfter})`);
   // Recherche plein texte dans le catalogue
+  // (depuis la recherche globale P0-E : les suggestions s'ouvrent, Entrée filtre la grille comme avant)
   await page.fill('.collection input[type=search]', 'racine car');
+  await page.keyboard.press('Enter');
   await page.waitForFunction(() => [...document.querySelectorAll('.album-grid a')].some((a) => /Racine carrée/.test(a.textContent)), null, { timeout: 5000 });
   await shot(page, '11c-collection-search');
   // Mes cartes
@@ -140,7 +142,8 @@ await run('desktop', { width: 1280, height: 820 }, async (page) => {
   await page.goto(`${BASE}/admin`);
   await page.waitForSelector('.table');
   await shot(page, '14-admin');
-  // Recherche d'album (catalogue de 20 000 albums) puis « presque complet »
+  // Recherche d'album (catalogue de 20 000 albums) puis « presque complet » (onglet Outils depuis P0-F)
+  await page.goto(`${BASE}/admin/tools`);
   await page.fill('.adm-picker input', 'discovery daft');
   await page.click('.adm-option:has-text("Discovery")');
   await page.waitForSelector('.adm-album__actions');
@@ -211,8 +214,9 @@ await run('desktop', { width: 1280, height: 820 }, async (page) => {
 await run('friend', { width: 1280, height: 820 }, async (page) => {
   await signup(page, 'nino@example.com', 'nino_beats');
   await page.goto(`${BASE}/friends`);
-  await page.fill('#friend-name', 'luka');
-  await page.click('.add-friend .btn');
+  // Recherche de membres (P0-E) : la ligne « Envoyer une demande à « luka » » envoie la demande au pseudo tapé.
+  await page.fill('#friend-search-input', 'luka');
+  await page.getByRole('button', { name: /Envoyer une demande/ }).click();
   await page.waitForSelector('.form-ok');
   await shot(page, '23-friends-sent');
   // nino note un album avec une critique : elle apparaîtra dans l'activité de luka

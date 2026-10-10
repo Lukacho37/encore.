@@ -396,9 +396,10 @@ if (fs.existsSync(demoFile)) {
         localStorage.setItem(key, JSON.stringify(data));
       });
       await page.goto(`file://${demoFile}`);
-      await page.waitForSelector('.hero');
+      // L'accueil s'affiche d'abord avec l'état gardé en mémoire : on attend l'état rechargé (rôle admin).
+      await page.waitForFunction(() => /illimités/.test(document.querySelector('.hero')?.textContent || ''), null, { timeout: 20_000 });
       await page.click('.account__btn');
-      await page.getByRole('menuitem', { name: 'Admin' }).click();
+      await page.getByRole('menuitem', { name: 'Admin', exact: true }).click();
       await page.waitForSelector('.sf-admin-tabs');
       await page.locator('.sf-admin-tabs a', { hasText: 'Modération' }).click();
       const card = page.locator('.sf-case').filter({ hasText: 'Critique' }).first();

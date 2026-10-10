@@ -729,6 +729,17 @@
   gap: var(--s-10);
 }
 
+/* Un motif long ne doit jamais élargir la page sur téléphone : la liste se coupe à la largeur disponible. */
+.sf-mod__filters .select {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.sf-mod__filters .select select {
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+
 .sf-seg-n {
   margin-left: var(--s-6);
   font: var(--fw-medium) var(--fs-12) / 1 var(--font-mono);

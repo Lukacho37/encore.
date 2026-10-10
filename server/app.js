@@ -227,23 +227,9 @@ export function createApp({ dbFile, db: openedDb } = {}) {
     if (req.body.ratingScale !== undefined) services.setRatingScale(req.user.id, req.body.ratingScale);
     res.json({ state: partial(req) });
   });
+  // Profil public d'avant le Studio (le module studio, P1-B, le remplace par sa propre route, montée avant celle-ci).
+  // Les notes et critiques (/ratings/*, /users/:username/ratings) sont servies par le module ratings (P0-C).
   api.get('/users/:username', (req, res) => res.json(services.publicProfile(req.user.id, req.params.username)));
-  api.get('/users/:username/ratings', (req, res) => res.json(services.userRatings(req.params.username)));
-
-  // Notes & critiques : :type = album | track ; l'identifiant d'un morceau contient « : » (ex. discovery:01).
-  api.get('/ratings/feed', (req, res) => res.json(services.friendsFeed(req.user.id)));
-  api.get('/ratings/:type/:id', (req, res) => res.json(services.itemRatings(req.user.id, req.params.type, req.params.id)));
-  // `rating` : le delta de la note du joueur (score null = note retirée), fusionné dans state.ratings par le site.
-  api.put('/ratings/:type/:id', (req, res) => {
-    services.rate(req.user.id, req.params.type, req.params.id, req.body.score, req.body.review);
-    const { type, id } = req.params;
-    res.json({ ...services.itemRatings(req.user.id, type, id), rating: { type, id, score: req.body.score }, state: partial(req) });
-  });
-  api.delete('/ratings/:type/:id', (req, res) => {
-    services.unrate(req.user.id, req.params.type, req.params.id);
-    const { type, id } = req.params;
-    res.json({ ...services.itemRatings(req.user.id, type, id), rating: { type, id, score: null }, state: partial(req) });
-  });
 
   // Amis : chaque action renvoie aussi l'état partiel (pastille des demandes reçues à jour sans recharger l'état).
   api.get('/friends', (req, res) => res.json(services.listFriends(req.user.id)));
@@ -284,12 +270,7 @@ export function createApp({ dbFile, db: openedDb } = {}) {
     audit(req, 'covers.refresh');
     res.json(covers.status());
   });
-  admin.get('/reviews', (req, res) => res.json(services.adminReviews()));
-  admin.delete('/reviews/:userId/:type/:id', (req, res) => {
-    services.adminDeleteReview(req.params.userId, req.params.type, req.params.id);
-    audit(req, 'review.delete', `review:${req.params.userId}:${req.params.type}:${req.params.id}`);
-    res.json(services.adminReviews());
-  });
+  // Critiques récentes et suppression d'une critique : file de modération du module moderation (P0-F).
   // Outils de test sur la collection de l'admin : état complet (beaucoup de cartes changent d'un coup).
   admin.post('/me/reset', (req, res) => {
     services.adminResetCollection(req.user.id);

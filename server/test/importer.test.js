@@ -138,6 +138,9 @@ test('calibrage : une requête SQL, identique au calcul pas à pas ; rien à ref
   await importer.start();
   assert.ok(rebuilds >= 1, 'les nouveaux morceaux entrent dans les tirages');
 
+  // Le premier import complet gèle les raretés (PLAN.md 6.5) : on revient ici à la construction initiale.
+  assert.ok(importer.frozen(), 'raretés gelées à la fin du premier import');
+  db.exec("UPDATE cat_tracks SET rarity_locked = 0 WHERE source = 'deezer'");
   // Des rangs égaux (même percentile) et des valeurs effacées : le calibrage doit tout retrouver.
   db.exec("UPDATE cat_tracks SET rank = 500000 WHERE source = 'deezer' AND rowid % 7 = 0");
   db.exec("UPDATE cat_tracks SET pop = 0, rarity = 'common' WHERE source = 'deezer'");
@@ -169,6 +172,30 @@ test('calibrage : une requête SQL, identique au calcul pas à pas ; rien à ref
   assert.equal(fake.calls.length, calls);
   assert.equal(rebuilds, before);
   assert.equal(importer.status().phase, 'done');
+  db.close();
+});
+
+test('gel des raretés : les morceaux gelés ne changent jamais ; les nouveaux reçoivent une rareté puis sont gelés', async () => {
+  const { db, importer } = setup({ ...CFG, catalogTarget: 30 }, makeFakeDeezer({ artists: 20 }));
+  await importer.start();
+  assert.equal(importer.status().phase, 'done');
+  assert.ok(importer.status().frozenAt, 'date du gel publiée');
+  const deezer = "FROM cat_tracks WHERE source = 'deezer'";
+  assert.equal(db.prepare(`SELECT COUNT(*) AS n ${deezer} AND (rarity_locked = 0 OR rarity_edition IS NULL)`).get().n, 0, 'tout est gelé, 1re édition');
+  const snapshot = () => db.prepare(`SELECT id, pop, rarity ${deezer} AND rarity_locked = 1 ORDER BY id`).all();
+  const before = snapshot();
+  // Le rang Deezer des morceaux gelés bouge beaucoup (popularité inversée) : rien ne change à la rareté.
+  db.exec(`UPDATE cat_tracks SET rank = 1000000 - COALESCE(rank, 0) WHERE source = 'deezer'`);
+  // Un morceau arrive après le gel (nouvelle sortie), très écouté : il prend sa rareté des seuils enregistrés.
+  const album = db.prepare(`SELECT album_id, artist_id ${deezer} AND kind = 'album' LIMIT 1`).get();
+  db.prepare(`INSERT INTO cat_tracks (id, kind, album_id, artist_id, n, total, title, year, genre, pop, rarity, rank, source, created_at)
+    VALUES ('dzlate:01', 'album', ?, ?, 99, 99, 'Tardif', 2024, 'pop', 0, 'common', 999999999, 'deezer', ?)`).run(album.album_id, album.artist_id, Date.now());
+  assert.ok(importer.calibrate() >= 1, 'le nouveau morceau a reçu sa rareté');
+  assert.deepEqual(snapshot().filter((r) => r.id !== 'dzlate:01'), before, 'aucune rareté gelée ne change');
+  const late = db.prepare("SELECT rarity, rarity_locked, rarity_edition FROM cat_tracks WHERE id = 'dzlate:01'").get();
+  assert.deepEqual({ ...late }, { rarity: 'legendary', rarity_locked: 1, rarity_edition: 1 });
+  // Second passage : plus rien à faire.
+  assert.equal(importer.calibrate(), 0);
   db.close();
 });
 

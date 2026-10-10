@@ -1,4 +1,6 @@
-// Module « ratings » : notes et critiques v2 (PLAN.md 4.1.2). Chantier : P0-C.
+// Module « ratings » : notes et critiques v2 (PLAN.md 4.1.2). Chantier : P0-C, repris par P1-A en P1 (mentions « J'aime »
+// réelles sur les critiques, tri « populaires », anciennes clés `reviews` / `friendScores` retirées, critiques par
+// identifiants pour le fil et les permaliens /review/:id).
 // Une critique est une ligne de `ratings` avec un texte ; son identifiant (ratings.id) est stable : les mentions
 // « J'aime », les réponses et les liens directs (/review/:id, P1) s'y accrochent. Les moyennes et répartitions viennent
 // de `rating_stats`, recalculé dans la même transaction que chaque note (services.refreshRatingStats) : aucune page ne
@@ -81,9 +83,18 @@ export function init(deps) {
     return { id: viewerId, friends, hidden };
   }
 
+  /** Critiques aimées par `viewerId` parmi ces identifiants (une requête). */
+  function likedReviews(viewerId, ids) {
+    const list = ids.filter((x) => Number.isInteger(x));
+    if (!viewerId || !list.length) return new Set();
+    return new Set(q(`SELECT target_id FROM likes WHERE user_id = ? AND target_type = 'review'
+      AND target_id IN (SELECT value FROM json_each(?))`).all(viewerId, json(list)).map((r) => r.target_id));
+  }
+
   /** Lignes de notes → critiques (Review, PLAN.md 4.1.2), auteurs en un seul appel à userSummaries. */
   function hydrate(rows, viewer) {
     const users = services.userSummaries(rows.map((r) => r.user_id), viewer.id, { hidden: viewer.hidden });
+    const liked = likedReviews(viewer.id, rows.map((r) => r.id));
     const items = [];
     for (const r of rows) {
       const user = users.get(r.user_id);
@@ -97,13 +108,27 @@ export function init(deps) {
         updatedAt: r.updated_at,
         likeCount: r.like_count,
         commentCount: r.comment_count,
-        // `liked` devient réel avec les mentions « J'aime » (P1-A).
-        liked: false,
+        liked: liked.has(r.id),
         friend: viewer.friends.has(r.user_id),
+        ...(r.item_type ? { item: { type: r.item_type, id: r.item_id } } : {}),
         ...(r.hidden_at ? { moderated: true } : {}),
       });
     }
     return { items, users };
+  }
+
+  /**
+   * Critiques par identifiants (fil, permalien /review/:id, posts qui en partagent une) : Map id → Review + `item`
+   * { type, id }. Une critique masquée n'est rendue qu'à son auteur ; les joueurs bloqués sont absents.
+   */
+  function reviewsByIds(viewerId, ids, { hidden } = {}) {
+    const wanted = [...new Set(ids.map(Number))].filter((x) => Number.isInteger(x) && x > 0);
+    if (!wanted.length) return new Map();
+    const viewer = viewerOf(viewerId);
+    if (hidden) viewer.hidden = hidden;
+    const rows = q(`SELECT ${REVIEW_COLS}, item_type, item_id FROM ratings WHERE id IN (SELECT value FROM json_each(?))
+      AND review IS NOT NULL AND (hidden_at IS NULL OR user_id = ?)`).all(json(wanted), viewerId);
+    return new Map(hydrate(rows, viewer).items.map((r) => [r.id, r]));
   }
 
   const REVIEW_COLS = 'id, user_id, score, review, review_at, updated_at, like_count, comment_count, hidden_at';
@@ -144,8 +169,8 @@ export function init(deps) {
 
   /**
    * Notes d'un album ou d'un morceau pour celui qui regarde (GET /api/ratings/:type/:id) : résumé, sa note, notes et
-   * critiques des amis, première page de la communauté, notes des morceaux (album), plus les anciennes clés
-   * `reviews` et `friendScores` (gardées pour les pages pas encore passées aux notes v2 ; retirées par P1-A).
+   * critiques des amis, première page de la communauté, notes des morceaux (album). Les anciennes clés `reviews` et
+   * `friendScores` sont retirées (P1-A) : toutes les pages lisent `friends` et `community`.
    */
   function itemPayload(viewerId, type, id) {
     const viewer = viewerOf(viewerId);
@@ -171,9 +196,6 @@ export function init(deps) {
       mine,
       friends: { scores, reviews: friendReviews.items, nextCursor: friendReviews.nextCursor },
       community: { reviews: community.items, nextCursor: community.nextCursor },
-      // Anciennes clés (pages pas encore passées aux notes v2).
-      reviews: [...friendReviews.items, ...community.items],
-      friendScores: scores.map((s) => ({ user: s.user, score: s.score })),
     };
     if (type === 'album') {
       const trackIds = json(catalog.albumTrackIds(id));
@@ -367,7 +389,8 @@ export function init(deps) {
   }
 
   return {
-    rate, rateAs, unrate, summaryOf, itemPayload, reviewsPage, viewerOf, checkItem, userRatings, userReviewPage, targetUser, friendsFeed,
+    rate, rateAs, unrate, summaryOf, itemPayload, reviewsPage, reviewsByIds, viewerOf, checkItem, userRatings, userReviewPage, targetUser,
+    friendsFeed,
   };
 }
 

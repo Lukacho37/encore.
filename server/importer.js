@@ -105,11 +105,15 @@ const POP_SQL = `CASE ${RANK_TIERS.map((t, i) => {
   return `WHEN p >= ${t.from} THEN MAX(0, MIN(100, round(${t.pop[0]} + ((p - ${t.from}) / (${upper} - ${t.from})) * (${t.pop[1]} - ${t.pop[0]}))))`;
 }).join(' ')} END`;
 const RARITY_SQL = `CASE ${RANK_TIERS.map((t) => `WHEN p >= ${t.from} THEN '${t.rarity}'`).join(' ')} END`;
+// Seuls les morceaux dont la rareté n'est pas gelée (rarity_locked = 0) sont réécrits (PLAN.md 6.5).
 const CALIBRATE_SQL = `UPDATE cat_tracks SET pop = x.pop, rarity = x.rarity
   FROM (SELECT id, CAST(${POP_SQL} AS INTEGER) AS pop, CASE WHEN kind = 'promo' THEN 'promo' ELSE ${RARITY_SQL} END AS rarity
     FROM (SELECT id, kind, CASE WHEN COUNT(*) OVER () = 1 THEN 1.0 ELSE percent_rank() OVER (ORDER BY COALESCE(rank, 0)) END AS p
       FROM cat_tracks WHERE source = 'deezer')) AS x
-  WHERE cat_tracks.id = x.id AND (cat_tracks.pop IS NOT x.pop OR cat_tracks.rarity IS NOT x.rarity)`;
+  WHERE cat_tracks.id = x.id AND cat_tracks.rarity_locked = 0 AND (cat_tracks.pop IS NOT x.pop OR cat_tracks.rarity IS NOT x.rarity)`;
+/** Édition de rareté posée sur les morceaux gelés (« 1re édition » ; une réévaluation annuelle, P3, passerait à 2). */
+export const RARITY_EDITION = 1;
+const FREEZE_CHUNK = 2000; // morceaux gelés par transaction : aucune requête ne bloque le serveur plus de quelques ms
 const BREAKS_SQL = `SELECT rn, rank FROM (SELECT COALESCE(rank, 0) AS rank, row_number() OVER (ORDER BY COALESCE(rank, 0), id) - 1 AS rn
   FROM cat_tracks WHERE source = 'deezer') WHERE rn IN (SELECT value FROM json_each(?))`;
 
@@ -440,19 +444,74 @@ export function createImporter(db, catalog, {
 
   const deezerTracks = () => q("SELECT COUNT(*) AS n FROM cat_tracks WHERE source = 'deezer'").get().n;
 
+  // ---------- gel des raretés (PLAN.md 6.5) ------------------------------------------------------------
+
   /**
-   * Indice de popularité et rareté de chaque morceau importé, en percentiles de rang Deezer. Les tirages et les
-   * compteurs du catalogue ne sont recalculés que si quelque chose a changé.
+   * Catalogue gelé : au moins un morceau importé a sa rareté figée (l'étape v9 de db.js gèle tout catalogue existant ;
+   * un catalogue neuf l'est à la fin de son premier import complet). Avant : construction initiale, les percentiles
+   * de tout le catalogue font la rareté. Après : une carte tirée Légendaire reste Légendaire.
    */
-  function calibrate() {
+  const frozen = () => !!q("SELECT 1 FROM cat_tracks WHERE source = 'deezer' AND rarity_locked = 1 LIMIT 1").get();
+
+  /**
+   * Gèle les morceaux importés pas encore gelés, par tranches de la clé primaire : chacune est une petite transaction
+   * (la construction initiale se termine sans bloquer les joueurs). `assign` : rareté et indice provisoires d'après
+   * les seuils enregistrés (morceaux arrivés après le gel). Renvoie le nombre de morceaux dont la rareté a changé.
+   */
+  function freezeUnlocked({ assign = false } = {}) {
+    const b = breaks();
+    const { lo, hi } = q("SELECT MIN(rowid) AS lo, MAX(rowid) AS hi FROM cat_tracks WHERE source = 'deezer' AND rarity_locked = 0").get();
+    if (lo == null) return 0;
+    let changed = 0;
+    const lock = q(`UPDATE cat_tracks SET rarity_locked = 1, rarity_edition = ${RARITY_EDITION}, pop_source = COALESCE(pop_source, 'deezer-rank')
+      WHERE rowid >= ? AND rowid < ? AND source = 'deezer' AND rarity_locked = 0`);
+    const pick = q(`SELECT rowid AS rid, kind, rank, pop, rarity FROM cat_tracks
+      WHERE rowid >= ? AND rowid < ? AND source = 'deezer' AND rarity_locked = 0`);
+    const set = q('UPDATE cat_tracks SET pop = ?, rarity = ? WHERE rowid = ?');
+    for (let from = lo; from <= hi; from += FREEZE_CHUNK) {
+      const to = from + FREEZE_CHUNK;
+      db.exec('BEGIN');
+      try {
+        if (assign) {
+          for (const r of pick.all(from, to)) {
+            const p = provisional(r.rank, b);
+            const rarity = r.kind === 'promo' ? 'promo' : p.rarity;
+            if (p.pop !== r.pop || rarity !== r.rarity) {
+              set.run(p.pop, rarity, r.rid);
+              if (rarity !== r.rarity) changed += 1;
+            }
+          }
+        }
+        lock.run(from, to);
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+    }
+    return changed;
+  }
+
+  /**
+   * Indice de popularité et rareté des morceaux importés (PLAN.md 6.5). Tant que le catalogue n'est pas gelé
+   * (construction initiale), percentiles du rang Deezer sur tout le catalogue importé, en une requête, et seuils
+   * enregistrés pour les morceaux qui arrivent entre deux calibrages. Une fois gelé, seuls les nouveaux morceaux
+   * reçoivent une rareté (d'après les seuils enregistrés) puis sont gelés à leur tour : aucune rareté existante ne
+   * change. `lock` : gèle tout à la fin (premier import complet). Les tirages et les compteurs du catalogue ne sont
+   * recalculés que si quelque chose a changé.
+   */
+  function calibrate({ lock = false } = {}) {
     const n = deezerTracks();
     const before = state().calibratedTracks;
     let changed = 0;
-    if (n) {
+    if (n && !frozen()) {
       changed = Number(q(CALIBRATE_SQL).run().changes);
       const idx = RANK_TIERS.slice(0, -1).map((t) => Math.floor(t.from * (n - 1)));
       const at = new Map(q(BREAKS_SQL).all(JSON.stringify(idx)).map((r) => [r.rn, r.rank]));
       kvSet('rankBreaks', idx.map((i) => at.get(i) ?? 0));
+      if (lock) freezeUnlocked();
+    } else if (n) {
+      changed = freezeUnlocked({ assign: true });
     }
     if (changed || n !== before || dirty) {
       catalog.refreshCounts();
@@ -460,7 +519,7 @@ export function createImporter(db, catalog, {
     }
     dirty = false;
     sinceCalibration = 0;
-    setState({ calibratedTracks: n, calibratedAt: Date.now() });
+    setState({ calibratedTracks: n, calibratedAt: Date.now(), ...(lock || frozen() ? { frozenAt: state().frozenAt || Date.now() } : {}) });
     return changed;
   }
 
@@ -648,6 +707,14 @@ export function createImporter(db, catalog, {
       }
     }
     const done = importedAlbums() >= cfg.catalogTarget || !next.get();
+    // Premier import complet : les raretés sont gelées (une carte tirée Légendaire reste Légendaire).
+    if (done && !stopRequested && !frozen()) {
+      try {
+        calibrate({ lock: true });
+      } catch (err) {
+        log.warn?.(`  Gel des raretés impossible : ${err.message}`);
+      }
+    }
     setState({ phase: stopRequested ? 'paused' : done ? 'done' : 'idle', finishedAt: done ? state().finishedAt || Date.now() : null });
   }
 
@@ -734,6 +801,8 @@ export function createImporter(db, catalog, {
       refreshedAt: s.refreshedAt || null,
       retryAt,
       lastError: s.lastError,
+      // Raretés gelées depuis (PLAN.md 6.5) ; null pendant la construction initiale du catalogue.
+      frozenAt: s.frozenAt || null,
     };
   }
 
@@ -741,6 +810,7 @@ export function createImporter(db, catalog, {
     start,
     status,
     calibrate,
+    frozen,
     hasWork,
     /** Pause enregistrée en base : elle tient après un redémarrage, jusqu'au bouton « Lancer » de l'espace admin. */
     pause() {

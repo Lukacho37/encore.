@@ -330,11 +330,57 @@ export function createServices(db, catalog, { bus = null } = {}) {
   const insertAchievement = (userId, key, now) => q(`INSERT OR IGNORE INTO achievements (user_id, key, created_at, rank)
     VALUES (?, ?, ?, CASE WHEN ? LIKE 'album:%' THEN (SELECT COUNT(*) + 1 FROM achievements WHERE key = ?) END)`).run(userId, key, now, key, key);
 
+  // ----- niveaux, boosters spéciaux -------------------------------------------------
+
+  /** Ajoute un booster spécial à l'inventaire (user_boosters) ; à appeler dans une transaction. Renvoie son id. */
+  function insertBooster(userId, kind, theme, source, now = Date.now()) {
+    return Number(q('INSERT INTO user_boosters (user_id, kind, theme, source, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(userId, kind, String(theme).slice(0, 100), String(source).slice(0, 80), now).lastInsertRowid);
+  }
+
+  /**
+   * Ajoute de l'XP dans la transaction en cours et applique les récompenses de niveau (PLAN.md 6.6) : un booster
+   * bonus par niveau gagné, un booster spécial « À ton goût » tous les 10 niveaux ; les cosmétiques du palier se
+   * déduisent du niveau. `user` (ligne de users) est mis à jour en mémoire. Renvoie
+   * `{ from, to, boosters, themed, cosmetics, wishlist, showcase }` quand un niveau est gagné, sinon null ;
+   * l'événement level.up part après la validation.
+   */
+  function gainXp(user, xp, source = 'game') {
+    const amount = Math.floor(Number(xp) || 0);
+    if (amount <= 0) return null;
+    const from = levelFromXp(user.xp).level;
+    q('UPDATE users SET xp = xp + ? WHERE id = ?').run(amount, user.id);
+    user.xp += amount;
+    const to = levelFromXp(user.xp).level;
+    if (to <= from) return null;
+    const rewards = levelRewards(from, to);
+    q('UPDATE users SET bonus_packs = bonus_packs + ? WHERE id = ?').run(rewards.boosters, user.id);
+    user.bonus_packs += rewards.boosters;
+    for (const l of rewards.themed) insertBooster(user.id, 'theme', 'taste', `level:${l}`);
+    later('level.up', { userId: user.id, from, to, source });
+    return {
+      from, to, boosters: rewards.boosters, themed: rewards.themed.length, cosmetics: cosmeticsBetween(from, to),
+      wishlist: rewards.wishlist, showcase: rewards.showcase,
+    };
+  }
+
+  /** XP d'une autre source (quêtes, battles, badges : deps.collection.addXp) dans sa propre transaction. */
+  function addXp(userId, xp, source) {
+    return atomic(() => {
+      const user = getUser(userId);
+      if (!user) throw new HttpError(404, 'user_not_found');
+      return gainXp(user, xp, source);
+    });
+  }
+
   /**
    * Ajoute des cartes à la collection, attribue XP, succès et récompenses, et tient à jour dans la même transaction
    * user_album_progress, users.unique_cards et achievements.rank. `cards` : [{ trackId, variant }]. À appeler à
-   * l'intérieur de atomic() : les événements cards.added, album.completed et artist.mastered partent après la
-   * validation. Renvoie les deltas de la réponse (cards, albumDeltas, artistDeltas, achievements, xp, royalties).
+   * l'intérieur de atomic() : les événements cards.added, album.completed, artist.mastered et level.up partent après
+   * la validation. Renvoie les deltas de la réponse (cards, albumDeltas, artistDeltas, achievements, xp, royalties)
+   * et `levelUp` (null sans niveau gagné). Chaque album complété porte `rank` (Pressage n°), `at` et `firstCardAt`
+   * (première carte de l'album) pour le moment de complétion (PLAN.md 6.2). `cards.pulled_rarity` garde la rareté
+   * au moment du tirage (PLAN.md 6.5).
    */
   function addCards(user, cards, source) {
     const now = Date.now();
@@ -352,7 +398,7 @@ export function createServices(db, catalog, { bus = null } = {}) {
 
     const owned = new Set(ownedBefore);
     const seenVariants = new Set(variantsBefore);
-    const upsert = q(`INSERT INTO cards (user_id, track_id, variant, count, first_at) VALUES (?, ?, ?, 1, ?)
+    const upsert = q(`INSERT INTO cards (user_id, track_id, variant, count, first_at, pulled_rarity) VALUES (?, ?, ?, 1, ?, ?)
       ON CONFLICT (user_id, track_id, variant) DO UPDATE SET count = count + 1`);
     let xp = 0;
     // Royalties des nouvelles cartes (pas pour une carte pressée : on vient de la payer).
@@ -363,7 +409,7 @@ export function createServices(db, catalog, { bus = null } = {}) {
       const rarity = view.rarity;
       const newTrack = !owned.has(trackId);
       const newVariant = !seenVariants.has(`${trackId}|${variant}`);
-      upsert.run(user.id, trackId, variant, now);
+      upsert.run(user.id, trackId, variant, now, rarity);
       owned.add(trackId);
       seenVariants.add(`${trackId}|${variant}`);
       xp += xpForCard(rarity, newTrack);
@@ -391,9 +437,9 @@ export function createServices(db, catalog, { bus = null } = {}) {
     const ranks = achievements.length
       ? new Map(q('SELECT key, rank FROM achievements WHERE user_id = ? AND key IN (SELECT value FROM json_each(?))').all(user.id, json(achievements.map((a) => a.key))).map((r) => [r.key, r.rank]))
       : new Map();
-    for (const a of achievements) if (a.type === 'album') a.rank = ranks.get(a.key) ?? null;
 
-    q('UPDATE users SET xp = xp + ?, royalties = royalties + ?, unique_cards = unique_cards + ? WHERE id = ?').run(xp, royalties, newTracks, user.id);
+    q('UPDATE users SET royalties = royalties + ?, unique_cards = unique_cards + ? WHERE id = ?').run(royalties, newTracks, user.id);
+    user.royalties += royalties;
     q('INSERT INTO pack_openings (user_id, source, cards, created_at) VALUES (?, ?, ?, ?)').run(
       user.id, source, JSON.stringify(list.map(({ trackId, variant }) => ({ trackId, variant }))), now,
     );
@@ -401,6 +447,13 @@ export function createServices(db, catalog, { bus = null } = {}) {
     dropStats(user.id);
 
     const progressAfter = progressOf(user.id, albumIds);
+    for (const a of achievements) {
+      if (a.type !== 'album') continue;
+      a.rank = ranks.get(a.key) ?? null;
+      a.at = now;
+      // Première carte de l'album (« 6 jours après ta première carte »).
+      a.firstCardAt = progressAfter.get(a.id)?.first_at ?? now;
+    }
     const albumDeltas = albumIds.map((albumId) => {
       const after = progressAfter.get(albumId);
       return { albumId, before: progressBefore.get(albumId)?.owned || 0, after: after?.owned || 0, total: after?.total ?? views.get(ids.find((id) => views.get(id).albumId === albumId)).total };
@@ -411,8 +464,8 @@ export function createServices(db, catalog, { bus = null } = {}) {
       return { artistId, before: after - (newByArtist.get(artistId) || 0), after, total: catalog.artist(artistId)?.trackCount ?? trackIds.length };
     }).filter((d) => d.after > d.before);
 
-    const levelAfter = levelFromXp(user.xp + xp).level;
-    user.xp += xp;
+    const levelUp = gainXp(user, xp, source);
+    const levelAfter = levelFromXp(user.xp).level;
     later('cards.added', { userId: user.id, source, cards: results, albumDeltas, artistDeltas, achievements, levelBefore, levelAfter });
     for (const a of achievements) {
       if (a.type === 'album') later('album.completed', { userId: user.id, albumId: a.id, rank: a.rank, at: now });
@@ -429,17 +482,94 @@ export function createServices(db, catalog, { bus = null } = {}) {
       achievements,
       albumDeltas,
       artistDeltas,
+      levelUp,
       catalog: refs({ trackIds: ids, albumIds, artistIds: achievements.filter((a) => a.type === 'artist').map((a) => a.id) }),
     };
   }
 
+  // ----- ciblage des boosters (PLAN.md 6.4) -------------------------------------------------
+
+  /** Albums de la liste d'envies (« Albums recherchés »), dans l'ordre d'ajout. */
+  function wishlistAlbumIds(userId) {
+    return q(`SELECT li.item_id FROM lists l JOIN list_items li ON li.list_id = l.id
+      WHERE l.user_id = ? AND l.kind = 'wishlist' AND li.item_type = 'album' ORDER BY li.position`).all(userId).map((r) => r.item_id);
+  }
+
   /**
-   * Albums commencés mais pas finis, les plus récemment enrichis d'abord, vers lesquels une partie des boosters
-   * gratuits est orientée : lus dans user_album_progress (index uap_user_recent), sans GROUP BY sur les cartes.
+   * Albums commencés les plus avancés (ceux à 50 % ou plus d'abord), vers lesquels une partie des boosters est
+   * orientée : les 200 albums commencés les plus récemment enrichis (index uap_user_recent, sans GROUP BY sur les
+   * cartes), puis les ADVANCED_ALBUMS plus avancés d'entre eux.
    */
   function focusAlbums(userId) {
-    return q(`SELECT album_id FROM user_album_progress WHERE user_id = ? AND owned < total
-      ORDER BY updated_at DESC, album_id LIMIT 200`).all(userId).map((r) => r.album_id);
+    return q(`SELECT album_id, owned, total FROM user_album_progress WHERE user_id = ? AND owned < total
+      ORDER BY updated_at DESC, album_id LIMIT 200`).all(userId)
+      .sort((a, b) => b.owned / b.total - a.owned / a.total || b.owned - a.owned)
+      .slice(0, ADVANCED_ALBUMS)
+      .map((r) => r.album_id);
+  }
+
+  /**
+   * Liste d'envies pour le tirage : albums recherchés pas encore complets, et cartes déjà possédées parmi les leurs
+   * (le ciblage ne vise que les cartes manquantes). Au plus 24 albums : quelques centaines de cartes.
+   */
+  function wishlistFocus(userId) {
+    const wanted = wishlistAlbumIds(userId);
+    if (!wanted.length) return { albumIds: [], owned: new Set() };
+    const progress = progressOf(userId, wanted);
+    const albumIds = wanted.filter((id) => {
+      const p = progress.get(id);
+      return !p || p.owned < p.total;
+    });
+    const owned = ownedAmong(userId, albumIds.flatMap((id) => catalog.albumTrackIds(id)));
+    return { albumIds, owned };
+  }
+
+  // Artistes du joueur qui ont des promos (cartes possédées ou albums recherchés) : calculés seulement quand
+  // l'emplacement promo d'un booster sort, gardés 10 minutes.
+  const promoArtistCache = createLru({ max: 5000, ttlMs: 10 * MINUTE });
+  function promoArtistsOf(userId, wishlistIds = []) {
+    return promoArtistCache.wrap(userId, () => {
+      const withPromos = new Set(catalog.promoArtists());
+      const mine = new Set();
+      for (const r of q(`SELECT DISTINCT al.artist_id FROM user_album_progress p JOIN cat_albums al ON al.id = p.album_id
+        WHERE p.user_id = ?`).all(userId)) if (withPromos.has(r.artist_id)) mine.add(r.artist_id);
+      for (const r of q(`SELECT DISTINCT t.artist_id FROM cards c JOIN cat_tracks t ON t.id = c.track_id
+        WHERE c.user_id = ? AND c.track_id >= 'promo:' AND c.track_id < 'promo;'`).all(userId)) if (withPromos.has(r.artist_id)) mine.add(r.artist_id);
+      for (const id of wishlistIds) {
+        const artistId = catalog.album(id)?.artistId;
+        if (withPromos.has(artistId)) mine.add(artistId);
+      }
+      return [...mine];
+    });
+  }
+
+  /** Ciblage complet d'un booster gratuit du joueur (rollPack). */
+  function packFocus(userId) {
+    const wishlist = wishlistFocus(userId);
+    return {
+      wishlist,
+      focusAlbumIds: focusAlbums(userId),
+      promoArtistIds: () => promoArtistsOf(userId, wishlist.albumIds),
+    };
+  }
+
+  /** Compteur de pitié après une série de boosters standard (`packs` : listes de cartes, dans l'ordre d'ouverture). */
+  function nextPity(pity, packs) {
+    let n = pity;
+    for (const pack of packs) n = pack.some((c) => isHit(c.rarity)) ? 0 : n + 1;
+    return n;
+  }
+
+  /** Boosters standard tirés l'un après l'autre : la pitié de chacun dépend des précédents. */
+  function rollSeries(count, pity, options) {
+    const packs = [];
+    let n = pity;
+    for (let i = 0; i < count; i++) {
+      const pack = rollPack(secureRandom, catalog, { ...options, pity: n });
+      packs.push(pack);
+      n = nextPity(n, [pack]);
+    }
+    return { packs, pity: n };
   }
 
   function openPacks(userId, count = 1) {
@@ -458,13 +588,22 @@ export function createServices(db, catalog, { bus = null } = {}) {
           q('UPDATE users SET bonus_packs = bonus_packs - 1 WHERE id = ?').run(user.id);
         }
       }
-      const focus = focusAlbums(userId);
-      const packs = Array.from({ length: n }, () => rollPack(secureRandom, catalog, { focusAlbumIds: focus }));
+      const { packs, pity } = rollSeries(n, user.pity ?? 0, packFocus(userId));
+      q('UPDATE users SET pity = ? WHERE id = ?').run(pity, user.id);
+      user.pity = pity;
       const source = admin ? 'admin-pack' : 'pack';
       const result = addCards(user, packs.flat(), source);
       later('pack.opened', { userId, source, count: n });
-      return { packs: packs.map((p) => p.length), ...result };
+      return { packs: packs.map((p) => p.length), ...result, pity };
     });
+  }
+
+  /** Une carte ultra ou mieux d'un booster d'album remet aussi la pitié à zéro (sans compter le booster). */
+  function resetPityOnHit(user, cards) {
+    if (!cards.some((c) => isHit(c.rarity)) || !user.pity) return user.pity ?? 0;
+    q('UPDATE users SET pity = 0 WHERE id = ?').run(user.id);
+    user.pity = 0;
+    return 0;
   }
 
   /** Booster d'album : 5 cartes de l'album choisi, payé en royalties (gratuit pour l'admin). */
@@ -477,11 +616,70 @@ export function createServices(db, catalog, { bus = null } = {}) {
       const cost = isAdmin(user) ? 0 : ECONOMY.albumPackPrice;
       if (user.royalties < cost) throw new HttpError(409, 'not_enough_royalties');
       q('UPDATE users SET royalties = royalties - ? WHERE id = ?').run(cost, userId);
+      user.royalties -= cost;
       const owned = ownedAmong(userId, catalog.albumTrackIds(id));
       const cards = rollAlbumPack(secureRandom, catalog, id, owned);
+      const pity = resetPityOnHit(user, cards);
       const result = addCards(user, cards, 'album-pack');
       later('pack.opened', { userId, source: 'album-pack', count: 1 });
-      return { spent: cost, albumId: id, packs: [cards.length], ...result };
+      return { spent: cost, albumId: id, packs: [cards.length], ...result, pity };
+    });
+  }
+
+  /**
+   * Genres d'un booster « À ton goût » : les genres favoris du joueur (user_favorites, onboarding), complétés par
+   * ceux où il a le plus de cartes. Au plus 3.
+   */
+  function tasteGenres(userId) {
+    const out = q("SELECT item_id FROM user_favorites WHERE user_id = ? AND kind = 'genre' ORDER BY position, created_at LIMIT 3")
+      .all(userId).map((r) => r.item_id).filter((g) => THEME_GENRES.includes(g));
+    if (out.length < 3) {
+      for (const r of q(`SELECT al.genre AS g, SUM(p.owned) AS n FROM user_album_progress p JOIN cat_albums al ON al.id = p.album_id
+        WHERE p.user_id = ? GROUP BY al.genre ORDER BY n DESC LIMIT 3`).all(userId)) {
+        if (out.length < 3 && r.g && !out.includes(r.g)) out.push(r.g);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Ouvre un booster spécial de l'inventaire (PLAN.md 6.10) : thématique (chances du booster standard, pitié
+   * comprise, réservoir filtré par le thème) ou d'album (5 cartes de l'album, manquantes d'abord ; `albumId` choisi
+   * à l'ouverture pour « album:choice »). Un booster ne s'ouvre qu'une fois, même si deux requêtes se croisent.
+   */
+  function openSpecialPack(userId, boosterId, { albumId } = {}) {
+    const id = Number(boosterId);
+    if (!Number.isInteger(id) || id <= 0) throw new HttpError(404, 'booster_not_found');
+    return atomic(() => {
+      const row = q('SELECT * FROM user_boosters WHERE id = ? AND user_id = ?').get(id, userId);
+      if (!row) throw new HttpError(404, 'booster_not_found');
+      if (row.opened_at) throw new HttpError(409, 'booster_opened');
+      const user = getUser(userId);
+      const parsed = parseBoosterTheme(row.theme);
+      let cards;
+      let target = null;
+      let pity = user.pity ?? 0;
+      if (parsed?.kind === 'album' || parsed?.kind === 'choice') {
+        target = parsed.kind === 'album' ? parsed.value : idOf(albumId);
+        if (!target) throw new HttpError(400, 'album_required');
+        if (!catalog.album(target)) throw new HttpError(404, 'unknown_album');
+        cards = rollAlbumPack(secureRandom, catalog, target, ownedAmong(userId, catalog.albumTrackIds(target)));
+        pity = resetPityOnHit(user, cards);
+      } else {
+        // Thème inconnu (événement retiré…) : booster standard, sans ciblage.
+        const theme = themeFilterOf(parsed, { tasteGenres: parsed?.kind === 'taste' ? tasteGenres(userId) : [] });
+        const series = rollSeries(1, pity, { theme });
+        cards = series.packs[0];
+        pity = series.pity;
+        q('UPDATE users SET pity = ? WHERE id = ?').run(pity, user.id);
+        user.pity = pity;
+      }
+      const now = Date.now();
+      const done = q('UPDATE user_boosters SET opened_at = ? WHERE id = ? AND opened_at IS NULL').run(now, id);
+      if (!done.changes) throw new HttpError(409, 'booster_opened');
+      const result = addCards(user, cards, 'special');
+      later('pack.opened', { userId, source: 'special', count: 1, theme: row.theme });
+      return { booster: { id, kind: row.kind, theme: row.theme }, albumId: target, packs: [cards.length], ...result, pity };
     });
   }
 
@@ -511,7 +709,35 @@ export function createServices(db, catalog, { bus = null } = {}) {
     });
   }
 
-  /** « Presser » une carte manquante en échange de royalties. */
+  /**
+   * Promos pressables (PLAN.md 6.4) : le joueur a complété au moins un album de cet artiste. Parcourt les albums de
+   * l'artiste (index cat_albums par artiste) et cherche chaque succès par la clé primaire du joueur.
+   */
+  const promoUnlocked = (userId, artistId) => !!q(`SELECT 1 FROM cat_albums al WHERE al.artist_id = ?
+    AND EXISTS (SELECT 1 FROM achievements a WHERE a.user_id = ? AND a.key = 'album:' || al.id) LIMIT 1`).get(artistId, userId);
+
+  /**
+   * Ce que coûte le pressage d'une carte pour ce joueur (GET /api/me/press/:trackId) : `cost` (null si impossible),
+   * `reason` : null | 'owned' | 'promo_locked' (promo d'un artiste dont aucun album n'est complété).
+   */
+  function pressInfo(userId, trackId) {
+    const id = idOf(trackId);
+    const track = id && catalog.track(id);
+    if (!track) throw new HttpError(404, 'unknown_track');
+    const user = getUser(userId);
+    const unlocked = track.rarity === 'promo' ? promoUnlocked(userId, track.artistId) : false;
+    const base = pressCost(track.rarity, { promoUnlocked: unlocked });
+    const owned = ownsTrack(userId, id);
+    return {
+      trackId: id,
+      cost: isAdmin(user) ? 0 : base,
+      pressable: !owned && (base != null || isAdmin(user)),
+      reason: owned ? 'owned' : base == null ? 'promo_locked' : null,
+      artistId: track.artistId,
+    };
+  }
+
+  /** « Presser » une carte manquante en échange de royalties (promo : un album de l'artiste complété, 1 200). */
   function pressCard(userId, trackId) {
     const id = idOf(trackId);
     const track = id && catalog.track(id);
@@ -519,9 +745,9 @@ export function createServices(db, catalog, { bus = null } = {}) {
     return atomic(() => {
       const user = getUser(userId);
       const admin = isAdmin(user);
-      const base = pressCost(track.rarity);
+      const base = pressCost(track.rarity, { promoUnlocked: track.rarity === 'promo' && promoUnlocked(userId, track.artistId) });
       // L'admin presse gratuitement, promos comprises, pour tester.
-      if (base == null && !admin) throw new HttpError(400, 'not_pressable');
+      if (base == null && !admin) throw new HttpError(409, 'promo_locked', { artistId: track.artistId });
       const cost = admin ? 0 : base;
       if (ownsTrack(userId, id)) throw new HttpError(409, 'already_owned');
       if (user.royalties < cost) throw new HttpError(409, 'not_enough_royalties');
@@ -549,12 +775,14 @@ export function createServices(db, catalog, { bus = null } = {}) {
     profileCache.delete(userId);
   }
 
+  /** Vitrine : 6 cartes, +1 aux niveaux 10 et 30 (PLAN.md 6.6). */
   function setShowcase(userId, slots) {
-    if (!Array.isArray(slots) || slots.length > SHOWCASE_SLOTS) throw new HttpError(400, 'invalid_showcase');
+    const max = showcaseSlots(levelFromXp(getUser(userId)?.xp || 0).level);
+    if (!Array.isArray(slots) || slots.length > max) throw new HttpError(400, 'invalid_showcase');
     const ids = slots.map(idOf);
     const owned = ownedAmong(userId, ids.filter(Boolean));
     const clean = ids.map((id) => (id && owned.has(id) ? id : null));
-    while (clean.length < SHOWCASE_SLOTS) clean.push(null);
+    while (clean.length < max) clean.push(null);
     q('UPDATE users SET showcase = ? WHERE id = ?').run(JSON.stringify(clean), userId);
     profileCache.delete(userId);
     return clean;
@@ -872,16 +1100,19 @@ export function createServices(db, catalog, { bus = null } = {}) {
       const correctCount = game.correct + (correct ? 1 : 0);
       const last = game.current === questions.length - 1;
       let final = null;
+      let levelUp = null;
       if (last) {
         const rewardPacks = game.rewarded ? blindtestReward(correctCount) : 0;
         const xp = correctCount * 10;
-        q('UPDATE users SET bonus_packs = bonus_packs + ?, xp = xp + ? WHERE id = ?').run(rewardPacks, xp, userId);
+        q('UPDATE users SET bonus_packs = bonus_packs + ? WHERE id = ?').run(rewardPacks, userId);
+        // L'XP passe par les paliers de niveau (booster bonus, PLAN.md 6.6), comme toute autre source.
+        levelUp = gainXp(getUser(userId), xp, 'blindtest');
         q('UPDATE blindtest_games SET finished_at = ?, reward_packs = ? WHERE id = ?').run(Date.now(), rewardPacks, game.id);
         final = { score, correct: correctCount, rounds: questions.length, rewardPacks, rewarded: !!game.rewarded, xp };
         later('blindtest.finished', { userId, gameId: game.id, correct: correctCount, score, rewarded: !!game.rewarded });
       }
       q('UPDATE blindtest_games SET questions = ?, score = ?, correct = ? WHERE id = ?').run(JSON.stringify(questions), score, correctCount, game.id);
-      return { result: { correct, answer: qn.answer, picked: qn.picked, points, score }, final, catalog: refs({ trackIds: [qn.answer] }) };
+      return { result: { correct, answer: qn.answer, picked: qn.picked, points, score }, final, levelUp, catalog: refs({ trackIds: [qn.answer] }) };
     });
   }
 
@@ -897,110 +1128,13 @@ export function createServices(db, catalog, { bus = null } = {}) {
     return { round };
   }
 
-  // ----- notes & critiques ----------------------------------------------------
-
-  const REVIEW_MAX = 2000;
-
-  function checkItem(type, id) {
-    const ok = idOf(id) && (type === 'album' ? !!catalog.album(id) : type === 'track' ? !!catalog.track(id) : false);
-    if (!ok) throw new HttpError(404, 'unknown_item');
-  }
+  // ----- notes ----------------------------------------------------------------------
+  // Les routes des notes et critiques sont celles du module ratings (server/ratings.js) ; il reste ici ce que les
+  // modules partagent : les amis d'un joueur, le recalcul de rating_stats et l'échelle de notation.
 
   function friendIds(userId) {
     return new Set(q(`SELECT CASE WHEN requester_id = ? THEN addressee_id ELSE requester_id END AS id
       FROM friendships WHERE status = 'accepted' AND (requester_id = ? OR addressee_id = ?)`).all(userId, userId, userId).map((r) => r.id));
-  }
-
-  function author(row) {
-    return { id: row.user_id, username: row.username, avatar: row.avatar, avatarColor: row.avatar_color, level: levelFromXp(row.xp).level };
-  }
-
-  function summarize(scores) {
-    const distribution = Array(11).fill(0);
-    let sum = 0;
-    for (const s of scores) {
-      distribution[s] += 1;
-      sum += s;
-    }
-    return { count: scores.length, average: scores.length ? sum / scores.length : null, distribution };
-  }
-
-  const WITH_AUTHOR = `SELECT r.*, u.username, u.avatar, u.avatar_color, u.xp FROM ratings r JOIN users u ON u.id = r.user_id`;
-
-  /** Références des éléments notés (titres, visuels) et des photos de profil des auteurs. */
-  function ratingRefs(items, authors = []) {
-    return refs({
-      albumIds: [...items.filter((x) => x.type === 'album').map((x) => x.id), ...authors.map((a) => avatarAlbum(a.avatar)).filter(Boolean)],
-      trackIds: items.filter((x) => x.type === 'track').map((x) => x.id),
-    });
-  }
-
-  /** Notes d'un album ou d'un morceau : moyenne, répartition, ta note, critiques (amis d'abord). */
-  function itemRatings(viewerId, type, id) {
-    checkItem(type, id);
-    const all = q('SELECT user_id, score FROM ratings WHERE item_type = ? AND item_id = ?').all(type, id);
-    const mine = q('SELECT score, review, updated_at FROM ratings WHERE user_id = ? AND item_type = ? AND item_id = ?').get(viewerId, type, id);
-    const friends = friendIds(viewerId);
-    const ids = [...friends];
-    const inFriends = `r.user_id IN (${ids.map(() => '?').join(',')})`;
-    // Critiques écrites : celles des amis d'abord, puis les plus récentes.
-    const friendsFirst = ids.length ? `CASE WHEN ${inFriends} THEN 1 ELSE 0 END DESC, ` : '';
-    const reviews = q(`${WITH_AUTHOR} WHERE r.item_type = ? AND r.item_id = ? AND r.user_id != ? AND r.review IS NOT NULL
-      ORDER BY ${friendsFirst}r.updated_at DESC LIMIT 30`).all(type, id, viewerId, ...ids)
-      .map((r) => ({ user: author(r), score: r.score, review: r.review, updatedAt: r.updated_at, friend: friends.has(r.user_id) }));
-    const friendScores = ids.length
-      ? q(`${WITH_AUTHOR} WHERE r.item_type = ? AND r.item_id = ? AND ${inFriends} ORDER BY r.updated_at DESC LIMIT 12`).all(type, id, ...ids)
-        .map((r) => ({ user: author(r), score: r.score }))
-      : [];
-    const result = {
-      summary: summarize(all.map((r) => r.score)),
-      mine: mine ? { score: mine.score, review: mine.review, updatedAt: mine.updated_at } : null,
-      reviews,
-      friendScores,
-      catalog: ratingRefs([], [...reviews, ...friendScores].map((r) => r.user)),
-    };
-    if (type === 'album') {
-      const trackIds = json(catalog.albumTrackIds(id));
-      const tracks = {};
-      for (const r of q("SELECT item_id, COUNT(*) AS n, AVG(score) AS a FROM ratings WHERE item_type = 'track' AND item_id IN (SELECT value FROM json_each(?)) GROUP BY item_id").all(trackIds)) {
-        tracks[r.item_id] = { count: r.n, average: r.a };
-      }
-      for (const r of q("SELECT item_id, score FROM ratings WHERE user_id = ? AND item_type = 'track' AND item_id IN (SELECT value FROM json_each(?))").all(viewerId, trackIds)) {
-        tracks[r.item_id] = { ...(tracks[r.item_id] || { count: 0, average: null }), mine: r.score };
-      }
-      result.tracks = tracks;
-    }
-    return result;
-  }
-
-  function rate(userId, type, id, score, review) {
-    checkItem(type, id);
-    if (!Number.isInteger(score) || score < 0 || score > 10) throw new HttpError(400, 'invalid_score');
-    // Sans champ `review`, on garde la critique déjà écrite (changement de note depuis la tracklist).
-    if (review === undefined) {
-      review = q('SELECT review FROM ratings WHERE user_id = ? AND item_type = ? AND item_id = ?').get(userId, type, id)?.review ?? '';
-    }
-    let text = typeof review === 'string' ? review.trim() : '';
-    if (text.length > REVIEW_MAX) throw new HttpError(400, 'review_too_long');
-    if (!text) text = null;
-    const now = Date.now();
-    // review_at : date du texte de la critique (inchangée quand seule la note bouge).
-    tx(db, () => {
-      q(`INSERT INTO ratings (user_id, item_type, item_id, score, review, review_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT (user_id, item_type, item_id) DO UPDATE SET score = excluded.score, review = excluded.review,
-          review_at = CASE WHEN excluded.review IS NULL THEN NULL WHEN ratings.review IS excluded.review THEN ratings.review_at ELSE excluded.review_at END,
-          updated_at = excluded.updated_at`)
-        .run(userId, type, id, score, text, text ? now : null, now, now);
-      refreshRatingStats(type, id);
-    });
-  }
-
-  function unrate(userId, type, id) {
-    checkItem(type, id);
-    tx(db, () => {
-      q('DELETE FROM ratings WHERE user_id = ? AND item_type = ? AND item_id = ?').run(userId, type, id);
-      refreshRatingStats(type, id);
-    });
   }
 
   /**
@@ -1014,57 +1148,9 @@ export function createServices(db, catalog, { bus = null } = {}) {
       FROM ratings WHERE item_type = ? AND item_id = ? GROUP BY item_type, item_id`).run(type, id);
   }
 
-  /** Journal de notes d'un joueur, affiché sur son profil. */
-  function userRatings(username) {
-    const target = q('SELECT * FROM users WHERE username = ? AND email_verified_at IS NOT NULL').get(String(username || ''));
-    if (!target) throw new HttpError(404, 'user_not_found');
-    // Seuls les éléments encore au catalogue comptent (jointure plutôt qu'une recherche par ligne).
-    const rows = q(`SELECT r.item_type, r.item_id, r.score, r.review, r.updated_at FROM ratings r
-      WHERE r.user_id = ? AND ((r.item_type = 'album' AND EXISTS (SELECT 1 FROM cat_albums al WHERE al.id = r.item_id))
-        OR (r.item_type = 'track' AND EXISTS (SELECT 1 FROM cat_tracks t WHERE t.id = r.item_id)))
-      ORDER BY r.updated_at DESC`).all(target.id);
-    const entry = (r) => ({ type: r.item_type, id: r.item_id, score: r.score, review: r.review, updatedAt: r.updated_at });
-    const albums = rows.filter((r) => r.item_type === 'album');
-    const result = {
-      stats: { ...summarize(rows.map((r) => r.score)), albums: albums.length, tracks: rows.length - albums.length, reviews: rows.filter((r) => r.review).length },
-      topAlbums: [...albums].sort((a, b) => b.score - a.score || b.updated_at - a.updated_at).slice(0, 4).map(entry),
-      topTracks: rows.filter((r) => r.item_type === 'track').sort((a, b) => b.score - a.score || b.updated_at - a.updated_at).slice(0, 5).map(entry),
-      recent: rows.slice(0, 12).map(entry),
-      reviews: rows.filter((r) => r.review).slice(0, 10).map(entry),
-    };
-    result.catalog = ratingRefs([...result.topAlbums, ...result.topTracks, ...result.recent, ...result.reviews]);
-    return result;
-  }
-
-  /** Dernières notes des amis. */
-  function friendsFeed(userId) {
-    const ids = [...friendIds(userId)];
-    if (!ids.length) return { items: [], catalog: refs() };
-    const items = q(`${WITH_AUTHOR} WHERE r.user_id IN (${ids.map(() => '?').join(',')}) ORDER BY r.updated_at DESC LIMIT 20`).all(...ids)
-      .map((r) => ({ user: author(r), type: r.item_type, id: r.item_id, score: r.score, review: r.review, updatedAt: r.updated_at }));
-    const catalogRefs = ratingRefs(items, items.map((i) => i.user));
-    const known = new Set([...catalogRefs.albums.map((a) => `album:${a.id}`), ...catalogRefs.tracks.map((t) => `track:${t.id}`)]);
-    return { items: items.filter((i) => known.has(`${i.type}:${i.id}`)), catalog: catalogRefs };
-  }
-
   function setRatingScale(userId, scale) {
     if (!['stars', 'points'].includes(scale)) throw new HttpError(400, 'invalid_scale');
     q('UPDATE users SET rating_scale = ? WHERE id = ?').run(scale, userId);
-  }
-
-  function adminReviews() {
-    const items = q(`${WITH_AUTHOR} WHERE r.review IS NOT NULL ORDER BY r.updated_at DESC LIMIT 60`).all()
-      .map((r) => ({ user: author(r), type: r.item_type, id: r.item_id, score: r.score, review: r.review, updatedAt: r.updated_at }));
-    return { items, catalog: ratingRefs(items, items.map((i) => i.user)) };
-  }
-
-  /** Supprime le texte d'une critique ; la note du joueur est conservée. */
-  function adminDeleteReview(userId, type, id) {
-    tx(db, () => {
-      const res = q('UPDATE ratings SET review = NULL, review_at = NULL WHERE user_id = ? AND item_type = ? AND item_id = ? AND review IS NOT NULL').run(Number(userId) || 0, String(type), String(id));
-      if (!res.changes) throw new HttpError(404, 'review_not_found');
-      refreshRatingStats(String(type), String(id));
-    });
   }
 
   // ----- admin ----------------------------------------------------------------
@@ -1137,7 +1223,7 @@ export function createServices(db, catalog, { bus = null } = {}) {
       q('DELETE FROM cards WHERE user_id = ?').run(userId);
       q('DELETE FROM achievements WHERE user_id = ?').run(userId);
       q('DELETE FROM user_album_progress WHERE user_id = ?').run(userId);
-      q("UPDATE users SET xp = 0, avatar = 'initials', showcase = '[]', unique_cards = 0 WHERE id = ?").run(userId);
+      q("UPDATE users SET xp = 0, avatar = 'initials', showcase = '[]', unique_cards = 0, pity = 0 WHERE id = ?").run(userId);
     });
     dropStats(userId);
   }
@@ -1153,7 +1239,7 @@ export function createServices(db, catalog, { bus = null } = {}) {
       const now = Date.now();
       const where = id ? 'album_id = ?' : "source = 'seed'";
       const args = id ? [id] : [];
-      q(`INSERT OR IGNORE INTO cards (user_id, track_id, variant, count, first_at) SELECT ?, id, 'std', 1, ? FROM cat_tracks WHERE ${where}`).run(userId, now, ...args);
+      q(`INSERT OR IGNORE INTO cards (user_id, track_id, variant, count, first_at, pulled_rarity) SELECT ?, id, 'std', 1, ?, rarity FROM cat_tracks WHERE ${where}`).run(userId, now, ...args);
       const albums = id ? [id] : q("SELECT id FROM cat_albums WHERE source = 'seed'").all().map((r) => r.id);
       for (const a of albums) insertAchievement(userId, `album:${a}`, now);
       // Artistes dont toutes les cartes sont maintenant possédées.
@@ -1176,8 +1262,8 @@ export function createServices(db, catalog, { bus = null } = {}) {
     const missing = list[Math.floor(secureRandom() * list.length)];
     tx(db, () => {
       const now = Date.now();
-      const ins = q("INSERT OR IGNORE INTO cards (user_id, track_id, variant, count, first_at) VALUES (?, ?, 'std', 1, ?)");
-      for (const t of list) if (t.id !== missing.id) ins.run(userId, t.id, now);
+      const ins = q("INSERT OR IGNORE INTO cards (user_id, track_id, variant, count, first_at, pulled_rarity) VALUES (?, ?, 'std', 1, ?, ?)");
+      for (const t of list) if (t.id !== missing.id) ins.run(userId, t.id, now, t.rarity);
       q('DELETE FROM cards WHERE user_id = ? AND track_id = ?').run(userId, missing.id);
       q('DELETE FROM achievements WHERE user_id = ? AND key IN (?, ?)').run(userId, `album:${id}`, `artist:${missing.artistId}`);
       recountCollection(userId, [id]);
@@ -1259,13 +1345,14 @@ export function createServices(db, catalog, { bus = null } = {}) {
   return {
     // forget(userId) : oublie les statistiques et le profil gardés en cache d'un joueur (après un changement fait ailleurs).
     forget: dropStats,
-    bind, atomic, getUser, isAdmin, refs, syncPacks, state, openPacks, openAlbumPack, buyPack, recycleDuplicates, pressCard,
-    addCards, refreshProgress, focusAlbums,
+    bind, atomic, getUser, isAdmin, refs, syncPacks, state, openPacks, openAlbumPack, openSpecialPack, buyPack, recycleDuplicates,
+    pressCard, pressInfo, promoUnlocked, addCards, refreshProgress, focusAlbums, wishlistAlbumIds, packFocus,
+    gainXp, addXp, insertBooster, unlockedCosmeticIds, parseJson,
     setAvatar, setShowcase, setLang, setPrefs, publicProfile, userSummaries, summaryAlbums,
     listFriends, requestFriend, respondFriend, removeFriend, friendIds,
     blindtestInfo, startBlindtest, answerBlindtest, nextBlindtestRound,
-    itemRatings, rate, unrate, refreshRatingStats, userRatings, friendsFeed, setRatingScale,
-    audit, adminOverview, adminGrant, adminResetCollection, adminCompleteCollection, adminAlmostAlbum, adminReviews, adminDeleteReview,
+    refreshRatingStats, setRatingScale,
+    audit, adminOverview, adminGrant, adminResetCollection, adminCompleteCollection, adminAlmostAlbum,
     browseAlbums, albumDetail, artistDetail, tracksByIds, artistsByIds, browsePromos, myCards, groups,
     welcome: { packs: ECONOMY.welcomePacks, royalties: ECONOMY.welcomeRoyalties },
   };

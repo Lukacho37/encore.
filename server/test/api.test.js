@@ -83,16 +83,20 @@ test('boosters, doublons, pressage et succès', async () => {
   const call = client();
   const s = await register(call, 'bob@example.com', 'bob');
   assert.equal(s.user.role, 'player');
+  // Les 5 boosters de bienvenue, plus le booster bonus de chaque niveau gagné en les ouvrant (PLAN.md 6.6).
   let opened = 0;
-  for (let i = 0; i < 5; i++) {
+  let levelBoosters = 0;
+  for (let i = 0; i < 5 + levelBoosters; i++) {
     const r = await call('POST', '/api/packs/open', {});
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.cards.length, 5);
+    levelBoosters += r.body.levelUp?.boosters || 0;
     opened++;
   }
   const st = (await call('GET', '/api/state')).body;
   assert.equal(st.packs.bonus, 0);
-  assert.equal(opened, 5);
+  assert.equal(opened, 5 + levelBoosters);
+  assert.ok(levelBoosters >= 1, 'au moins un niveau gagné avec 25 cartes');
   // Pas de stock : le serveur refuse.
   assert.equal((await call('POST', '/api/packs/open', {})).body.error, 'no_packs');
   assert.equal((await call('POST', '/api/packs/open', { count: 10 })).body.error, 'invalid_count');
@@ -114,7 +118,10 @@ test('boosters, doublons, pressage et succès', async () => {
   assert.ok(press.body.achievements.some((a) => a.key === 'album:kind-of-blue'));
   assert.ok(press.body.achievements.some((a) => a.key === 'artist:miles-davis'));
   assert.equal((await call('POST', '/api/collection/press', { trackId: album[0].id })).body.error, 'already_owned');
-  assert.equal((await call('POST', '/api/collection/press', { trackId: 'promo:hey-jude' })).body.error, 'not_pressable');
+  // Promo d'un artiste dont aucun album n'est complété : pas encore pressable (PLAN.md 6.4).
+  const locked = await call('POST', '/api/collection/press', { trackId: 'promo:hey-jude' });
+  assert.equal(locked.status, 409);
+  assert.equal(locked.body.error, 'promo_locked');
 
   // Avatar : pochette d'un album complété uniquement.
   assert.equal((await call('POST', '/api/profile/avatar', { avatar: 'album:discovery' })).body.error, 'avatar_locked');
@@ -127,9 +134,10 @@ test('boosters, doublons, pressage et succès', async () => {
   assert.equal(sc.body.state.user.showcase[0], album[0].id);
   assert.equal(sc.body.state.user.showcase[1], null, 'carte non possédée refusée');
 
+  const bonusBefore = (await call('GET', '/api/state')).body.packs.bonus;
   const buy = await call('POST', '/api/shop/buy-pack');
   assert.equal(buy.status, 200);
-  assert.equal(buy.body.state.packs.bonus, 1);
+  assert.equal(buy.body.state.packs.bonus, bonusBefore + 1);
 });
 
 test('amis par nom d’utilisateur', async () => {
@@ -164,19 +172,25 @@ test('blind test : partie complète et récompense', async () => {
   const { gameId } = start.body;
   let round = start.body.round;
   let final;
+  let levelBoosters = 0;
   for (let i = 0; i < 5; i++) {
     assert.equal(round.choices.length, 4);
     // On triche dans le test en lisant la bonne réponse en base.
     const qs = JSON.parse(db.prepare('SELECT questions FROM blindtest_games WHERE id = ?').get(gameId).questions);
     const ans = await call('POST', `/api/blindtest/${gameId}/answer`, { choice: qs[i].answer });
     assert.equal(ans.body.result.correct, true);
-    if (ans.body.final) final = ans.body.final;
+    if (ans.body.final) {
+      final = ans.body.final;
+      levelBoosters = ans.body.levelUp?.boosters || 0;
+    }
     else round = (await call('POST', `/api/blindtest/${gameId}/next`)).body.round;
   }
   assert.equal(final.correct, 5);
   assert.equal(final.rewardPacks, 3);
   const st = (await call('GET', '/api/state')).body;
-  assert.equal(st.packs.bonus, 5 + 3);
+  // 5 de bienvenue + 3 gagnés + le booster bonus du niveau 2 (50 XP de la partie).
+  assert.equal(levelBoosters, 1);
+  assert.equal(st.packs.bonus, 5 + 3 + levelBoosters);
 });
 
 test('outils admin', async () => {

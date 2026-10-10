@@ -1,6 +1,7 @@
 // Recherche globale côté site — chantier P0-E (PLAN.md 5.1, contrat 9.2).
 //   useSearchSuggest(q, { scope, enabled }) → { data, loading, error, stale, retry }
-//     suggestions de GET /api/search/suggest : attente de 150 ms après la dernière frappe, 2 caractères au moins,
+//     suggestions de GET /api/search/suggest : la première requête d'une saisie part tout de suite, les suivantes
+//     150 ms après la dernière frappe, 2 caractères au moins,
 //     requête précédente annulée, réponses gardées par requête (100 au plus) : revenir en arrière avec la touche
 //     d'effacement réaffiche tout de suite les suggestions déjà vues ; une réponse arrivée après une requête plus
 //     récente est ignorée (tickets). Pendant le chargement, les suggestions précédentes restent affichées (`stale`).
@@ -63,7 +64,16 @@ const suggestPath = (fq, scope) => `/search/suggest?q=${encodeURIComponent(fq)}$
 export function useSearchSuggest(q, { scope = 'all', enabled = true } = {}) {
   const prepared = useMemo(() => prepareQuery(q), [q]);
   const key = enabled && prepared ? `${scope}|${prepared.fq}` : null;
-  const settled = useDebounced(key, DEBOUNCE_MS);
+  const debounced = useDebounced(key, DEBOUNCE_MS);
+  // Première requête d'une saisie (le champ n'avait encore rien à chercher) : envoyée tout de suite, les premières
+  // suggestions s'affichent sans attendre ; les frappes suivantes attendent les 150 ms habituelles.
+  const [lead, setLead] = useState(null);
+  const prevKey = useRef(null);
+  useEffect(() => {
+    if (key && !prevKey.current) setLead(key);
+    prevKey.current = key;
+  }, [key]);
+  const settled = key && key === lead ? key : debounced;
   const [state, setState] = useState({ key: null, data: null, loading: false, error: null });
   const ticket = useRef(0);
   const [attempt, setAttempt] = useState(0);

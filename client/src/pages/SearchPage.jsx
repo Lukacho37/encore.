@@ -42,11 +42,12 @@ function Rows({ kind, rows, lookup, query }) {
   );
 }
 
-/** Onglet « Tout » : un bloc par type, dans l'ordre des suggestions. */
+/** Onglet « Tout » : un bloc par type, dans l'ordre des suggestions (le type du meilleur résultat en tête). */
 function AllResults({ data, query, onTab }) {
   const { t } = useI18n();
   const lookup = useMemo(() => lookupOf(data), [data]);
-  const kinds = SEARCH_KINDS.filter((k) => data.groups?.[k]?.length);
+  const lead = data.top?.kind;
+  const kinds = SEARCH_KINDS.filter((k) => data.groups?.[k]?.length).sort((a, b) => (b === lead) - (a === lead));
   return kinds.map((kind) => {
     const rows = data.groups[kind];
     const n = data.counts?.[kind] || rows.length;
@@ -172,7 +173,8 @@ export default function SearchPage() {
       {prepared && (
         <nav className="tabs gs-page__tabs" aria-label={t('search.filterKinds')} ref={top}>
           {TABS.map((k) => (
-            <Link key={k} to={searchPagePath(q, k)} replace className={`tabs__tab${type === k ? ' active' : ''}`} aria-current={type === k ? 'page' : undefined}>
+            <Link key={k} to={searchPagePath(q, k)} replace aria-current={type === k ? 'page' : undefined}
+              className={`tabs__tab${type === k ? ' active' : ''}${k !== 'all' && all.data && !counts[k] ? ' gs-page__tab--empty' : ''}`}>
               {t(`search.kinds.${k}`)}
               {k !== 'all' && all.data && <span className="gs-page__n">{countLabel(counts[k])}</span>}
             </Link>

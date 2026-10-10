@@ -23,7 +23,7 @@ export default {
       showAllAny: `Voir tous les résultats pour ${quoted('{q}')}`,
       recent: 'Recherches récentes',
       clearRecent: 'Effacer',
-      didYouMean: 'Vouliez-vous dire',
+      didYouMean: 'Tu voulais dire',
       didYouMeanEnd: `${NNBSP}?`,
       approx: 'Résultat approché (faute de frappe corrigée)',
       none: `Aucun résultat pour ${quoted('{q}')}`,

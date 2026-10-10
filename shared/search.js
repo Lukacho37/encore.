@@ -25,9 +25,17 @@ export const SUGGEST_MIN_SIM = 0.4;
 /** Requêtes de 3 caractères ou moins : classées par popularité (index de préfixes de 2 et 3 lettres). */
 export const SHORT_QUERY = 3;
 
-/** Forme normalisée d'un texte : repliée (accents, casse, œ → oe…), ponctuation remplacée par des espaces. */
+const ASCII = /^[\x00-\x7f]*$/;
+
+/**
+ * Forme normalisée d'un texte : repliée (accents, casse, œ → oe…), ponctuation remplacée par des espaces.
+ * Texte tout en ASCII (presque tous les titres) : même résultat par un chemin court, sans décomposition Unicode
+ * (la reconstruction de l'index normalise quelque 500 000 textes au démarrage).
+ */
 export function normalize(s) {
-  return foldText(s).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const text = String(s ?? '');
+  if (ASCII.test(text)) return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return foldText(text).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
 
 /** Mots d'une requête normalisée (8 au plus). */

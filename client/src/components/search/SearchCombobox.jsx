@@ -21,8 +21,12 @@ import '../../styles/search.css';
 const PANEL_WIDTH = 560;
 const kindsOfScope = (scope) => (!scope || scope === 'all' ? SEARCH_KINDS : SEARCH_KINDS.filter((k) => String(scope).split(',').includes(k)));
 
-/** Groupes affichés : vides masqués ; artistes, membres et listes réunis quand chacun n'a qu'une ligne. */
-function groupsOf(options) {
+/**
+ * Groupes affichés : vides masqués ; artistes, membres et listes réunis quand chacun n'a qu'une ligne. Le groupe du
+ * meilleur résultat (`topKind`, champ `top` de la réponse) passe en tête : « da » commence par Daft Punk, « get
+ * lucky » par le morceau, « stromea » par Stromae (PLAN.md 5.1, point 8) ; sinon l'ordre Albums · Morceaux · Artistes…
+ */
+function groupsOf(options, topKind = null) {
   const byKind = new Map();
   for (const o of options) {
     if (!byKind.has(o.kind)) byKind.set(o.kind, []);
@@ -39,8 +43,13 @@ function groupsOf(options) {
     }
     groups.push({ key: kind, kinds: [kind], options: byKind.get(kind) });
   }
+  const lead = topKind ? groups.findIndex((g) => g.kinds.includes(topKind)) : -1;
+  if (lead > 0) groups.unshift(...groups.splice(lead, 1));
   return groups;
 }
+
+/** Options dans l'ordre d'affichage des groupes (les flèches parcourent la liste dans cet ordre). */
+const orderedOptions = (groups) => groups.flatMap((g) => g.options);
 
 /** Lignes de chargement (même hauteur que les vraies). */
 function SkeletonRows({ count = 3 }) {
@@ -78,6 +87,7 @@ export function SearchCombobox({
   const ownInput = useRef(null);
   const input = externalRef || ownInput;
   const escaped = useRef(false);
+  const keyNav = useRef(false);
 
   const kinds = useMemo(() => kindsOfScope(scope), [scope]);
   const query = text.trim();
@@ -91,8 +101,10 @@ export function SearchCombobox({
   const shownKinds = useMemo(() => (sheet && tab !== 'all' ? [tab] : kinds), [sheet, tab, kinds]);
   const options = useMemo(() => (fq ? optionsOf(data, shownKinds) : []), [fq, data, shownKinds]);
   const showRecents = recent && !prepared && recents.length > 0;
-  const choices = showRecents ? recents.map((entry, i) => ({ key: `recent:${i}`, recent: entry })) : options;
-  const groups = useMemo(() => groupsOf(options), [options]);
+  const topKind = sheet && tab !== 'all' ? null : data?.top?.kind;
+  const groups = useMemo(() => groupsOf(options, topKind), [options, topKind]);
+  const ordered = useMemo(() => orderedOptions(groups), [groups]);
+  const choices = showRecents ? recents.map((entry, i) => ({ key: `recent:${i}`, recent: entry })) : ordered;
   const counts = all.data?.counts || {};
   const total = kinds.reduce((sum, k) => sum + (counts[k] || 0), 0);
   const capped = kinds.some((k) => (counts[k] || 0) >= 100);
@@ -163,6 +175,7 @@ export function SearchCombobox({
 
   const onKeyDown = (e) => {
     const count = choices.length;
+    keyNav.current = e.key === 'ArrowDown' || e.key === 'ArrowUp';
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       if (!open) setOpen(true);
@@ -202,6 +215,12 @@ export function SearchCombobox({
 
   const optionId = (i) => `${baseId}-opt-${i}`;
   const activeId = open && active >= 0 && choices[active] ? optionId(active) : undefined;
+
+  // Ligne active hors de la partie visible de la liste (flèches dans une longue liste) : la liste défile jusqu'à elle.
+  // (Au clavier seulement : une ligne survolée à la souris ne fait pas bouger la liste.)
+  useEffect(() => {
+    if (activeId && keyNav.current) document.getElementById(activeId)?.scrollIntoView?.({ block: 'nearest' });
+  }, [activeId]);
 
   const field = (
     <div className="gsearch__field">
@@ -258,7 +277,7 @@ export function SearchCombobox({
     return (
       <li key={option.key} id={optionId(i)} role="option" aria-selected={i === active}
         className={`gsearch__opt${i === active ? ' is-active' : ''}`}
-        onMouseEnter={() => setActive(i)} onClick={() => pickOption(option)}>
+        onMouseEnter={() => { keyNav.current = false; setActive(i); }} onClick={() => pickOption(option)}>
         {option.recent ? <RecentBody entry={option.recent} size={size} /> : <RowBody option={option} query={query} size={size} />}
       </li>
     );
@@ -335,7 +354,9 @@ export function SearchCombobox({
     ? (options.length ? t('search.live', { n: options.length }) : t('search.none', { q: query }))
     : '';
 
-  const footer = prepared && !showRecents && (
+  // Rien trouvé : pas de lien vers une page de résultats vide (sauf action propre à la page : filtrer, envoyer une demande).
+  const nothing = !!data && !options.length && !shown.loading && !shown.error;
+  const footer = prepared && !showRecents && (!nothing || submitLabel) && (
     <footer className="gsearch__foot">
       <button type="button" className="gsearch__all gs-link" tabIndex={-1} onClick={submit}>
         {submitLabel ? submitLabel(query, total) : capped || !total ? t('search.showAllAny', { q: query }) : t('search.showAll', { n: total, q: query })}
@@ -368,7 +389,8 @@ export function SearchCombobox({
         {prepared && (
           <div className="search-sheet__tabs" role="group" aria-label={t('search.filterKinds')}>
             {['all', ...kinds].map((k) => (
-              <button key={k} type="button" className="chip chip--toggle" aria-pressed={tab === k} onClick={() => setTab(k)}>
+              <button key={k} type="button" aria-pressed={tab === k} onClick={() => setTab(k)}
+                className={`chip chip--toggle${k !== 'all' && all.data && !counts[k] ? ' gs-chip--empty' : ''}`}>
                 {t(`search.kinds.${k}`)}
                 {k !== 'all' && counts[k] > 0 && <span className="chip__n">{countLabel(counts[k])}</span>}
               </button>

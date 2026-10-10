@@ -11,6 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { startApp, signupVerified, api } from './helpers.js';
 import { highlightParts, normalize, similarity, trigrams, textScore } from '../../shared/search.js';
+import { foldText } from '../../shared/rules.js';
 
 process.env.ADMIN_EMAILS = 'chef@example.com';
 
@@ -67,6 +68,10 @@ function topName(r) {
 test('règles partagées : normalisation, score de texte, similarité, surlignage', () => {
   assert.equal(normalize('  Racine carrée — Stromae! '), 'racine carree stromae');
   assert.equal(normalize('Røyksopp & Cœur'), 'royksopp coeur');
+  // Chemin court des textes ASCII : même résultat que le repli Unicode complet.
+  for (const s of ['AC/DC', "Guns N' Roses", 'Get Lucky (feat. Pharrell Williams)', '  50_Cent\t', 'Blink-182', '']) {
+    assert.equal(normalize(s), foldText(s).replace(/[^\p{L}\p{N}]+/gu, ' ').trim(), s);
+  }
   assert.equal(textScore('daft punk', 'daft punk', ['daft', 'punk']), 1);
   assert.equal(textScore('daft punk', 'daft', ['daft']), 0.9);
   assert.ok(Math.abs(textScore('the dark side of the moon', 'da', ['da']) - 0.8) < 1e-9);

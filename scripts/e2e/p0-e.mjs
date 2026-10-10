@@ -1,8 +1,9 @@
 // Parcours P0-E (PLAN.md 9.3, critère P0.2) : recherche globale avec suggestions — ordinateur 1440 × 900 et téléphone
 // 390 × 844, zéro erreur de console (hors images Deezer bloquées par le bac à sable).
 //   - Ordinateur : champ de la barre du haut (« / » le sélectionne), suggestions groupées avec pochettes dès 2 lettres,
-//     motif combobox (aria-expanded, aria-activedescendant), album choisi au clavier (↓ Entrée), morceau choisi au clic,
-//     faute de frappe (« dicovery » → « Vouliez-vous dire Discovery ? », ligne ≈), Échap ferme puis efface, Entrée
+//     meilleur résultat en tête (« daft » → Daft Punk), motif combobox (aria-expanded, aria-activedescendant), album
+//     choisi au clavier (↓ Entrée), délai d'affichage d'une première saisie (< 150 ms), morceau choisi au clic, faute
+//     de frappe (« dicovery » → « Tu voulais dire Discovery ? », ligne ≈), Échap ferme puis efface, Entrée
 //     sans choix → page /search (onglets et compteurs, onglet Albums paginé), recherches récentes, combobox de la
 //     Collection (Entrée filtre la grille), membre trouvé et ajouté depuis la page Amis ; temps serveur mesuré.
 //   - Téléphone : icône de recherche, feuille plein écran (onglets par type, lignes de 62 px), choix d'un morceau,
@@ -84,7 +85,15 @@ await run('desktop', VIEWPORTS.desktop, async (page) => {
   await page.waitForTimeout(300);
   await shot(page, 'd-01-suggestions-daft');
 
-  // Clavier : ↓ active la première ligne (un album), Entrée l'ouvre.
+  // Le meilleur résultat passe en tête : « daft » commence par l'artiste Daft Punk.
+  const firstRow = await panelRows(page).first().innerText();
+  expect(/Daft Punk/.test(firstRow) && /Artiste/.test(firstRow), `[desktop] « daft » ne commence pas par Daft Punk (${firstRow})`);
+
+  // Clavier : ↓ active la première ligne (l'album Discovery), Entrée l'ouvre.
+  await input.fill('');
+  await page.keyboard.type('discovery');
+  await waitSuggestions(page);
+  expect(/Discovery/.test(await panelRows(page).first().innerText()), '[desktop] « discovery » : l’album n’est pas en tête');
   await page.keyboard.press('ArrowDown');
   const active = await input.getAttribute('aria-activedescendant');
   expect(!!active && await page.locator(`#${active}.is-active`).count() === 1, '[desktop] aria-activedescendant / ligne active');
@@ -92,6 +101,25 @@ await run('desktop', VIEWPORTS.desktop, async (page) => {
   await page.waitForURL(/\/album\//, { timeout: 10_000 });
   await page.waitForSelector('.album-head, .page-head, h1');
   expect(await input.inputValue() === '', '[desktop] champ non vidé après un choix');
+
+  // Délai de bout en bout d'une première saisie (dernière touche → lignes affichées), sur le grand catalogue.
+  await input.click();
+  const latency = await page.evaluate(() => new Promise((resolve) => {
+    const field = document.querySelector('#gs-top-input');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    const started = performance.now();
+    setter.call(field, 'pink');
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    const check = () => {
+      const rows = document.querySelectorAll('.gsearch__panel [role="option"]:not(.gs-skel)');
+      if (rows.length && [...rows].some((r) => /pink/i.test(r.textContent))) resolve(performance.now() - started);
+      else requestAnimationFrame(check);
+    };
+    check();
+  }));
+  console.log(`Première saisie : suggestions affichées en ${latency.toFixed(0)} ms.`);
+  expect(latency < 150, `[desktop] suggestions affichées en ${latency.toFixed(0)} ms (150 attendus)`);
+  await input.fill('');
 
   // Clic sur un morceau.
   await input.click();
@@ -101,12 +129,12 @@ await run('desktop', VIEWPORTS.desktop, async (page) => {
   await page.waitForURL(/\/track\//, { timeout: 10_000 });
   expect(page.url().includes('random-access-memories'), `[desktop] mauvais morceau ouvert : ${page.url()}`);
 
-  // Faute de frappe : suggestion « Vouliez-vous dire » et ligne approchée.
+  // Faute de frappe : suggestion « Tu voulais dire » et ligne approchée.
   await input.click();
   await page.keyboard.type('dicovery');
   await waitSuggestions(page);
   const fuzzy = await page.locator('.gsearch__fuzzy').innerText().catch(() => '');
-  expect(/Discovery/.test(fuzzy), `[desktop] pas de « Vouliez-vous dire Discovery » (${fuzzy})`);
+  expect(/Discovery/.test(fuzzy), `[desktop] pas de « Tu voulais dire Discovery » (${fuzzy})`);
   expect(await panelRows(page).first().locator('.gs-approx').count() === 1, '[desktop] ligne approchée sans ≈');
   await shot(page, 'd-02-typo');
 

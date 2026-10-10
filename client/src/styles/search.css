@@ -19,7 +19,7 @@
 .gs-inline {
   position: relative;
   flex: 1 1 240px;
-  min-width: 180px;
+  min-width: 150px;
   max-width: 360px;
 }
 
@@ -29,9 +29,14 @@
 }
 
 /* Pas la place d'un champ (tablette : cinq entrées, pastilles, cloche) ou téléphone : l'icône. */
-@container sh-search (max-width: 179px) {
+@container sh-search (max-width: 149px) {
   .gs-global .gs-inline { display: none; }
   .gs-global .search-trigger { display: inline-grid; }
+}
+
+/* Champ étroit (portable de 1366 px) : pas de touche « / » affichée, le texte d'exemple garde la place. */
+@container sh-search (max-width: 219px) {
+  .gs-inline .gsearch__kbd { display: none; }
 }
 
 @media (max-width: 860px) {
@@ -70,10 +75,14 @@
   background: var(--stage-2);
   color: var(--paper);
   font: var(--fw-medium) var(--fs-14) / 1 var(--font-body);
+  text-overflow: ellipsis;
   transition: border-color var(--dur-hover), background-color var(--dur-hover);
 }
 
-.gsearch__input::placeholder { color: var(--haze-2); }
+.gsearch__input::placeholder {
+  color: var(--haze-2);
+  text-overflow: ellipsis;
+}
 .gsearch__input:hover { border-color: var(--line); }
 
 .gsearch__input:focus,
@@ -183,7 +192,7 @@
   font: var(--fw-semi) var(--fs-13) / 1 var(--font-body);
 }
 
-/* Bouton au rendu de lien (Tout voir, Effacer, Vouliez-vous dire…). */
+/* Bouton au rendu de lien (Tout voir, Effacer, Tu voulais dire…). */
 .gs-link {
   padding: 0;
   border: 0;
@@ -535,6 +544,11 @@
 
 .search-sheet__tabs .chip { flex: none; }
 
+/* Type sans résultat : onglet atténué (il reste cliquable). */
+.search-sheet__tabs .gs-chip--empty:not([aria-pressed="true"]) {
+  color: var(--haze-2);
+}
+
 .search-sheet__body {
   flex: 1;
   overflow-y: auto;
@@ -631,6 +645,11 @@
 
 .gs-page__tabs .tabs__tab .gs-page__n {
   margin-left: var(--s-6);
+}
+
+/* Type sans résultat : onglet atténué (il reste cliquable). */
+.gs-page__tabs .gs-page__tab--empty:not(.active) {
+  color: var(--haze-2);
 }
 
 /* ---------- feuilles « Statistiques » et « Filtres » (Collection, téléphone) ---------- */

@@ -1,0 +1,572 @@
+/* @prefix gm- */
+/* Jeu de collection (chantier P1-D, PLAN.md 6.2 à 6.10) : albums recherchés, boosters spéciaux et leurs chances,
+   message de niveau, moment de complétion, couleurs de vinyle, Pressage n°, guide des raretés.
+   Identité actuelle seulement (DESIGN-OVERRIDE) : panneaux .panel, boutons pilules, chips, Martian Mono pour les
+   chiffres, --gold pour les accomplissements ; jetons de app.css uniquement. */
+
+/* ---------- albums recherchés : bouton et bloc du Studio ---------- */
+
+.btn.gm-wish {
+  gap: var(--s-6);
+}
+
+.gm-wish svg {
+  flex: none;
+}
+
+.btn.gm-wish.is-on {
+  border-color: color-mix(in oklab, var(--like) 55%, var(--line));
+  background: color-mix(in oklab, var(--like) 14%, transparent);
+  color: var(--paper);
+}
+
+.btn.gm-wish.is-on svg {
+  color: var(--like);
+  fill: currentColor;
+}
+
+.gm-wish--icon {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: var(--rad-pill);
+  border: 1px solid var(--line);
+  background: color-mix(in oklab, var(--ink) 82%, transparent);
+  color: var(--paper-dim);
+  cursor: pointer;
+  transition: color var(--dur-hover), border-color var(--dur-hover), background var(--dur-hover);
+}
+
+.gm-wish--icon:hover,
+.gm-wish--icon:focus-visible {
+  border-color: var(--like);
+  color: var(--paper);
+}
+
+.gm-wish--icon.is-on {
+  border-color: var(--like);
+  background: color-mix(in oklab, var(--like) 22%, var(--ink));
+  color: var(--like);
+}
+
+.gm-wish--icon.is-on svg {
+  fill: currentColor;
+}
+
+.gm-wish:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.gm-wishlist__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-8) var(--s-12);
+}
+
+.gm-wishlist__hint {
+  margin: 0;
+}
+
+.gm-wishlist__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--s-16) var(--s-14);
+}
+
+.panel .gm-wishlist__more {
+  align-self: flex-start;
+}
+
+@media (max-width: 640px) {
+  .gm-wishlist__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--s-14) var(--s-10);
+  }
+}
+
+/* ---------- boosters spéciaux (accueil, sous la rangée) ---------- */
+
+.gm-special {
+  margin-top: var(--s-16);
+  background:
+    radial-gradient(ellipse 45% 120% at 0% 0%, var(--glow-violet), transparent 70%),
+    var(--grad-panel);
+}
+
+.gm-special--error {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gm-special--error p {
+  margin: 0;
+}
+
+.gm-special__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-8) var(--s-16);
+}
+
+.gm-special__head .panel__title {
+  flex-wrap: wrap;
+}
+
+.gm-special__count {
+  font-size: var(--fs-12);
+}
+
+.gm-special__intro {
+  margin: 0;
+  max-width: 70ch;
+}
+
+.gm-special__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--s-12);
+  margin: var(--s-4) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gm-special__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    'art text'
+    'art actions';
+  align-items: center;
+  gap: var(--s-6) var(--s-14);
+  min-width: 0;
+  padding: var(--s-12) var(--s-14);
+  border-radius: var(--rad-md);
+  background: var(--stage-2);
+  border: 1px solid var(--line-soft);
+}
+
+.gm-special__art {
+  grid-area: art;
+  position: relative;
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  border-radius: var(--rad-xs);
+}
+
+.gm-special__art:disabled {
+  cursor: progress;
+}
+
+.gm-special__art:hover .gm-pack,
+.gm-special__art:focus-visible .gm-pack {
+  transform: translateY(-3px) rotate(-2deg);
+}
+
+.gm-special__stack {
+  position: absolute;
+  right: -8px;
+  top: -6px;
+  z-index: 5;
+  padding: 2px 7px;
+  border-radius: var(--rad-pill);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-bold);
+  box-shadow: var(--shadow-chip);
+}
+
+.gm-special__text {
+  grid-area: text;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.gm-special__name {
+  font: var(--fw-title) var(--fs-16) / var(--lh-snug) var(--font-display);
+  font-stretch: var(--fst-title);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gm-special__actions {
+  grid-area: actions;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-6) var(--s-12);
+}
+
+/* Le booster en petit : même visuel que le paquet du héros, réduit (étiquettes trop petites masquées). */
+.gm-pack {
+  position: relative;
+  display: block;
+  transition: transform var(--dur-pop) var(--ease-pop);
+}
+
+.gm-pack .pack {
+  --pw: 76px;
+  filter: drop-shadow(0 12px 14px rgba(0, 0, 0, 0.5));
+}
+
+.gm-pack .pack__label,
+.gm-pack .pack__content,
+.gm-pack .pack__series,
+.gm-pack .pack__album-label,
+.gm-pack .pack__album-title,
+.gm-pack .pack__album-artist,
+.gm-pack .pack__album-content {
+  display: none;
+}
+
+.gm-pack--album .pack__album-cover {
+  margin-top: calc(var(--pw) * 0.12);
+}
+
+.gm-pack__sticker {
+  position: absolute;
+  left: 50%;
+  bottom: 14%;
+  z-index: 4;
+  max-width: 112%;
+  padding: 3px 8px;
+  border-radius: var(--rad-pill);
+  background: var(--ink);
+  color: var(--paper);
+  font: var(--fw-bold) var(--fs-12) / 1.2 var(--font-body);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform: translateX(-50%);
+  box-shadow: var(--shadow-chip);
+}
+
+.gm-pack--taste .gm-pack__sticker,
+.gm-pack--event .gm-pack__sticker {
+  background: var(--gold);
+  color: var(--ink);
+}
+
+.gm-pack--choice .gm-pack__sticker {
+  background: var(--cue);
+  color: var(--ink);
+}
+
+@media (max-width: 640px) {
+  .gm-special__list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gm-pack .pack {
+    --pw: 64px;
+  }
+}
+
+/* Choix de l'album d'un booster « au choix ». */
+.gm-choose__search {
+  margin-top: var(--s-12);
+  min-height: 52px;
+}
+
+.gm-choose__error {
+  color: var(--danger-soft);
+}
+
+/* ---------- chances d'un booster ---------- */
+
+.gm-odds {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+  font-size: var(--fs-14);
+  color: var(--paper-dim);
+}
+
+.gm-odds p {
+  margin: 0;
+}
+
+.gm-odds__table caption {
+  caption-side: bottom;
+  padding-top: var(--s-8);
+  text-align: left;
+}
+
+.gm-odds__table th,
+.gm-odds__table td {
+  white-space: nowrap;
+}
+
+.gm-odds__rarity {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-4);
+  font-weight: var(--fw-semi);
+}
+
+.gm-odds__weights {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--s-6) var(--s-16);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gm-odds__weights li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-8);
+  padding: var(--s-6) var(--s-10);
+  border-radius: var(--rad-sm);
+  background: var(--stage-2);
+}
+
+.gm-odds__rule strong {
+  color: var(--paper);
+}
+
+/* ---------- message de niveau ---------- */
+
+.gm-levelup {
+  position: fixed;
+  left: 50%;
+  bottom: calc(76px + var(--tabbar) + env(safe-area-inset-bottom, 0px));
+  z-index: var(--z-toast);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-14);
+  width: min(calc(100vw - 32px), 440px);
+  padding: var(--s-14) var(--s-14) var(--s-14) var(--s-16);
+  border-radius: var(--rad-lg);
+  background:
+    radial-gradient(ellipse 60% 140% at 0% 0%, color-mix(in oklab, var(--gold) 22%, transparent), transparent 70%),
+    var(--stage-2);
+  border: 1px solid color-mix(in oklab, var(--gold) 45%, var(--line));
+  box-shadow: var(--shadow-toast), var(--ring-gold);
+  transform: translateX(-50%);
+  animation: gm-rise var(--dur-slow) var(--ease-pop) both;
+}
+
+.gm-levelup__badge {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--grad-gold);
+  color: var(--ink);
+  font-size: var(--fs-18);
+  font-weight: var(--fw-display);
+  box-shadow: inset 0 0 0 3px color-mix(in oklab, var(--ink) 25%, transparent);
+}
+
+.gm-levelup__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+  flex: 1;
+  font-size: var(--fs-13);
+  color: var(--paper-dim);
+}
+
+.gm-levelup__title {
+  font: var(--fw-display) var(--fs-18) / var(--lh-title) var(--font-display);
+  font-stretch: var(--fst-display);
+  color: var(--gold);
+}
+
+.gm-levelup__close {
+  flex: none;
+  margin: -4px -4px 0 0;
+}
+
+/* ---------- moment de complétion (PLAN.md 6.2) ---------- */
+
+.gm-moment {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-12);
+  margin: calc(var(--s-4) * -1) auto var(--s-8);
+  padding: var(--s-14) var(--s-16);
+  max-width: 560px;
+  border-radius: var(--rad-md);
+  background:
+    radial-gradient(ellipse 60% 120% at 50% 0%, color-mix(in oklab, var(--gold) 12%, transparent), transparent 70%),
+    var(--stage-2);
+  border: 1px solid color-mix(in oklab, var(--gold) 30%, var(--line-soft));
+  text-align: center;
+  /* Après la sortie du vinyle (vinyl-out : 0,25 s + 1,1 s) */
+  animation: gm-rise var(--dur-slow) 1.2s var(--ease-out) both;
+}
+
+.gm-moment__stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--s-2) var(--s-8);
+  margin: 0;
+  font-size: var(--fs-13);
+  font-stretch: var(--fst-mono);
+  letter-spacing: var(--ls-mono);
+  color: var(--paper);
+}
+
+.gm-moment__dot {
+  color: var(--gold);
+}
+
+.gm-moment__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--s-8);
+}
+
+.gm-moment__actions .btn {
+  gap: var(--s-6);
+}
+
+.gm-moment__actions .btn.is-on {
+  border-color: var(--gold);
+}
+
+.gm-moment__rate {
+  display: flex;
+  justify-content: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gm-moment,
+  .gm-levelup {
+    animation: none;
+  }
+
+  .gm-pack {
+    transition: none;
+  }
+}
+
+/* ---------- couleurs de vinyle (cosmétiques du palier, PLAN.md 6.6) et Pressage n° ---------- */
+
+.gm-disc--prune .disc__body {
+  background:
+    repeating-radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0) 0 0.9cqi, rgba(255, 255, 255, 0.07) 0.9cqi 1.25cqi),
+    radial-gradient(circle at 50% 50%,
+      color-mix(in oklab, var(--pack-violet) 30%, var(--ink)) 0 31%,
+      color-mix(in oklab, var(--pack-violet) 18%, var(--ink)) 31.5% 34%,
+      color-mix(in oklab, var(--pack-violet) 42%, transparent) 34.5% 95.5%,
+      color-mix(in oklab, var(--pack-violet) 25%, var(--ink)) 96%);
+}
+
+.gm-disc--marbre .disc__body {
+  background:
+    repeating-radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0) 0 0.9cqi, rgba(255, 255, 255, 0.06) 0.9cqi 1.25cqi),
+    radial-gradient(ellipse 40% 22% at 30% 36%, color-mix(in oklab, var(--paper) 55%, transparent), transparent 70%),
+    radial-gradient(ellipse 30% 46% at 70% 62%, color-mix(in oklab, var(--cue) 40%, transparent), transparent 70%),
+    radial-gradient(ellipse 50% 20% at 62% 22%, color-mix(in oklab, var(--like) 35%, transparent), transparent 70%),
+    conic-gradient(from 40deg, var(--stage-3), var(--line), var(--stage-2), var(--line), var(--stage-3));
+}
+
+.gm-disc--transparent .disc__body {
+  background:
+    repeating-radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0) 0 0.9cqi, rgba(255, 255, 255, 0.1) 0.9cqi 1.25cqi),
+    radial-gradient(circle at 50% 50%, color-mix(in oklab, var(--paper) 22%, transparent) 0 95.5%, color-mix(in oklab, var(--paper) 35%, transparent) 96%);
+  backdrop-filter: blur(1px);
+}
+
+.gm-pressing {
+  margin: 0;
+  font-size: var(--fs-12);
+  font-stretch: var(--fst-mono);
+  letter-spacing: var(--ls-mono);
+  color: var(--gold);
+}
+
+.gm-pressing--shelf {
+  display: block;
+}
+
+/* ---------- guide des raretés : paliers de niveau, chances détaillées ---------- */
+
+.gm-guide__block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-10);
+  padding: var(--s-14);
+  border-radius: var(--rad-md);
+  background: var(--stage-2);
+  font-size: var(--fs-14);
+  color: var(--paper-dim);
+}
+
+.gm-guide__block h3 {
+  font-size: var(--fs-14);
+  color: var(--paper);
+}
+
+.gm-guide__details summary {
+  cursor: pointer;
+  font-weight: var(--fw-semi);
+  color: var(--paper);
+}
+
+.gm-guide__details[open] summary {
+  margin-bottom: var(--s-6);
+}
+
+.gm-guide__levels {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--s-6) var(--s-16);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gm-guide__levels li {
+  display: flex;
+  gap: var(--s-10);
+  align-items: baseline;
+  min-width: 0;
+}
+
+.gm-guide__level {
+  flex: none;
+  min-width: 78px;
+  font-size: var(--fs-12);
+  color: var(--gold);
+}
+
+@keyframes gm-rise {
+  from {
+    opacity: 0;
+    transform: translate(var(--gm-x, 0), 14px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(var(--gm-x, 0), 0);
+  }
+}
+
+.gm-levelup {
+  --gm-x: -50%;
+}

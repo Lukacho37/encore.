@@ -293,9 +293,13 @@ test('notes et critiques', async () => {
   assert.equal(view.summary.average, 8);
   assert.equal(view.summary.distribution[10], 1);
   assert.equal(view.summary.distribution[6], 1);
-  assert.equal(view.reviews.length, 1, 'une critique écrite par une autre personne');
-  assert.equal(view.reviews[0].user.username, 'carla');
-  assert.equal(view.reviews[0].friend, false, 'carla et dan ne sont plus amis');
+  // Critiques v2 (PLAN.md 4.1.2) : celles des amis puis celles de la communauté (les anciennes clés `reviews` et
+  // `friendScores` sont retirées en P1).
+  const reviews = [...view.friends.reviews, ...view.community.reviews];
+  assert.equal(view.reviews, undefined);
+  assert.equal(reviews.length, 1, 'une critique écrite par une autre personne');
+  assert.equal(reviews[0].user.username, 'carla');
+  assert.equal(reviews[0].friend, false, 'carla et dan ne sont plus amis');
   // Moyennes des morceaux : `tracks.averages[id]` (notes v2, PLAN.md 4.1.2) ou l'ancienne forme `tracks[id]`.
   assert.equal((view.tracks.averages?.['discovery:01'] ?? view.tracks['discovery:01']).count, 1);
   const journal = (await b('GET', '/api/users/carla/ratings')).body;

@@ -16,7 +16,7 @@ import {
   buildBlindtest, blindtestClues, blindtestPoints, blindtestReward,
   ADVANCED_ALBUMS, isHit, levelRewards, showcaseSlots, wishlistMax, parseBoosterTheme, themeFilterOf, THEME_GENRES,
 } from '../shared/rules.js';
-import { cleanSelection, cosmeticsBetween, cosmeticsForLevel } from '../shared/cosmetics.js';
+import { cleanSelection, cosmeticsBetween, cosmeticsForLevel, levelCosmetic } from '../shared/cosmetics.js';
 
 export class HttpError extends Error {
   constructor(status, code, extra) {
@@ -840,19 +840,29 @@ export function createServices(db, catalog, { bus = null } = {}) {
     }
     for (const u of rows) {
       const cosmetics = parseJson(u.cosmetics, {});
+      const level = levelFromXp(u.xp).level;
       out.set(u.id, {
         id: u.id,
         username: u.username,
         avatar: u.avatar,
         avatarColor: u.avatar_color,
-        level: levelFromXp(u.xp).level,
+        level,
         uniqueCards: u.unique_cards,
-        frame: typeof cosmetics.frame === 'string' ? cosmetics.frame : null,
-        title: typeof cosmetics.title === 'string' ? cosmetics.title : null,
+        // Cadre et titre choisis (PLAN.md 6.6), vérifiés à l'écriture ; un cosmétique de niveau au-dessus du niveau
+        // actuel (collection remise à zéro) ne s'affiche plus.
+        frame: shownCosmetic('frame', cosmetics.frame, level),
+        title: shownCosmetic('title', cosmetics.title, level),
         relation: u.id === viewerId ? 'self' : relation.get(u.id) || null,
       });
     }
     return out;
+  }
+
+  /** Clé d'un cosmétique choisi, telle qu'un résumé de joueur l'affiche ; null si elle n'est pas (ou plus) débloquée. */
+  function shownCosmetic(kind, key, level) {
+    if (typeof key !== 'string' || !key) return null;
+    const def = levelCosmetic(`${kind}:${key}`);
+    return def && def.level > level ? null : key;
   }
 
   /** Albums des photos de profil de ces résumés (à passer à refs() pour afficher leur visuel). */
@@ -908,6 +918,8 @@ export function createServices(db, catalog, { bus = null } = {}) {
         promosTotal: totals.promos,
       },
       showcase: slotIds.map((id) => (id && ownedSlots.has(id) ? { trackId: id, variant: holoSlots.has(id) ? 'holo' : 'std' } : null)),
+      // Cosmétiques choisis (cadre, couleur de vinyle, thème, titre : PLAN.md 6.6).
+      cosmetics: cleanSelection(parseJson(target.cosmetics, {}), unlockedCosmeticIds(target)),
       completedAlbums: vinyls.map((v) => v.albumId),
       vinyls,
       masteredArtists: mastered,

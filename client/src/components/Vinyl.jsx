@@ -3,15 +3,24 @@ import { Link } from 'react-router';
 import CoverArt from './CoverArt.jsx';
 import { Modal, Icon, Progress } from './ui.jsx';
 import { RatingValue } from './Rating.jsx';
-import { getAlbum, useAlbum, useAlbumDetail } from '../state/catalog.js';
+import { getAlbum, useAlbum, useAlbumDetail, useApi } from '../state/catalog.js';
 import { useI18n } from '../i18n/index.jsx';
 import { useGame } from '../state/GameContext.jsx';
 import { sound } from '../sound.js';
 import '../styles/album.css';
+import '../styles/game.css';
 
 // Compléter un album = posséder son vinyle. Réunir toutes ses cartes en holo = édition holo.
 // Les albums viennent du catalogue chargé (vue d'album de l'API) : on peut passer `album` quand on l'a déjà,
 // sinon `albumId` suffit et l'album est récupéré par lots.
+// Jeu de collection (P1-D, PLAN.md 6.2 et 6.6) : `pressing` = « Pressage n° 37 » (rang du joueur parmi ceux qui ont
+// complété l'album), écrit sur l'étiquette du disque et sous le vinyle, jamais par-dessus la pochette (PLAN.md 7.1) ;
+// `color` = couleur de vinyle choisie par le joueur (cosmétique « prune », « marbre », « transparent ») ; l'édition
+// holo, gagnée album par album, passe avant.
+
+/** Couleurs de vinyle connues (shared/cosmetics.js) ; une autre valeur garde le disque noir. */
+const DISC_COLORS = new Set(['prune', 'marbre', 'transparent']);
+const colorClass = (edition, color) => (edition !== 'holo' && DISC_COLORS.has(color) ? ` gm-disc gm-disc--${color}` : '');
 
 // Nombre de cartes holo possédées par album, calculé une fois par état de collection (Map trackId -> { std, holo }).
 // L'identifiant d'une carte d'album est « <albumId>:<numéro> » (ex. abbey-road:01, dz123456:07).
@@ -54,12 +63,13 @@ function useVinylAlbum(albumId, album) {
 const artOf = (album) => ({ ...album.art, seed: album.art?.seed || album.id });
 
 /** Le disque seul : sillons, reflets et étiquette aux couleurs de l'album. */
-export function Disc({ albumId, album: albumProp, edition = 'black', spinning = false }) {
+export function Disc({ albumId, album: albumProp, edition = 'black', spinning = false, color = null, pressing = null }) {
+  const { t } = useI18n();
   const album = useVinylAlbum(albumId, albumProp);
   // Le temps du chargement, étiquette neutre sans texte.
   const [, c1 = '#3a3145', c2 = '#f4eee3'] = album?.art?.palette || [];
   return (
-    <span className={`disc disc--${edition}${spinning ? ' is-spinning' : ''}`} style={{ '--lc': c1, '--lr': c2 }} aria-hidden="true">
+    <span className={`disc disc--${edition}${colorClass(edition, color)}${spinning ? ' is-spinning' : ''}`} style={{ '--lc': c1, '--lr': c2 }} aria-hidden="true">
       {/* Le corps tourne ; les reflets restent fixes, comme sur une vraie platine. */}
       <span className="disc__body">
         <span className="disc__label">
@@ -67,7 +77,7 @@ export function Disc({ albumId, album: albumProp, edition = 'black', spinning = 
             <>
               <span className="disc__title">{album.title}</span>
               <span className="disc__artist">{album.artist}</span>
-              <span className="disc__brand">AlbumMania · 33⅓</span>
+              <span className="disc__brand">{pressing ? t('game.moment.pressingShort', { n: pressing }) : 'AlbumMania · 33⅓'}</span>
             </>
           )}
         </span>
@@ -79,13 +89,13 @@ export function Disc({ albumId, album: albumProp, edition = 'black', spinning = 
 }
 
 /** Pochette avec le disque qui dépasse ; il sort davantage et tourne au survol. */
-export function Vinyl({ albumId, album: albumProp, edition = 'black', onClick, className = '', reveal = false, label, sizes = '(max-width: 700px) 200px, 260px' }) {
+export function Vinyl({ albumId, album: albumProp, edition = 'black', onClick, className = '', reveal = false, label, sizes = '(max-width: 700px) 200px, 260px', color = null, pressing = null }) {
   const album = useVinylAlbum(albumId, albumProp);
   const Tag = onClick ? 'button' : 'span';
   return (
     <Tag type={onClick ? 'button' : undefined} className={`vinyl vinyl--${edition}${reveal ? ' vinyl--reveal' : ''} ${className}`} onClick={onClick}
       aria-label={label || album?.title || undefined} aria-busy={album ? undefined : true}>
-      <span className="vinyl__disc"><Disc albumId={album?.id || albumId} album={album} edition={edition} /></span>
+      <span className="vinyl__disc"><Disc albumId={album?.id || albumId} album={album} edition={edition} color={color} pressing={pressing} /></span>
       <span className={`vinyl__sleeve${album ? '' : ' vinyl__sleeve--loading'}`}>
         {album && <CoverArt art={artOf(album)} sizes={sizes} />}
         <span className="vinyl__wear" />
@@ -119,13 +129,17 @@ function Sides({ tracks, mine }) {
 /** Platine : le vinyle tourne, le bras se pose, et on entend les craquements. */
 export function TurntableModal({ vinyl, onClose }) {
   const { t, date } = useI18n();
-  const { ratings } = useGame();
+  const { ratings, ranks } = useGame();
   const [playing, setPlaying] = useState(false);
   const albumId = vinyl?.albumId || null;
   // Album et cartes ne sont chargés qu'à l'ouverture de la platine (puis gardés pour la session).
   const detail = useAlbumDetail(albumId);
   const loaded = detail.data?.album?.id === albumId ? detail.data : null;
   const album = loaded?.album || getAlbum(albumId);
+  // Pressage n° : donné par l'étagère, sinon lu dans l'état du joueur (ses vinyles), sinon demandé au serveur.
+  const knownRank = vinyl?.rank ?? (vinyl?.mine ? ranks?.get(`album:${albumId}`) : null) ?? null;
+  const completion = useApi(vinyl?.mine && knownRank == null && albumId ? `/albums/${encodeURIComponent(albumId)}/completion` : null);
+  const pressing = knownRank ?? completion.data?.mine?.rank ?? null;
 
   useEffect(() => {
     setPlaying(false);
@@ -150,7 +164,7 @@ export function TurntableModal({ vinyl, onClose }) {
           <div className={`turntable${playing ? ' is-playing' : ''}`}>
             <div className="turntable__plinth">
               <div className="turntable__platter">
-                <Disc albumId={albumId} album={album} edition={vinyl.edition} spinning={playing} />
+                <Disc albumId={albumId} album={album} edition={vinyl.edition} spinning={playing} color={vinyl.color} pressing={pressing} />
               </div>
               <div className="turntable__arm" aria-hidden="true">
                 <span className="turntable__arm-base" />
@@ -167,7 +181,9 @@ export function TurntableModal({ vinyl, onClose }) {
             </div>
           </div>
           <div className="turntable-view__info">
-            <span className={`edition-tag edition-tag--${vinyl.edition}`}>{vinyl.edition === 'holo' ? t('vinyl.holo') : t('vinyl.black')}</span>
+            <span className={`edition-tag edition-tag--${vinyl.edition}`}>
+              {vinyl.edition === 'holo' ? t('vinyl.holo') : DISC_COLORS.has(vinyl.color) ? t('game.vinylColor', { name: t(`cosmetics.vinyl.${vinyl.color}`) }) : t('vinyl.black')}
+            </span>
             {album ? (
               <>
                 <h3 className="turntable-view__title">{album.title}</h3>
@@ -175,6 +191,7 @@ export function TurntableModal({ vinyl, onClose }) {
                 <p className="small muted mono">
                   {[album.year, vinyl.at ? t('vinyl.pressedOn', { date: date(vinyl.at) }) : null].filter(Boolean).join(' · ')}
                 </p>
+                {pressing && <p className="gm-pressing mono">{t('game.moment.pressing', { n: pressing })}</p>}
               </>
             ) : (
               <span className="album-skel album-skel--title" aria-hidden="true" />
@@ -206,11 +223,12 @@ function ShelfVinyl({ vinyl, onOpen }) {
   const album = useAlbum(vinyl.albumId);
   return (
     <figure className="vinyl-item">
-      <Vinyl albumId={vinyl.albumId} album={album} edition={vinyl.edition} onClick={onOpen}
+      <Vinyl albumId={vinyl.albumId} album={album} edition={vinyl.edition} onClick={onOpen} color={vinyl.color} pressing={vinyl.rank}
         label={`${album?.title || t('common.loading')} · ${t('vinyl.play')}`} />
       <figcaption>
         <span className="vinyl-item__title">{album?.title || '…'}</span>
         <span className="vinyl-item__artist">{album?.artist || ''}</span>
+        {vinyl.rank ? <span className="gm-pressing gm-pressing--shelf mono">{t('game.moment.pressing', { n: vinyl.rank })}</span> : null}
         {vinyl.edition === 'holo' && <span className="edition-tag edition-tag--holo">{t('vinyl.holo')}</span>}
       </figcaption>
     </figure>
@@ -240,11 +258,20 @@ function ShelfUpcoming({ albumId, progress }) {
 
 /**
  * Étagère de vinyles (vinylthèque) en tête du profil. `count` : nombre total de vinyles quand `vinyls` n'en
- * contient qu'une partie (le profil public n'envoie que les plus récents).
+ * contient qu'une partie (le profil public n'envoie que les plus récents). `color` : couleur de vinyle choisie par
+ * le propriétaire de l'étagère (cosmétique ; par défaut, la sienne pour sa propre étagère). Chaque vinyle peut porter
+ * `rank` (Pressage n°) ; pour sa propre étagère, il est lu dans l'état du joueur.
  */
-export function VinylShelf({ vinyls, upcoming = [], title, emptyText, mine, count }) {
+export function VinylShelf({ vinyls: list, upcoming = [], title, emptyText, mine, count, color }) {
   const { t } = useI18n();
+  const { user, ranks } = useGame();
   const [open, setOpen] = useState(null);
+  const shelfColor = color !== undefined ? color : mine ? user?.cosmetics?.vinyl ?? null : null;
+  const vinyls = list.map((v) => ({
+    ...v,
+    color: v.color ?? shelfColor,
+    rank: v.rank ?? (mine ? ranks?.get(`album:${v.albumId}`) ?? null : null),
+  }));
   return (
     <section className="vinyl-shelf">
       <header className="vinyl-shelf__head">

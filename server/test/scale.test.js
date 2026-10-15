@@ -76,6 +76,45 @@ test('boosters gratuits orientés vers les albums commencés', () => {
   assert.equal(rollPack(Math.random, staticCatalog).length, 5);
 });
 
+test('ciblage sur le catalogue importé : liste d’envies d’abord, puis albums avancés ; boosters thématiques', () => {
+  const uid = makeUser({ packs: 0 });
+  const [wish, advanced] = [imported()[4], imported()[6]];
+  const wishIds = new Set(catalog.albumTrackIds(wish.id));
+  const advIds = catalog.albumTrackIds(advanced.id);
+  // Album avancé : plus de la moitié des cartes déjà là.
+  const ins = db.prepare("INSERT INTO cards (user_id, track_id, variant, count, first_at, pulled_rarity) VALUES (?, ?, 'std', 1, ?, 'common')");
+  for (const id of advIds.slice(0, Math.ceil(advIds.length * 0.6))) ins.run(uid, id, Date.now());
+  services.refreshProgress(uid, [advanced.id]);
+  db.prepare(`INSERT INTO lists (user_id, kind, title, item_type, visibility, created_at, updated_at)
+    VALUES (?, 'wishlist', 'Albums recherchés', 'album', 'public', 0, 0)`).run(uid);
+  db.prepare(`INSERT INTO list_items (list_id, position, item_type, item_id, added_at)
+    SELECT id, 0, 'album', ?, 0 FROM lists WHERE user_id = ? AND kind = 'wishlist'`).run(wish.id, uid);
+  const focus = services.packFocus(uid);
+  assert.deepEqual(focus.wishlist.albumIds, [wish.id]);
+  assert.deepEqual(services.focusAlbums(uid), [advanced.id]);
+  // 400 boosters tirés (sans les ajouter) : une bonne part des cartes vient de l'album recherché.
+  let fromWish = 0;
+  let total = 0;
+  for (let i = 0; i < 400; i++) {
+    for (const c of rollPack(Math.random, catalog, focus)) {
+      total += 1;
+      if (wishIds.has(c.trackId)) fromWish += 1;
+    }
+  }
+  assert.ok(fromWish / total > 0.1, `cartes de l’album recherché : ${(100 * fromWish / total).toFixed(1)} %`);
+  // Booster thématique : décennie et genre × décennie viennent de l'index du catalogue, sans requête.
+  const { genre, year } = catalog.album(wish.id);
+  const decade = catalog.decadeOf(year);
+  const themed = rollPack(Math.random, catalog, { theme: { genres: [genre], decade } });
+  assert.equal(themed.length, 5);
+  assert.ok(themed.filter((c) => catalog.track(c.trackId).genre === genre).length >= 3, JSON.stringify(themed));
+  // Promos ciblées par artiste.
+  const artist = catalog.promoArtists()[0];
+  const promo = catalog.randomTrack({ rarity: 'promo', artistIds: [artist] });
+  assert.equal(promo.artistId, artist);
+  assert.equal(catalog.randomTrack({ rarity: 'rare', artistIds: [artist] }), null, 'ciblage par artiste : promos seulement');
+});
+
 test('booster d’album : 5 cartes de l’album, payées en royalties, manquantes d’abord', () => {
   const album = imported()[0];
   const uid = makeUser({ royalties: ECONOMY.albumPackPrice * 2 + 10 });

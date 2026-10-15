@@ -1,0 +1,717 @@
+/* @prefix so- */
+/* Fil, posts, cartes de mention, commentaires, compositeur, colonnes de l'accueil — chantier P1-A (PLAN.md 9.2).
+   Classes canoniques reprises de design/current-v2/components.css (.post, .mention, .act-btn, .review__head/__album/__foot,
+   .thread, .comment, .composer, .home-cols) ; les autres portent le préfixe so-. Jetons de app.css seulement. */
+
+/* ---------- accueil : fil + colonne ---------- */
+
+.home-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: var(--s-16);
+  align-items: start;
+}
+
+/* Colonne vide (emplacements des autres chantiers encore vides) : le fil prend toute la largeur. */
+.home-cols:has(> .so-aside:empty) { grid-template-columns: minmax(0, 1fr); }
+.so-aside:empty { display: none; }
+
+.so-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+  min-width: 0;
+}
+
+.so-aside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-16);
+  min-width: 0;
+}
+
+.so-home__head {
+  flex-wrap: wrap;
+  gap: var(--s-10) var(--s-16);
+}
+
+.so-tabs { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.so-tabs .seg__btn { white-space: nowrap; }
+
+@media (max-width: 1020px) {
+  .home-cols { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---------- liste du fil ---------- */
+
+.so-feed,
+.so-feed.feed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+}
+
+.so-feed > li { min-width: 0; }
+
+.so-end {
+  padding: var(--s-12) 0 var(--s-4);
+  text-align: center;
+  color: var(--haze);
+  font-size: var(--fs-13);
+}
+
+/* ---------- post : carte d'un post ou d'une activité ---------- */
+
+.post {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+  padding: var(--s-16) var(--s-16) var(--s-10);
+  border-radius: var(--rad-md);
+  background: var(--stage);
+  border: 1px solid var(--line-soft);
+  min-width: 0;
+}
+
+.post.is-moderated { border-style: dashed; }
+
+.post__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-10);
+  min-width: 0;
+}
+
+.post__avatar { flex: none; display: inline-flex; border-radius: 50%; }
+
+.post__who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.post__name {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-4) var(--s-8);
+  min-width: 0;
+  font: var(--fw-bold) var(--fs-15) / var(--lh-snug) var(--font-display);
+}
+
+.post__name a { color: var(--paper); }
+.post__name a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+.so-headline {
+  font: var(--fw-medium) var(--fs-14) / var(--lh-snug) var(--font-body);
+  color: var(--paper-dim);
+}
+
+.post__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s-6);
+  min-width: 0;
+  color: var(--haze);
+  font-size: var(--fs-13);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.post__meta a { color: inherit; }
+.post__meta a:hover { color: var(--paper); }
+
+.post__text {
+  color: var(--paper);
+  font-size: var(--fs-15);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.post__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  margin: 0 -8px;
+}
+
+.post__actions .act-btn:last-child { margin-left: auto; }
+
+.so-note {
+  margin: 0;
+  color: var(--haze);
+  font-size: var(--fs-13);
+}
+
+/* ---------- carte de mention : album / morceau / artiste, cliquable vers sa page ---------- */
+
+.mention {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-14);
+  padding: var(--s-10) var(--s-14) var(--s-10) var(--s-10);
+  border-radius: var(--rad-md);
+  background: var(--stage-2);
+  border: 1px solid var(--line-soft);
+  color: var(--paper);
+  transition: border-color var(--dur-hover), background-color var(--dur-hover);
+}
+
+a.mention:hover {
+  border-color: var(--line);
+  background: color-mix(in oklab, var(--stage-2) 60%, var(--stage-3));
+}
+
+.mention__cover {
+  position: relative;
+  display: block;
+  width: 72px;
+  height: 72px;
+  border-radius: var(--rad-sm);
+  overflow: hidden;
+  box-shadow: var(--shadow-cover-sm);
+  background: var(--stage-3);
+}
+
+.mention__cover > .cover,
+.mention__cover > .artist-badge { width: 100%; height: 100%; display: block; }
+.mention__cover .gem {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+}
+
+.mention__cover.is-gold { box-shadow: var(--ring-gold); }
+
+.mention__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-width: 0;
+}
+
+.mention__title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: var(--fw-title) var(--fs-16) / var(--lh-snug) var(--font-display);
+}
+
+.mention__artist {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--paper-dim);
+  font-size: var(--fs-14);
+  font-weight: var(--fw-semi);
+}
+
+.mention__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-4) var(--s-12);
+  margin-top: 2px;
+  color: var(--haze);
+  font-size: var(--fs-13);
+}
+
+.mention__line .mono { color: var(--paper); }
+.mention__go { color: var(--haze); display: inline-flex; }
+
+.mention--track { grid-template-columns: 56px minmax(0, 1fr) auto; }
+.mention--track .mention__cover { width: 56px; height: 56px; }
+.mention--artist .mention__cover { border-radius: 50%; }
+.mention--list .mention__cover { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.mention--list .mention__cover > .cover { width: 100%; height: 100%; }
+.mention--missing { color: var(--haze); grid-template-columns: minmax(0, 1fr); padding: var(--s-12) var(--s-14); }
+
+.mention--sm { grid-template-columns: 48px minmax(0, 1fr) auto; gap: var(--s-10); padding: var(--s-6) var(--s-10) var(--s-6) var(--s-6); }
+.mention--sm .mention__cover { width: 48px; height: 48px; }
+.mention--sm .mention__title { font-size: var(--fs-15); }
+
+/* ---------- boutons d'action discrets (J'aime, Répondre, Partager) ---------- */
+
+.act-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-6);
+  height: 34px;
+  padding: 0 var(--s-10);
+  border: 0;
+  border-radius: var(--rad-pill);
+  background: transparent;
+  color: var(--haze);
+  font: var(--fw-semi) var(--fs-13) / 1 var(--font-body);
+  cursor: pointer;
+  transition: color var(--dur-hover), background-color var(--dur-hover);
+}
+
+.act-btn:hover {
+  background: var(--stage-2);
+  color: var(--paper);
+}
+
+.act-btn:disabled { cursor: default; opacity: 0.6; }
+.act-btn .mono { font-size: var(--fs-13); }
+.act-btn--like.is-on { color: var(--like); }
+.act-btn--like.is-on svg { fill: currentColor; animation: so-like-pop 0.35s var(--ease-spring); }
+.act-btn--count { padding: 0 var(--s-6); margin-left: -6px; }
+
+@keyframes so-like-pop {
+  40% { transform: scale(1.3); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .act-btn--like.is-on svg { animation: none; }
+}
+
+/* ---------- critique dans le fil, le permalien, les pages d'album ---------- */
+
+.review__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-10);
+  min-width: 0;
+}
+
+.review__album {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-10);
+  min-width: 0;
+  color: var(--haze);
+  font-size: var(--fs-13);
+}
+
+.review__album strong {
+  color: var(--paper);
+  font: var(--fw-bold) var(--fs-14) / 1.2 var(--font-display);
+}
+
+.review__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  margin: 2px -8px -6px;
+}
+
+.so-review { gap: var(--s-10); }
+.so-review .review__text { color: var(--paper-dim); line-height: var(--lh-body); overflow-wrap: anywhere; }
+.so-review--page .review__text { color: var(--paper); font-size: var(--fs-16); }
+
+/* ---------- fil de commentaires ---------- */
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+  margin: var(--s-4) 0 2px var(--s-16);
+  padding: 2px 0 2px var(--s-16);
+  border-left: 2px solid var(--line-soft);
+}
+
+.thread--root { margin-left: 0; padding-left: 0; border-left: 0; }
+
+.so-comment-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-10);
+  min-width: 0;
+}
+
+.comment {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: var(--s-10);
+  min-width: 0;
+}
+
+.comment__body { min-width: 0; }
+
+.comment__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-4) var(--s-8);
+}
+
+.comment__name { font: var(--fw-bold) var(--fs-14) / 1.2 var(--font-display); color: var(--paper); }
+.comment__to { color: var(--cue); font-size: var(--fs-13); font-weight: var(--fw-semi); }
+.comment__time { color: var(--haze); font-size: var(--fs-12); }
+
+.comment__text {
+  margin-top: 3px;
+  color: var(--paper-dim);
+  font-size: var(--fs-14);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.comment__text--gone { color: var(--haze); font-style: italic; }
+
+.comment__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  margin: 2px -10px 0;
+}
+
+.comment__actions .act-btn { height: 28px; font-size: var(--fs-12); }
+.comment__actions .act-btn .mono { font-size: var(--fs-12); }
+
+.comment--gone .so-ghost-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px dashed var(--line);
+}
+
+.so-thread-more {
+  align-self: flex-start;
+  margin-left: -10px;
+}
+
+/* ---------- compositeur de réponse (une ligne) ---------- */
+
+.composer {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-10);
+}
+
+.composer .input {
+  min-height: 40px;
+  border-radius: var(--rad-pill);
+  font-size: var(--fs-14);
+}
+
+.composer--root { grid-template-columns: 32px minmax(0, 1fr) auto; }
+
+/* ---------- compositeur de post ---------- */
+
+.so-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-10);
+  padding: var(--s-14) var(--s-16);
+  border-radius: var(--rad-md);
+  background: var(--stage);
+  border: 1px solid var(--line-soft);
+}
+
+.so-composer__row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: var(--s-12);
+  align-items: start;
+}
+
+.so-composer__field.input {
+  min-height: 46px;
+  padding: var(--s-12) var(--s-14);
+  resize: vertical;
+  line-height: 1.4;
+  font-size: var(--fs-15);
+}
+
+.so-composer__field.input:not(:focus):placeholder-shown { resize: none; }
+
+.so-composer__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-8);
+  padding-left: 52px;
+}
+
+.so-composer__tools .so-grow { flex: 1; }
+.so-composer__count { color: var(--haze); font-size: var(--fs-12); }
+.so-composer__count.is-over { color: var(--danger); }
+
+.so-composer__vis.input {
+  width: auto;
+  min-height: 34px;
+  padding: 0 var(--s-10);
+  border-radius: var(--rad-pill);
+  font-size: var(--fs-13);
+}
+
+.so-composer__picker { padding-left: 52px; }
+.so-composer__picker .gsearch__foot { display: none; } /* pas de « Voir les N résultats » : on choisit une ligne */
+
+.so-composer__mention {
+  position: relative;
+  margin-left: 52px;
+}
+
+.so-composer__mention .so-unmention {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 30px;
+  height: 30px;
+}
+
+.so-composer--compact .so-composer__tools,
+.so-composer--compact .so-composer__picker,
+.so-composer--compact .so-composer__mention { padding-left: 0; margin-left: 0; }
+
+/* ---------- menu de ses propres contenus (Modifier, Supprimer) ---------- */
+
+.so-menu {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.so-menu__btn { width: 34px; height: 34px; }
+.so-menu__btn[aria-expanded='true'] { color: var(--paper); background: var(--stage-2); }
+.so-menu__pop { top: calc(100% + 6px); width: 200px; }
+
+.so-edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+}
+
+.so-edit__actions { display: flex; justify-content: flex-end; gap: var(--s-8); }
+
+/* ---------- activités agrégées du fil ---------- */
+
+.so-strip {
+  display: flex;
+  gap: var(--s-10);
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding-bottom: 2px;
+}
+
+.so-strip__item {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  width: 84px;
+  color: var(--paper);
+}
+
+.so-strip__cover {
+  position: relative;
+  display: block;
+  width: 84px;
+  height: 84px;
+  border-radius: var(--rad-sm);
+  overflow: hidden;
+  box-shadow: var(--shadow-cover-sm);
+  background: var(--stage-3);
+}
+
+.so-strip__cover > .cover { width: 100%; height: 100%; display: block; }
+.so-strip__cover .gem { position: absolute; right: 3px; bottom: 3px; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6)); }
+
+.so-strip__title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-semi);
+}
+
+.so-strip__item:hover .so-strip__title { text-decoration: underline; text-underline-offset: 3px; }
+
+.so-people { display: flex; flex-wrap: wrap; gap: var(--s-8); }
+.so-people a { display: inline-flex; align-items: center; gap: var(--s-6); color: var(--paper); font-weight: var(--fw-semi); font-size: var(--fs-14); }
+
+.so-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-10);
+  padding: var(--s-8) var(--s-14) var(--s-8) var(--s-8);
+  border-radius: var(--rad-pill);
+  background: var(--stage-2);
+  border: 1px solid var(--line-soft);
+  color: var(--paper);
+  font-weight: var(--fw-semi);
+  align-self: flex-start;
+}
+
+.so-badge__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--grad-gold);
+  color: var(--ink);
+}
+
+/* ---------- invitation à trouver des amis ---------- */
+
+.so-invite {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-14);
+  padding: var(--s-14) var(--s-16);
+  border-radius: var(--rad-md);
+  background: var(--grad-panel);
+  border: 1px solid color-mix(in oklab, var(--cue) 30%, var(--line-soft));
+}
+
+.so-invite__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--cue) 18%, transparent);
+  color: var(--cue);
+}
+
+.so-invite__title { font: var(--fw-title) var(--fs-16) / var(--lh-snug) var(--font-display); }
+.so-invite__body { color: var(--paper-dim); font-size: var(--fs-14); }
+
+/* ---------- squelettes ---------- */
+
+.so-skel {
+  height: 132px;
+  border-radius: var(--rad-md);
+  background: var(--grad-skeleton);
+  background-size: 200% 100%;
+  animation: so-shimmer 1.4s linear infinite;
+  border: 1px solid var(--line-soft);
+}
+
+@keyframes so-shimmer {
+  to { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .so-skel { animation: none; }
+}
+
+/* ---------- colonne : presque complets ---------- */
+
+.so-almost__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-10);
+}
+
+.so-almost__row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: var(--s-12);
+  align-items: center;
+  color: var(--paper);
+}
+
+.so-almost__cover {
+  display: block;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--rad-sm);
+  overflow: hidden;
+  box-shadow: var(--shadow-cover-sm);
+  background: var(--stage-3);
+}
+
+.so-almost__cover > .cover { width: 100%; height: 100%; display: block; }
+.so-almost__body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.so-almost__title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: var(--fw-bold) var(--fs-14) / 1.2 var(--font-display); }
+.so-almost__row:hover .so-almost__title { text-decoration: underline; text-underline-offset: 3px; }
+.so-almost__sub { display: flex; justify-content: space-between; gap: var(--s-8); color: var(--haze); font-size: var(--fs-12); }
+.so-almost__sub span:first-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+.so-segs {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+}
+
+.so-segs__seg {
+  flex: 1;
+  border-radius: 2px;
+  background: var(--stage-3);
+}
+
+.so-segs__seg.is-on { background: var(--cue); }
+
+.so-almost__how { color: var(--paper-dim); font-size: var(--fs-13); }
+.so-almost__how summary { cursor: pointer; color: var(--cue); font-weight: var(--fw-semi); }
+.so-almost__how p { margin: var(--s-6) 0 0; }
+.so-almost__quick { width: 100%; justify-content: center; }
+.so-almost__quick span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+/* ---------- pages post et critique ---------- */
+
+.so-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-16);
+  max-width: 760px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.so-page__back { align-self: flex-start; }
+.so-page__section { display: flex; flex-direction: column; gap: var(--s-12); }
+.so-page__section h2 { font: var(--fw-title) var(--fs-18) / var(--lh-title) var(--font-display); }
+
+/* ---------- discussions d'un album, d'un morceau, d'un artiste ---------- */
+
+.so-discussions { display: flex; flex-direction: column; gap: var(--s-12); }
+.so-group__title { margin: var(--s-4) 0 0; color: var(--haze); font: var(--fw-semi) var(--fs-13) / 1.2 var(--font-body); }
+
+/* ---------- liste « Aimé par » ---------- */
+
+.so-likers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.so-likers a { display: flex; align-items: center; gap: var(--s-10); color: var(--paper); font-weight: var(--fw-semi); }
+
+/* ---------- téléphone ---------- */
+
+@media (max-width: 640px) {
+  .post { padding: var(--s-14) var(--s-14) var(--s-8); }
+  .act-btn { height: 40px; } /* cible tactile */
+  .comment__actions .act-btn { height: 34px; }
+  .mention { grid-template-columns: 60px minmax(0, 1fr) auto; gap: var(--s-12); }
+  .mention__cover { width: 60px; height: 60px; }
+  .mention--track { grid-template-columns: 52px minmax(0, 1fr) auto; }
+  .mention--track .mention__cover { width: 52px; height: 52px; }
+  .thread { margin-left: 6px; padding-left: var(--s-12); }
+  .so-composer { padding: var(--s-12); }
+  .so-composer__row { grid-template-columns: 32px minmax(0, 1fr); gap: var(--s-10); }
+  .so-composer__tools, .so-composer__picker { padding-left: 0; }
+  .so-composer__mention { margin-left: 0; }
+  .so-invite { grid-template-columns: 40px minmax(0, 1fr); }
+  .so-invite .btn { grid-column: 1 / -1; justify-self: start; }
+  .so-strip__item { width: 72px; }
+  .so-strip__cover { width: 72px; height: 72px; }
+}

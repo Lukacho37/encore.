@@ -1,8 +1,10 @@
 // Critique dans le fil, dans un post qui la partage et sur son permalien /review/:id — chantier P1-A (PLAN.md 4.2.1,
 // components.css .review__head, .review__album, .review__foot). Auteur, album ou morceau noté (vraie pochette), note,
-// texte (UgcText), J'aime, « N réponses » (fil sous la critique ou lien vers son permalien), Partager ; ⋯ Signaler /
-// Bloquer sur celles des autres.
-// Props : { review (Review + item), variant: 'feed' | 'embed' | 'page', headline?, reason?, onChange?(review), thread? }.
+// texte (UgcText), J'aime, « N réponses » (fil sous la critique ou lien vers son permalien), Partager (publier un post
+// qui la cite, ou copier son lien) ; ⋯ Signaler / Bloquer sur celles des autres.
+// Props : { review (Review + item), variant: 'feed' | 'embed' | 'page', headline?, reason?, onChange?(review), thread?,
+//          link? (embed : lien « Ouvrir la critique », retiré dans l'aperçu de la fenêtre de partage), hideItem? (l'album
+//          ou le morceau est déjà affiché au-dessus : permalien) }.
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useI18n } from '../../i18n/index.jsx';
@@ -32,7 +34,7 @@ export function ReviewItem({ item }) {
 // Bouton Partager : réexporté pour les anciens imports (`import { ShareButton } from './ReviewCard.jsx'`).
 export { ShareButton };
 
-export function ReviewCard({ review, variant = 'feed', headline, reason, onChange, thread = false }) {
+export function ReviewCard({ review, variant = 'feed', headline, reason, onChange, thread = false, link = true, hideItem = false }) {
   const { t, lang } = useI18n();
   const [open, setOpen] = useState(thread);
   const [count, setCount] = useState(review.commentCount || 0);
@@ -53,7 +55,7 @@ export function ReviewCard({ review, variant = 'feed', headline, reason, onChang
         </div>
         <ReviewItem item={review.item} />
         {review.review && <div className="review__text"><UgcText text={review.review} clamp /></div>}
-        <Link to={href} className="link-btn small">{t('social.openReview')}</Link>
+        {link && <Link to={href} className="link-btn small">{t('social.openReview')}</Link>}
       </div>
     );
   }
@@ -77,7 +79,7 @@ export function ReviewCard({ review, variant = 'feed', headline, reason, onChang
         </div>
         {!self && <SafetyMenu target={{ type: 'review', id: review.id }} user={review.user} />}
       </div>
-      <ReviewItem item={review.item} />
+      {!hideItem && <ReviewItem item={review.item} />}
       <div className="review__meta"><RatingValue value={review.score} size={15} /></div>
       {review.moderated && <p className="so-note">{t('social.moderated')}</p>}
       {review.review && <div className="review__text"><UgcText text={review.review} clamp={!page} /></div>}
@@ -90,7 +92,8 @@ export function ReviewCard({ review, variant = 'feed', headline, reason, onChang
             <span>{count ? t('reviewFoot.replies', { n: count }) : t('reviewFoot.reply')}</span>
           </button>
         )}
-        <ShareButton path={href} title={t('reviewPage.kicker', { name: review.user.username })} />
+        <ShareButton path={href} title={t('reviewPage.kicker', { name: review.user.username })}
+          item={review.moderated ? null : { type: 'review', id: review.id }} preview={<ReviewCard review={review} variant="embed" link={false} />} />
       </div>
       {open && !page && (
         <CommentThread target={{ type: 'review', id: review.id }} ownerId={review.user.id} locked={!!review.moderated} autoFocus={!count}

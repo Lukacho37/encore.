@@ -152,6 +152,14 @@ export default {
       invalid_cosmetic: 'Ce cosmétique n’existe pas.',
       unknown_album: 'Cet album n’est pas (ou plus) au catalogue.',
       unknown_track: 'Cette carte n’est pas (ou plus) au catalogue.',
+      // Précise la clé de fr.js (les promos se pressent désormais, PLAN.md 6.4).
+      not_pressable: 'Cette promo ne se presse qu’une fois un album de son artiste complété.',
+    },
+    // Précise la page morceau (zone track, sans chantier en P1) : les promos se pressent désormais.
+    track: {
+      mine: {
+        promoHint: 'Une promo se presse pour 1 200 royalties dès que tu as complété un album de son artiste ; sinon, on la trouve en booster.',
+      },
     },
   },
   en: {
@@ -302,6 +310,12 @@ export default {
       invalid_cosmetic: 'This cosmetic doesn’t exist.',
       unknown_album: 'This album isn’t (or is no longer) in the catalogue.',
       unknown_track: 'This card isn’t (or is no longer) in the catalogue.',
+      not_pressable: 'This promo can only be pressed once you’ve completed an album by its artist.',
+    },
+    track: {
+      mine: {
+        promoHint: 'A promo can be pressed for 1,200 royalties once you’ve completed an album by its artist; otherwise, find it in packs.',
+      },
     },
   },
 };

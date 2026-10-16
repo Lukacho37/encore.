@@ -12,6 +12,7 @@ import UgcText from './UgcText.jsx';
 import SafetyMenu from './safety/SafetyMenu.jsx';
 import { LikeButton } from './social/LikeButton.jsx';
 import { ShareButton } from './social/ShareButton.jsx';
+import { ReviewCard } from './social/ReviewCard.jsx';
 import '../styles/profile.css';
 import '../styles/track.css';
 
@@ -331,9 +332,10 @@ const ratingIdOf = (r) => (Number.isInteger(r.ratingId) ? r.ratingId : !r.type &
 
 /**
  * Pied d'une critique (P1-A, components.css .review__foot) : J'aime, « N réponses » (ou « Répondre ») qui ouvre son
- * permalien /review/:id, Partager. Seulement pour les critiques publiées (pas celles masquées par la modération).
+ * permalien /review/:id, Partager (publier un post qui la cite, ou copier son lien). Seulement pour les critiques
+ * publiées (pas celles masquées par la modération). `item` : l'album ou le morceau noté (aperçu du partage).
  */
-export function ReviewFoot({ review, ratingId }) {
+export function ReviewFoot({ review, ratingId, item = null }) {
   const { t } = useI18n();
   const [count, setCount] = useState({ liked: !!review.liked, likeCount: review.likeCount || 0 });
   useEffect(() => {
@@ -349,7 +351,8 @@ export function ReviewFoot({ review, ratingId }) {
         <Icon name="comment" size={18} />
         <span>{replies ? t('reviewFoot.replies', { n: replies }) : t('reviewFoot.reply')}</span>
       </Link>
-      <ShareButton path={href} label={false} title={shareTitle(t, review)} />
+      <ShareButton path={href} label={false} title={shareTitle(t, review)} item={{ type: 'review', id: ratingId }}
+        preview={<ReviewCard review={{ ...review, id: ratingId, item: review.item || item }} variant="embed" link={false} />} />
     </div>
   );
 }
@@ -361,9 +364,9 @@ const shareTitle = (t, review) => (review.user?.username ? t('reviewPage.kicker'
  * Liste de critiques. Chaque critique porte l'ancre « review-<id> », son texte passe par UgcText et le menu
  * « Signaler / Bloquer » (SafetyMenu) accompagne celles des autres joueurs. `renderItem(r)` remplace l'auteur
  * (journal d'un profil : l'élément noté à la place). Les critiques v2 (avec leurs compteurs) ont leur pied :
- * J'aime, réponses, Partager.
+ * J'aime, réponses, Partager. `item` : l'album ou le morceau de ces critiques ({ type, id }, aperçu du partage).
  */
-export function ReviewList({ reviews, renderItem, empty }) {
+export function ReviewList({ reviews, renderItem, empty, item = null }) {
   const { t, date } = useI18n();
   if (!reviews.length) return <p className="empty">{empty || t('reviews.empty')}</p>;
   return (
@@ -387,7 +390,9 @@ export function ReviewList({ reviews, renderItem, empty }) {
               <span className="small muted">{date(r.updatedAt)}</span>
             </div>
             {r.review && <div className="review__text trk-review__text"><UgcText text={r.review} clamp /></div>}
-            {ratingId && r.review && !r.moderated && Number.isInteger(r.likeCount) && <ReviewFoot review={r} ratingId={ratingId} />}
+            {ratingId && r.review && !r.moderated && Number.isInteger(r.likeCount) && (
+              <ReviewFoot review={r} ratingId={ratingId} item={item || (r.type ? { type: r.type, id: r.id } : null)} />
+            )}
           </li>
         );
       })}
@@ -415,7 +420,7 @@ function ReviewGroup({ type, id, scope, title, initial, nextCursor, empty, tools
   return (
     <div className={`trk-group trk-group--${scope}`}>
       <GroupTitle title={title} tools={tools} />
-      <ReviewList reviews={reviews} empty={empty} />
+      <ReviewList reviews={reviews} empty={empty} item={{ type, id }} />
       {(more.next || page.error) && (
         <LoadMore hasMore loading={page.loading} error={page.error} onRetry={page.reload}
           onClick={() => setCursor(more.next)} label={t('track.reviews.more')} />
@@ -445,7 +450,7 @@ function PopularReviews({ type, id, title, tools, empty }) {
   return (
     <div className="trk-group trk-group--community">
       <GroupTitle title={title} tools={tools} />
-      {list.loading && !list.items.length ? <Skeleton kind="row" count={2} /> : <ReviewList reviews={list.items} empty={empty} />}
+      {list.loading && !list.items.length ? <Skeleton kind="row" count={2} /> : <ReviewList reviews={list.items} empty={empty} item={{ type, id }} />}
       <LoadMore hasMore={list.hasMore} loading={list.loading} error={list.items.length ? list.error : null} onRetry={list.loadMore}
         onClick={list.loadMore} label={t('track.reviews.more')} />
     </div>

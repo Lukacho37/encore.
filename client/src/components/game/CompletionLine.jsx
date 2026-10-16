@@ -31,9 +31,9 @@ export function CompletionLine({ albumId }) {
 
   const mine = data.mine;
   const parts = mine ? [
-    t('game.moment.completedOn', { date: date(mine.at) }),
-    mine.rank ? t('game.moment.pressing', { n: mine.rank }) : null,
-    mine.days === 0 ? t('game.moment.sameDay') : t('game.moment.days', { n: mine.days }),
+    { id: 'date', text: t('game.moment.completedOn', { date: date(mine.at) }) },
+    mine.rank ? { id: 'pressing', text: t('game.moment.pressing', { n: mine.rank }) } : null,
+    { id: 'days', text: mine.days === 0 ? t('game.moment.sameDay') : t('game.moment.days', { n: mine.days }) },
   ].filter(Boolean) : [];
   const friends = data.friends || [];
 
@@ -42,7 +42,11 @@ export function CompletionLine({ albumId }) {
       {parts.length > 0 && (
         <p className="gold-note gm-completion__mine">
           <Icon name="disc" />
-          {parts.map((p, i) => <span key={i}>{i > 0 && <span className="gm-moment__dot" aria-hidden="true">· </span>}{p}</span>)}
+          {parts.map((p, i) => (
+            <span key={p.id} className={p.id === 'pressing' ? 'gm-moment__pressing' : undefined}>
+              {i > 0 && <span className="gm-moment__dot" aria-hidden="true">· </span>}{p.text}
+            </span>
+          ))}
         </p>
       )}
       <p className="gm-completion__all small">

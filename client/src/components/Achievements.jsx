@@ -29,10 +29,11 @@ function CompletionMoment({ a, album, full }) {
   const at = a.at || Date.now();
   const days = a.firstCardAt ? Math.max(0, Math.floor((at - a.firstCardAt) / DAY)) : null;
   const score = ratings?.get(`album:${a.id}`) ?? null;
+  // Le Pressage n° est mis en avant (doré) ; sur téléphone, une ligne par information, sans points.
   const parts = [
-    t('game.moment.completedOn', { date: date(at) }),
-    a.rank ? t('game.moment.pressing', { n: a.rank }) : null,
-    days == null ? null : days === 0 ? t('game.moment.sameDay') : t('game.moment.days', { n: days }),
+    { id: 'date', text: t('game.moment.completedOn', { date: date(at) }) },
+    a.rank ? { id: 'pressing', text: t('game.moment.pressing', { n: a.rank }) } : null,
+    days == null ? null : { id: 'days', text: days === 0 ? t('game.moment.sameDay') : t('game.moment.days', { n: days }) },
   ].filter(Boolean);
 
   const rate = async (value) => {
@@ -73,7 +74,11 @@ function CompletionMoment({ a, album, full }) {
   return (
     <div className="gm-moment">
       <p className="gm-moment__stats mono">
-        {parts.map((p, i) => <span key={i}>{i > 0 && <span className="gm-moment__dot" aria-hidden="true">· </span>}{p}</span>)}
+        {parts.map((p, i) => (
+          <span key={p.id} className={p.id === 'pressing' ? 'gm-moment__pressing' : undefined}>
+            {i > 0 && <span className="gm-moment__dot" aria-hidden="true">· </span>}{p.text}
+          </span>
+        ))}
       </p>
       {full && (
         <>

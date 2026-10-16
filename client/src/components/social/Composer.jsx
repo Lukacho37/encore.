@@ -2,8 +2,9 @@
 // citation d'un album, d'un morceau ou d'un artiste (recherche globale, portée album / morceau / artiste) rendue en carte
 // de mention avec sa vraie pochette, visibilité (Public / Amis), « Publier ». Le serveur vérifie tout (compte actif,
 // quotas, politique des liens, doublons) ; ses refus s'affichent tels quels.
-// Props : { item?: { type, id } (élément imposé : discussions d'un album, d'un morceau, d'un artiste), itemTitle?,
-//          onPosted?(post), compact?, autoFocus?, focusSignal? (change → le champ prend le focus) }.
+// Props : { item?: { type, id } (élément imposé : discussions d'un album, d'un morceau, d'un artiste, partage d'une
+//          critique ou d'une liste), itemTitle?, placeholder?, onPosted?(post), compact?, autoFocus?, focusSignal? (change →
+//          le champ prend le focus) }.
 import { useEffect, useId, useRef, useState } from 'react';
 import { post as apiPost } from '../../api.js';
 import { useGame } from '../../state/GameContext.jsx';
@@ -16,7 +17,7 @@ import '../../styles/social.css';
 export const POST_MAX = 1000;
 const MENTION_SCOPE = 'album,track,artist';
 
-export function Composer({ item = null, itemTitle = null, onPosted, compact = false, autoFocus = false, focusSignal = 0 }) {
+export function Composer({ item = null, itemTitle = null, placeholder: asked = null, onPosted, compact = false, autoFocus = false, focusSignal = 0 }) {
   const { t, error } = useI18n();
   const { user } = useGame();
   const toast = useToast();
@@ -66,7 +67,7 @@ export function Composer({ item = null, itemTitle = null, onPosted, compact = fa
     }
   };
 
-  const placeholder = item && itemTitle ? t('composer.placeholderItem', { title: itemTitle }) : t('composer.placeholder');
+  const placeholder = asked || (item && itemTitle ? t('composer.placeholderItem', { title: itemTitle }) : t('composer.placeholder'));
   return (
     <form className={`so-composer${compact ? ' so-composer--compact' : ''}`} onSubmit={submit} data-composer={item ? `${item.type}:${item.id}` : 'home'}>
       <div className="so-composer__row">

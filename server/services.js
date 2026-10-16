@@ -891,9 +891,12 @@ export function createServices(db, catalog, { bus = null } = {}) {
       SELECT substr(v.key, 7) AS album_id, v.created_at, v.rank, p.holo, p.total
       FROM v LEFT JOIN user_album_progress p ON p.user_id = ? AND p.album_id = substr(v.key, 7)
       ORDER BY v.created_at DESC, v.key`).all(target.id, target.id).reverse();
-    const vinyls = vinylRows.map((r) => ({
-      albumId: r.album_id, at: r.created_at, rank: r.rank ?? null, edition: r.total && r.holo >= r.total ? 'holo' : 'black',
-    }));
+    // Couleur de vinyle choisie (cosmétique, PLAN.md 6.6) : posée sur chaque disque noir de l'étagère et de la platine.
+    const cosmetics = cleanSelection(parseJson(target.cosmetics, {}), unlockedCosmeticIds(target));
+    const vinyls = vinylRows.map((r) => {
+      const edition = r.total && r.holo >= r.total ? 'holo' : 'black';
+      return { albumId: r.album_id, at: r.created_at, rank: r.rank ?? null, edition, color: edition === 'black' ? cosmetics.vinyl : null };
+    });
     const mastered = q(`SELECT substr(key, 8) AS id FROM achievements WHERE user_id = ? AND key >= 'artist:' AND key < 'artist;'
       ORDER BY created_at DESC LIMIT 100`).all(target.id).map((r) => r.id);
     const upcoming = q(`SELECT p.album_id, p.owned, p.total FROM user_album_progress p
@@ -919,7 +922,7 @@ export function createServices(db, catalog, { bus = null } = {}) {
       },
       showcase: slotIds.map((id) => (id && ownedSlots.has(id) ? { trackId: id, variant: holoSlots.has(id) ? 'holo' : 'std' } : null)),
       // Cosmétiques choisis (cadre, couleur de vinyle, thème, titre : PLAN.md 6.6).
-      cosmetics: cleanSelection(parseJson(target.cosmetics, {}), unlockedCosmeticIds(target)),
+      cosmetics,
       completedAlbums: vinyls.map((v) => v.albumId),
       vinyls,
       masteredArtists: mastered,

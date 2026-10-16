@@ -723,6 +723,8 @@ const SEED_POSTS = [
   ['lea.beats', 'Ma playlist du dimanche : Stromae, Adele, Billie Eilish. Vos suggestions pour la compléter ?', null, 26],
   ['maxvinyl', 'La face B d’Abbey Road, c’est seize minutes de génie sans un temps mort.', ['album', 'abbey-road'], 32],
   ['soulcollector', 'Back to Black : chaque morceau raconte une histoire. Le vinyle est enfin complet dans ma vinylthèque.', ['album', 'back-to-black'], 40],
+  // Critique partagée dans un post (« Partager » → « Publier dans le fil ») : ['review', '<auteur>:<album>'].
+  ['lea.beats', 'Tout est dit dans cette critique, je n’aurais pas mieux écrit.', ['review', 'maxvinyl:discovery'], 12],
 ];
 
 // [post (indice) ou critique ('review:<pseudo>:<album>'), pseudo, texte, indice du commentaire auquel on répond]
@@ -752,22 +754,29 @@ export function seed(db, ctx) {
   db.socialSeeded = true;
   const now = Date.now();
   const byName = (n) => ctx.userByName(n);
-  const posts = SEED_POSTS.map(([username, body, item, hoursAgo]) => {
-    const u = byName(username);
-    if (!u) return null;
-    if (item && !(item[0] === 'album' ? ctx.ALBUM : item[0] === 'track' ? ctx.TRACK : ctx.ARTIST).has(item[1])) return null;
-    const row = {
-      id: db.nextPostId++, userId: u.id, body, itemType: item?.[0] ?? null, itemId: item?.[1] ?? null, visibility: 'public',
-      likeCount: 0, commentCount: 0, createdAt: now - hoursAgo * HOUR, editedAt: null, hiddenAt: null,
-    };
-    db.posts.push(row);
-    return row;
-  });
   const reviewOf = (key) => {
     const [, username, albumId] = key.split(':');
     const u = byName(username);
     return u ? db.ratings.find((r) => r.userId === u.id && r.type === 'album' && r.id === albumId && r.review) : null;
   };
+  const posts = SEED_POSTS.map(([username, body, item, hoursAgo]) => {
+    const u = byName(username);
+    if (!u) return null;
+    let itemId = item?.[1] ?? null;
+    if (item?.[0] === 'review') {
+      const r = reviewOf(`review:${item[1]}`);
+      if (!r || !Number.isInteger(r.rid)) return null;
+      itemId = String(r.rid);
+    } else if (item && !(item[0] === 'album' ? ctx.ALBUM : item[0] === 'track' ? ctx.TRACK : ctx.ARTIST).has(item[1])) {
+      return null;
+    }
+    const row = {
+      id: db.nextPostId++, userId: u.id, body, itemType: item?.[0] ?? null, itemId, visibility: 'public',
+      likeCount: 0, commentCount: 0, createdAt: now - hoursAgo * HOUR, editedAt: null, hiddenAt: null,
+    };
+    db.posts.push(row);
+    return row;
+  });
   const targetOf = (ref) => {
     if (typeof ref === 'number') return posts[ref] ? { type: 'post', id: posts[ref].id, row: posts[ref], at: posts[ref].createdAt } : null;
     const r = reviewOf(ref);

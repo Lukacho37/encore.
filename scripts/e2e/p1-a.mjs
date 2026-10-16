@@ -5,8 +5,9 @@
 //     « Presque complets » à côté (ordinateur) ou rangée après la première page (téléphone), puis « Derniers morceaux ».
 //   - Post avec une carte d'album (recherche « Citer », carte cliquable vers l'album), J'aime, commentaire, réponse (un
 //     seul niveau), page /post/:id ; critique d'un ami : J'aime et « Répondre » sous la critique (page album), permalien
-//     /review/:id avec réponses ; notifications groupées (« amie et 1 autre ont aimé ton post ») ; Discussions d'album
-//     (amis d'abord) quand la page album les monte (P1-B).
+//     /review/:id avec réponses, « Partager » → « Publier dans le fil » (post qui cite la critique) ; notifications
+//     groupées (« amie et 1 autre ont aimé ton post ») ; Discussions d'album (amis d'abord) quand la page album les monte
+//     (P1-B).
 //   - Démo autonome (dist-demo/albummania-demo.html) : les joueurs fictifs publient, aiment et répondent.
 //   Zéro erreur de console (hors images Deezer bloquées par le bac à sable), pas de défilement horizontal.
 //   BASE=http://localhost:5111 OUT=/tmp/am-p1-a/shots DATABASE_FILE=/tmp/am-p1-a/am.db node scripts/e2e/p1-a.mjs
@@ -234,12 +235,33 @@ await run('desktop', VIEWPORTS.desktop, async (page, ctx) => {
   await page.locator('[data-page="review"] .comment__text', { hasText: 'trajets de nuit' }).waitFor();
   if ((await page.getAttribute('[data-page="review"] .mention', 'href')) !== ALBUM_URL) fail('[desktop] permalien : carte de l’album absente');
   await shot(page, 'd-60-review-page');
+
+  // 6 bis. « Partager » la critique → « Publier dans le fil » : un post qui la cite (carte de la critique), notifié à l'amie.
+  await page.locator('[data-page="review"] .so-review--page [data-share="review"]').click();
+  await page.locator('[data-share-action="feed"]').click();
+  const dialog = page.locator('.so-share-modal');
+  await dialog.locator('[data-share-preview="review"] .so-review--embed').waitFor();
+  await dialog.locator('textarea').fill('À lire absolument.');
+  await page.waitForTimeout(400); // fin de l'animation d'ouverture
+  await shot(page, 'd-61-share-review');
+  await dialog.locator('button[type=submit]').click();
+  await dialog.waitFor({ state: 'detached' });
+  const mineNow = await callAs(player, 'GET', `/users/${player.username}/posts`);
+  const shared = (mineNow.body?.items || []).find((p) => p.item?.type === 'review' && Number(p.item.id) === reviewId);
+  if (!shared?.review) fail('[desktop] le post qui partage la critique est absent (ou sans sa critique)');
+
   const fn = await callAs(friend, 'GET', '/notifications');
   const fk = new Set((fn.body?.items || []).map((n) => n.kind));
-  for (const k of ['like_review', 'comment_review']) if (!fk.has(k)) fail(`[desktop] notification ${k} absente chez l'amie`);
+  for (const k of ['like_review', 'comment_review', 'mention_review']) if (!fk.has(k)) fail(`[desktop] notification ${k} absente chez l'amie`);
 
-  // 7. Onglets Pour toi et Communauté ; post introuvable.
+  // 7. Le post qui partage la critique est dans le fil (carte de la critique) ; onglets Pour toi et Communauté.
   await page.goto(`${BASE}/`);
+  if (shared) {
+    const sharedCard = page.locator(`[data-post="${shared.id}"] .so-review--embed`);
+    await sharedCard.waitFor();
+    await sharedCard.scrollIntoViewIfNeeded();
+    await shot(page, 'd-62-shared-review-in-feed');
+  }
   await page.locator('.so-tabs [data-tab="community"]').click();
   await page.locator('[data-feed-tab="community"] [data-feed-item]').first().waitFor();
   await page.locator('.so-tabs [data-tab="foryou"]').click();
@@ -317,6 +339,20 @@ await run('phone', VIEWPORTS.phone, async (page, ctx) => {
   await page.locator(`#review-${reviewId}`).scrollIntoViewIfNeeded();
   await shot(page, 'm-60-album-reviews');
   await checkNoHorizontalScroll(page, 'phone album');
+  // Menu « Partager » d'une critique sur téléphone : il tient dans l'écran ; la fenêtre de partage aussi.
+  await page.locator(`#review-${reviewId} [data-share="review"]`).click();
+  await page.locator('[data-share-action="feed"]').waitFor();
+  await checkNoHorizontalScroll(page, 'phone share menu');
+  const pop = await page.locator('.so-share__pop').boundingBox();
+  if (!pop || pop.x < 0 || pop.x + pop.width > 390) fail(`[phone] menu Partager hors de l'écran : ${JSON.stringify(pop)}`);
+  await page.waitForTimeout(400); // fin de l'animation d'ouverture
+  await shot(page, 'm-61-share-menu');
+  await page.locator('[data-share-action="feed"]').click();
+  await page.locator('.so-share-modal [data-share-preview="review"]').waitFor();
+  await page.waitForTimeout(400); // fin de l'animation d'ouverture
+  await shot(page, 'm-62-share-dialog');
+  await page.keyboard.press('Escape');
+  await page.locator('.so-share-modal').waitFor({ state: 'detached' });
 });
 
 // ---------- démo autonome ----------

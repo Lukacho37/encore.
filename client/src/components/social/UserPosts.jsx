@@ -8,6 +8,7 @@ import { useCursorList } from '../../state/paged.js';
 import { EmptyState, ErrorBox, LoadMore } from '../feedback.jsx';
 import { Composer } from './Composer.jsx';
 import { PostCard } from './PostCard.jsx';
+import { useOnPosted } from './util.js';
 import '../../styles/social.css';
 
 export function UserPosts({ username }) {
@@ -20,6 +21,8 @@ export function UserPosts({ username }) {
     limit: 20,
     onPage: (res) => setRestricted(!!res?.restricted),
   });
+  // Sur son propre Studio, un post publié depuis « Partager » arrive aussi en tête.
+  useOnPosted((post) => self && list.prepend(post));
   if (!username) return null;
   const first = list.loading && !list.items.length;
   return (

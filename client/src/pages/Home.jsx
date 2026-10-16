@@ -23,7 +23,7 @@ import { BattleWidget, QuestStrip } from '../components/play/slots.jsx';
 import { SuggestedFriends, TasteMatchCard } from '../components/match/HomeCards.jsx';
 import { Composer } from '../components/social/Composer.jsx';
 import { FEED_TABS, FeedList, feedItemOfPost, useFeed } from '../components/social/FeedList.jsx';
-import { itemHref, useMedia } from '../components/social/util.js';
+import { itemHref, useMedia, useOnPosted } from '../components/social/util.js';
 import '../styles/home.css';
 import '../styles/social.css';
 
@@ -160,6 +160,8 @@ function HomeFeed({ onAlbumPack }) {
   const [focus, setFocus] = useState(0);
   const feed = useFeed(asked);
   const narrow = useMedia(NARROW);
+  // Post publié depuis « Partager » (critique, liste…) sur cette page : en tête du fil, comme ceux du compositeur.
+  useOnPosted((post) => feed.prepend(feedItemOfPost(post)));
   const active = asked || feed.tab;
   const aside = <HomeAside onAlbumPack={onAlbumPack} />;
   return (

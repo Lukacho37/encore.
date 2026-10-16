@@ -61,8 +61,6 @@ export default function ReviewPage() {
   const { review, comments } = state.data;
   const itemPage = itemHref(item?.type, item?.id);
   const self = review.user.relation === 'self';
-  // La carte de l'élément est au-dessus : la critique ne le répète pas.
-  const { item: _item, ...shown } = review;
   return (
     <div className="so-page" data-page="review">
       <BackLink to={itemPage || '/'} label={rated?.title || t('post.home')} />
@@ -73,7 +71,8 @@ export default function ReviewPage() {
           <MentionCard item={item} />
         </div>
       )}
-      <ReviewCard review={shown} variant="page"
+      {/* La carte de l'élément est au-dessus : la critique ne le répète pas (il reste dans l'aperçu du partage). */}
+      <ReviewCard review={review} variant="page" hideItem
         onChange={(next) => setState((s) => ({ ...s, data: { ...s.data, review: { ...s.data.review, ...next } } }))} />
       {self && itemPage && (
         <Link to={`${itemPage}#ma-note`} className="link-btn small so-page__edit"><Icon name="edit" size={14} /> {t('reviewPage.edit')}</Link>

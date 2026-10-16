@@ -377,6 +377,11 @@ test('cosmétiques : débloqués par le niveau, accordés par un badge, sélecti
   const summary = services.userSummaries([ivy.user.id], null).get(ivy.user.id);
   assert.equal(summary.frame, 'french-touch');
   assert.equal(services.publicProfile(ivy.user.id, 'cosmo_ivy').cosmetics.vinyl, 'prune');
+  // L'étagère de vinyles porte la couleur choisie sur chaque disque noir.
+  services.adminCompleteCollection(ivy.user.id, 'moon-safari');
+  services.forget(ivy.user.id);
+  const shelf = services.publicProfile(ivy.user.id, 'cosmo_ivy').vinyls;
+  assert.deepEqual(shelf.map((v) => [v.albumId, v.edition, v.color]), [['moon-safari', 'black', 'prune']]);
   // Niveau perdu (collection remise à zéro) : le cosmétique de niveau ne s'affiche plus.
   deps.collection.setCosmetics(ivy.user.id, { frame: 'ivoire' });
   setLevel(ivy.user.id, 1);

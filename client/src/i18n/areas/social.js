@@ -34,6 +34,11 @@ export default {
       postEdited: 'Post modifié.',
       openPost: 'Ouvrir le post',
       openReview: 'Ouvrir la critique',
+      shareToFeed: 'Publier dans le fil',
+      shareToFeedTitle: 'Publier dans le fil',
+      shareCopy: 'Copier le lien',
+      sharePlaceholder: 'Un mot pour l’accompagner ? (facultatif)',
+      shareHint: 'Ton post cite cet élément : un clic sur la carte mène à sa page.',
     },
     composer: {
       label: 'Nouveau post',
@@ -212,6 +217,11 @@ export default {
       postEdited: 'Post updated.',
       openPost: 'Open the post',
       openReview: 'Open the review',
+      shareToFeed: 'Post to the feed',
+      shareToFeedTitle: 'Post to the feed',
+      shareCopy: 'Copy the link',
+      sharePlaceholder: 'Add a few words? (optional)',
+      shareHint: 'Your post links to it: one tap on the card opens its page.',
     },
     composer: {
       label: 'New post',

@@ -757,14 +757,15 @@ function publicProfile(viewer, target) {
     }
   }
   const entries = Object.entries(achOf(target.id));
+  const cosmetics = cosmeticsOf(target);
   // Vinyles : les 120 albums complétés les plus récents, du plus ancien au plus récent ; holo si toutes les cartes le sont.
+  // Couleur de vinyle choisie (cosmétique) sur chaque disque noir, comme le serveur.
   const vinyls = entries.filter(([k]) => k.startsWith('album:') && ALBUM.has(k.slice(6)))
     .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 120).reverse()
     .map(([k, at]) => {
       const albumId = k.slice(6);
-      return {
-        albumId, at, rank: rankOf(target.id, k), edition: staticCatalog.albumTrackIds(albumId).every((id) => holo.has(id)) ? 'holo' : 'black',
-      };
+      const edition = staticCatalog.albumTrackIds(albumId).every((id) => holo.has(id)) ? 'holo' : 'black';
+      return { albumId, at, rank: rankOf(target.id, k), edition, color: edition === 'black' ? cosmetics.vinyl : null };
     });
   const mastered = entries.filter(([k]) => k.startsWith('artist:')).sort((a, b) => b[1] - a[1]).slice(0, 100).map(([k]) => k.slice(7));
   // Prochains vinyles : les albums commencés les plus avancés.
@@ -783,7 +784,7 @@ function publicProfile(viewer, target) {
     },
     showcase: slotIds.map((id) => (id && owned.has(id) ? { trackId: id, variant: holo.has(id) ? 'holo' : 'std' } : null)),
     // Cosmétiques choisis (cadre, couleur de vinyle, thème, titre : PLAN.md 6.6).
-    cosmetics: cosmeticsOf(target),
+    cosmetics,
     completedAlbums: vinyls.map((v) => v.albumId),
     vinyls,
     masteredArtists: mastered,

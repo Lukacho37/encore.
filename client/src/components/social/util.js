@@ -1,5 +1,6 @@
 // Outils partagés des composants sociaux — chantier P1-A : adresses des contenus, heure relative, partage d'un lien,
-// retrait des contenus d'un joueur bloqué (événement `albummania:blocks` diffusé par SafetyMenu), requête média.
+// retrait des contenus d'un joueur bloqué (événement `albummania:blocks` diffusé par SafetyMenu), post publié ailleurs
+// que dans le fil (événement `albummania:posted` : partage d'une critique, d'une liste), requête média.
 import { useEffect, useRef, useState } from 'react';
 import { BLOCKS_EVENT } from '../safety/SafetyMenu.jsx';
 import { timeAgo } from '../safety/NotificationRow.jsx';
@@ -58,6 +59,27 @@ export function useOnBlocked(onBlocked) {
     };
     window.addEventListener(BLOCKS_EVENT, handler);
     return () => window.removeEventListener(BLOCKS_EVENT, handler);
+  }, []);
+}
+
+/** Événement d'un post publié hors du compositeur de l'accueil (fenêtre « Publier dans le fil »). */
+export const POSTED_EVENT = 'albummania:posted';
+
+/** Annonce un post qu'on vient de publier (le fil de l'accueil le met en tête sans recharger). */
+export function announcePosted(post) {
+  if (post && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(POSTED_EVENT, { detail: { post } }));
+}
+
+/** Appelle `onPosted(post)` pour chaque post annoncé par announcePosted. */
+export function useOnPosted(onPosted) {
+  const ref = useRef(onPosted);
+  useEffect(() => {
+    ref.current = onPosted;
+  });
+  useEffect(() => {
+    const handler = (e) => e.detail?.post && ref.current?.(e.detail.post);
+    window.addEventListener(POSTED_EVENT, handler);
+    return () => window.removeEventListener(POSTED_EVENT, handler);
   }, []);
 }
 

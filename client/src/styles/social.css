@@ -496,6 +496,30 @@ a.mention:hover {
 .so-menu__btn[aria-expanded='true'] { color: var(--paper); background: var(--stage-2); }
 .so-menu__pop { top: calc(100% + 6px); width: 200px; }
 
+/* ---------- « Partager » : menu (Publier dans le fil · Copier le lien) et fenêtre de partage ---------- */
+
+.so-share {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.post__actions > .so-share:last-child { margin-left: auto; }
+.so-share > .act-btn.is-on { background: var(--stage-2); color: var(--paper); }
+.so-share__pop { top: calc(100% + 6px); left: 0; right: auto; width: 220px; }
+.so-share__pop--left { left: auto; right: 0; }
+
+.so-share-modal { max-width: 520px; }
+
+.so-share-modal .so-composer {
+  margin-top: var(--s-12);
+  padding: var(--s-12);
+  background: var(--stage-2);
+}
+
+.so-share__preview > .so-review--embed { margin: 0; }
+.so-share__hint { margin: var(--s-10) 0 0; }
+
 .so-edit {
   display: flex;
   flex-direction: column;

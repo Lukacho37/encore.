@@ -312,6 +312,44 @@
   white-space: nowrap;
 }
 
+/* Une ligne par rareté (nom en clair, pas en capitales), une colonne étroite par carte. */
+.gm-odds__table tbody th {
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-body);
+  font-size: var(--fs-13);
+  background: none;
+}
+
+.gm-odds__table thead th.num,
+.gm-odds__table td.num {
+  text-align: right;
+}
+
+@media (max-width: 640px) {
+  .gm-odds__table th,
+  .gm-odds__table td {
+    padding: var(--s-8) var(--s-4);
+  }
+
+  .gm-odds__table tr > :first-child {
+    padding-left: var(--s-8);
+  }
+
+  .gm-odds__table tr > :last-child {
+    padding-right: var(--s-8);
+  }
+
+  .gm-odds__table tbody th {
+    white-space: normal;
+  }
+
+  /* « Carte 1 » devient « 1 » : le titre du tableau dit déjà qu'il s'agit des cartes. */
+  .gm-odds__word {
+    display: none;
+  }
+}
+
 .gm-odds__rarity {
   display: inline-flex;
   align-items: center;
@@ -326,6 +364,17 @@
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* Choix de l'album : la liste des suggestions s'ouvre dans la fenêtre, sans en déborder (plus spécifique que la
+   largeur minimale de la variante « inline » de la recherche). */
+.modal.gm-choose .gsearch__panel {
+  position: static;
+  width: 100%;
+  min-width: 0;
+  max-height: 45vh;
+  margin-top: var(--s-8);
+  box-shadow: none;
 }
 
 .gm-odds__weights li {
@@ -463,6 +512,43 @@
   .gm-pack {
     transition: none;
   }
+}
+
+/* ---------- ligne de complétion de la page d'album (CompletionLine) ---------- */
+
+.gm-completion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-6) var(--s-12);
+  margin: var(--s-8) 0 0;
+}
+
+.gm-completion p {
+  margin: 0;
+}
+
+.gm-completion__mine {
+  flex-wrap: wrap;
+  flex-basis: 100%;
+  column-gap: var(--s-8);
+}
+
+.gm-completion__friends {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gm-completion__friends li + li {
+  margin-left: calc(var(--s-6) * -1);
+}
+
+.gm-completion__friends a {
+  display: block;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--stage);
 }
 
 /* ---------- couleurs de vinyle (cosmétiques du palier, PLAN.md 6.6) et Pressage n° ---------- */

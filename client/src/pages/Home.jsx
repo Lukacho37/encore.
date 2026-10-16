@@ -1,89 +1,42 @@
-import { useEffect, useMemo, useState } from 'react';
+// Accueil (« Boosters ») — chantier P0-B, repris par P1-A en P1 (PLAN.md 2.4, 2.5, DESIGN-OVERRIDE.md).
+// En tête, LITTÉRALEMENT inchangés : le héros Boosters (paquet, « N boosters disponibles », minuteur, guide des raretés,
+// « Ouvrir un booster ») et la rangée Boutique / Doublons / Blind test. En dessous (P1) : « Boosters spéciaux » (P1-D),
+// la rangée des quêtes (P1-F), puis le fil (compositeur, onglets Tes amis · Pour toi · Communauté, pages chargées au
+// défilement) à côté de sa colonne (Presque complets avec « Deux façons de finir un album », Taste Match, battle,
+// amis suggérés) ; sur téléphone la colonne se range après la première page du fil. Enfin « Derniers morceaux obtenus ».
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { get } from '../api.js';
 import { RarityGuideButton } from '../components/RarityGuide.jsx';
-import { RatingValue, useRatedItem } from '../components/Rating.jsx';
 import { useGame } from '../state/GameContext.jsx';
 import { useI18n } from '../i18n/index.jsx';
 import { PackArt } from '../components/PackOpening.jsx';
 import Card from '../components/Card.jsx';
 import CoverArt from '../components/CoverArt.jsx';
 import { AlbumTile, AlbumTileSkeleton } from '../components/AlbumTile.jsx';
-import { EmptyState, ErrorBox } from '../components/feedback.jsx';
 import { useCardModal } from '../components/CardModal.jsx';
-import { Avatar, Icon, Royalties, RoyaltyIcon, formatDuration, useNow } from '../components/ui.jsx';
+import { Icon, Progress, Royalties, RoyaltyIcon, formatDuration, useNow } from '../components/ui.jsx';
 import { ECONOMY, FOCUS_CHANCE } from '@shared/rules.js';
-import { apiPath, useAlbums, useApi, useCatalogInfo } from '../state/catalog.js';
+import { useAlbums } from '../state/catalog.js';
 import { useBoosterFlow } from '../state/boosterFlow.js';
+import { SpecialBoosters } from '../components/game/SpecialBoosters.jsx';
+import { BattleWidget, QuestStrip } from '../components/play/slots.jsx';
+import { SuggestedFriends, TasteMatchCard } from '../components/match/HomeCards.jsx';
+import { Composer } from '../components/social/Composer.jsx';
+import { FEED_TABS, FeedList, feedItemOfPost, useFeed } from '../components/social/FeedList.jsx';
+import { itemHref, useMedia } from '../components/social/util.js';
 import '../styles/home.css';
+import '../styles/social.css';
 
 // La vignette d'album vit dans components/AlbumTile.jsx (une seule pour tout le site) ; ces réexports gardent les
 // anciens imports (`import { AlbumTile } from './Home.jsx'`) valables.
 export { AlbumTile, AlbumTileSkeleton };
 
-// Albums affichés dans les rangées « en cours » et « à découvrir ».
-const ROW = 8;
-const SHELF_SIZES = '(max-width: 640px) 42vw, 200px';
-
-/** Une note d'ami : l'album ou le morceau noté vient du catalogue (la réponse du fil l'apporte). */
-function FeedItem({ f }) {
-  const { t, date } = useI18n();
-  // Même lien que partout ailleurs pour un élément noté (page de l'album, ou du morceau).
-  const item = useRatedItem(f.type, f.id);
-  if (!item) return null;
-  return (
-    <li className="feed__item">
-      <Link to={item.to} className="feed__cover" tabIndex={-1} aria-hidden="true"><CoverArt art={item.art} sizes="56px" /></Link>
-      <div className="feed__body">
-        <p className="feed__line">
-          <Link to={`/u/${f.user.username}`} className="feed__user"><Avatar user={f.user} size={20} /> {f.user.username}</Link>
-          <span className="muted"> {t('home.feedRated')} </span>
-          <Link to={item.to} className="feed__title">{item.title}</Link>
-        </p>
-        <div className="feed__meta"><RatingValue value={f.score} size={13} /><span className="small muted">{date(f.updatedAt)}</span></div>
-        {f.review && <p className="feed__review">{f.review.length > 180 ? `${f.review.slice(0, 170).trimEnd()}…` : f.review}</p>}
-      </div>
-    </li>
-  );
-}
-
-/** Dernières notes données par les amis (façon fil Letterboxd) ; sans activité, une invitation à trouver des amis. */
-function FriendsFeed() {
-  const { t } = useI18n();
-  const [items, setItems] = useState(null);
-  const [error, setError] = useState(null);
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    let alive = true;
-    get('/ratings/feed')
-      .then((res) => {
-        if (alive) setItems(Array.isArray(res) ? res : res?.items || []);
-      })
-      .catch((err) => {
-        if (alive) setError(err);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [attempt]);
-  // Rien tant que la réponse n'est pas là : la page ne saute pas.
-  if (!items && !error) return null;
-  return (
-    <section className="section" aria-labelledby="home-feed-title">
-      <header className="section__head"><h2 id="home-feed-title">{t('home.feed')}</h2></header>
-      {error && !items ? (
-        <ErrorBox error={error} onRetry={() => { setError(null); setAttempt((n) => n + 1); }} />
-      ) : items.length ? (
-        <ul className="feed">
-          {items.slice(0, 8).map((f) => <FeedItem key={`${f.user.id}-${f.type}-${f.id}`} f={f} />)}
-        </ul>
-      ) : (
-        <EmptyState icon="users" title={t('home.feedEmptyTitle')} body={t('home.feedEmptyBody')}
-          action={{ label: t('home.feedEmptyCta'), to: '/friends', primary: false }} />
-      )}
-    </section>
-  );
-}
+// Albums montrés dans « Presque complets » ; au-delà de SEGMENTS morceaux, une barre continue remplace les segments.
+const ALMOST = 3;
+const SEGMENTS = 24;
+// Colonne rangée dans le fil (téléphone, tablette) : après la première page.
+const NARROW = '(max-width: 1020px)';
+const FIRST_PAGE = 20;
 
 /** Minuteur du prochain booster gratuit (seul ce bloc se redessine chaque seconde). */
 function PackTimer() {
@@ -107,7 +60,35 @@ function closestAlbums(stats) {
     .sort(([a, pa], [b, pb]) => pb.pct - pa.pct || (pa.total - pa.owned) - (pb.total - pb.owned) || (a < b ? -1 : 1));
 }
 
-/** Les deux façons de finir un album : boosters gratuits orientés et booster d'album. */
+/** Une ligne de « Presque complets » : pochette, titre, artiste, « 13/14 » et un segment par morceau. */
+function AlmostRow({ id, album, p }) {
+  const { t } = useI18n();
+  const label = t('home.tracks', { n: p.owned });
+  return (
+    <li>
+      <Link to={itemHref('album', id)} className="so-almost__row" data-almost={id}>
+        <span className="so-almost__cover">{album ? <CoverArt art={{ ...album.art, seed: album.art?.seed || album.id }} sizes="52px" /> : null}</span>
+        <span className="so-almost__body">
+          <span className="so-almost__title">{album?.title || '…'}</span>
+          <span className="so-almost__sub">
+            <span>{album?.artist || ''}</span>
+            <span className="mono" title={label}>{p.owned}/{p.total}</span>
+          </span>
+          {p.total <= SEGMENTS ? (
+            <span className="so-segs" aria-hidden="true">
+              {Array.from({ length: p.total }, (_, i) => <span key={i} className={`so-segs__seg${i < p.owned ? ' is-on' : ''}`} />)}
+            </span>
+          ) : <Progress value={p.owned} max={p.total} size="sm" />}
+        </span>
+      </Link>
+    </li>
+  );
+}
+
+/**
+ * « Deux façons de finir un album » (repliée sous Presque complets) : boosters gratuits orientés vers les albums
+ * commencés, et booster d'album (bouton direct pour l'album le plus avancé).
+ */
 function HowToFinish({ target, onAlbumPack }) {
   const { t, lang, num, error } = useI18n();
   const { user, isAdmin } = useGame();
@@ -115,78 +96,99 @@ function HowToFinish({ target, onAlbumPack }) {
   const price = isAdmin ? 0 : ECONOMY.albumPackPrice;
   const affordable = user.royalties >= price;
   return (
-    <section className="section home-how" aria-labelledby="home-how-title">
-      <h2 id="home-how-title" className="home-how__title">{t('home.howTitle')}</h2>
-      <div className="home-how__grid">
-        <article className="home-how__item">
-          <span className="home-how__icon" aria-hidden="true"><Icon name="pack" size={20} /></span>
-          <div className="home-how__text">
-            <h3>{t('home.howFocusTitle')}</h3>
-            <p>{t('home.howFocusBody', { p: focus })}</p>
-          </div>
-        </article>
-        <article className="home-how__item">
-          <span className="home-how__icon home-how__icon--album" aria-hidden="true"><Icon name="disc" size={20} /></span>
-          <div className="home-how__text">
-            <h3>
-              {t('home.howAlbumTitle')}
-              <span className="home-how__price">
-                {price ? <><RoyaltyIcon size={14} /> <span className="mono">{num(price)}</span></> : t('home.howAlbumFree')}
-              </span>
-            </h3>
-            <p>{t('home.howAlbumBody')}</p>
-            <div className="home-how__actions">
-              {target && (
-                <button type="button" className="btn btn--primary btn--sm home-how__quick" disabled={!affordable}
-                  title={affordable ? undefined : error('not_enough_royalties')} onClick={() => onAlbumPack(target)}>
-                  <Icon name="pack" size={16} /> <span className="home-how__quick-label">{t('home.howQuick', { title: target.title })}</span>
-                </button>
-              )}
-              <Link to="/collection" className="btn btn--ghost btn--sm">{t('home.howCta')}</Link>
-            </div>
-          </div>
-        </article>
-      </div>
+    <details className="so-almost__how">
+      <summary>{t('home.howTitle')}</summary>
+      <p><b>{t('home.howFocusTitle')}</b> · {t('home.howFocusBody', { p: focus })}</p>
+      <p>
+        <b>{t('home.howAlbumTitle')}</b>
+        {' '}<span className="chip chip--sm">{price ? <><RoyaltyIcon size={12} /> <span className="mono">{num(price)}</span></> : t('home.howAlbumFree')}</span>
+        {' '}· {t('home.howAlbumBody')}
+      </p>
+      {target && (
+        <p>
+          <button type="button" className="btn btn--primary btn--sm so-almost__quick" disabled={!affordable}
+            title={affordable ? undefined : error('not_enough_royalties')} onClick={() => onAlbumPack(target)}>
+            <Icon name="pack" size={16} /> <span>{t('home.howQuick', { title: target.title })}</span>
+          </button>
+        </p>
+      )}
+    </details>
+  );
+}
+
+/** Colonne « Presque complets » (remplace la rangée « Albums en cours ») ; rien tant qu'aucun album n'est commencé. */
+function AlmostPanel({ onAlbumPack }) {
+  const { t } = useI18n();
+  const { stats } = useGame();
+  const started = useMemo(() => closestAlbums(stats), [stats]);
+  const almost = useMemo(() => started.slice(0, ALMOST).map(([id, p]) => ({ id, p })), [started]);
+  const albums = useAlbums(almost.map((x) => x.id));
+  if (!almost.length) return null;
+  return (
+    <section className="panel so-almost" aria-labelledby="home-almost-title" data-home="almost">
+      <header className="so-almost__head">
+        <h2 className="panel__title" id="home-almost-title">
+          <Icon name="disc" /> {almost[0].p.pct >= 0.5 ? t('home.almost') : t('home.inProgress')}
+        </h2>
+        <Link to="/collection?mine=1" className="section__link">{t('home.seeAll')}</Link>
+      </header>
+      <p className="small muted">{t('home.started', { n: started.length })}</p>
+      <ul className="so-almost__list">
+        {almost.map(({ id, p }, i) => <AlmostRow key={id} id={id} album={albums[i]} p={p} />)}
+      </ul>
+      <HowToFinish target={albums[0]} onAlbumPack={onAlbumPack} />
     </section>
   );
 }
 
-/** Albums populaires pas encore commencés (les classiques du catalogue d'abord). */
-function Discover() {
-  const { t } = useI18n();
-  const { stats } = useGame();
-  const info = useCatalogInfo();
-  const { data, error } = useApi(apiPath('/catalog/albums', { sort: 'popular', limit: 24 }));
-  // Les statistiques sont à jour après chaque booster, contrairement au champ `owned` gardé en cache.
-  const items = useMemo(() => (data?.items || []).filter((a) => !stats.albums[a.id]).slice(0, ROW), [data, stats]);
-  if (error) return null;
+/** Colonne de l'accueil : Presque complets, Taste Match (P1-E), battle (P1-F), amis suggérés (P1-E). */
+function HomeAside({ onAlbumPack }) {
   return (
-    <section className="section">
-      <header className="section__head home-head">
-        <h2>{t('home.discover')}</h2>
-        <Link to="/collection?sort=popular" className="section__link">{t('home.seeAll')}</Link>
+    <>
+      <AlmostPanel onAlbumPack={onAlbumPack} />
+      <TasteMatchCard />
+      <BattleWidget />
+      <SuggestedFriends limit={3} />
+    </>
+  );
+}
+
+/** Le fil : en-tête avec les onglets, compositeur, liste ; la colonne à côté (ordinateur) ou dans le fil (téléphone). */
+function HomeFeed({ onAlbumPack }) {
+  const { t } = useI18n();
+  const [asked, setAsked] = useState(null);
+  const [focus, setFocus] = useState(0);
+  const feed = useFeed(asked);
+  const narrow = useMedia(NARROW);
+  const active = asked || feed.tab;
+  const aside = <HomeAside onAlbumPack={onAlbumPack} />;
+  return (
+    <section className="section so-home" aria-labelledby="home-feed-title">
+      <header className="section__head so-home__head">
+        <h2 id="home-feed-title">{t('feed.title')}</h2>
+        <div className="seg so-tabs" role="group" aria-label={t('feed.tabsLabel')}>
+          {FEED_TABS.map((tab) => (
+            <button key={tab} type="button" className={`seg__btn seg__btn--wide${active === tab ? ' is-on' : ''}`} aria-pressed={active === tab}
+              data-tab={tab} onClick={() => tab !== active && setAsked(tab)}>
+              {t(`feed.tabs.${tab}`)}
+            </button>
+          ))}
+        </div>
       </header>
-      {info?.totals && (
-        <p className="home-hint small muted">{t('home.discoverHint', { albums: info.totals.albums, tracks: info.totals.tracks })}</p>
-      )}
-      {!data ? (
-        <div className="home-shelf" aria-busy="true">
-          {Array.from({ length: 6 }, (_, i) => <AlbumTileSkeleton key={i} />)}
+      <div className="home-cols">
+        <div className="so-main">
+          <Composer focusSignal={focus} onPosted={(post) => feed.prepend(feedItemOfPost(post))} />
+          <FeedList feed={feed} onCompose={() => setFocus((n) => n + 1)} insert={narrow ? { after: FIRST_PAGE, node: <div className="so-aside">{aside}</div> } : null} />
         </div>
-      ) : items.length ? (
-        <div className="home-shelf">
-          {items.map((a) => <AlbumTile key={a.id} album={a} discover compact sizes={SHELF_SIZES} />)}
-        </div>
-      ) : (
-        <p className="empty">{t('home.discoverEmpty')}</p>
-      )}
+        {!narrow && <aside className="so-aside" aria-label={t('feed.aside')}>{aside}</aside>}
+      </div>
     </section>
   );
 }
 
 export default function Home() {
   const { t, num } = useI18n();
-  const { packs, user, stats, cards, duplicates, duplicatesValue, isAdmin } = useGame();
+  const { packs, user, cards, duplicates, duplicatesValue, isAdmin } = useGame();
   const openCard = useCardModal();
   // Ouverture, achat et recyclage : la même machine que les autres pages (state/boosterFlow.js).
   const { openFree: open, openAlbum, buy, recycle, overlay, busy } = useBoosterFlow();
@@ -197,10 +199,6 @@ export default function Home() {
     const seen = new Set();
     return [...cards].sort((a, b) => b.at - a.at).filter((c) => !seen.has(c.t) && seen.add(c.t)).slice(0, 8);
   }, [cards]);
-
-  const started = useMemo(() => closestAlbums(stats), [stats]);
-  const almost = useMemo(() => started.slice(0, ROW).map(([id, p]) => ({ id, p })), [started]);
-  const almostAlbums = useAlbums(almost.map((x) => x.id));
 
   return (
     <div className="home">
@@ -257,25 +255,13 @@ export default function Home() {
         </Link>
       </section>
 
-      {almost.length > 0 && (
-        <section className="section">
-          <header className="section__head home-head">
-            <h2>
-              {almost[0].p.pct >= 0.5 ? t('home.almost') : t('home.inProgress')}
-              <span className="home-count">{t('home.started', { n: started.length })}</span>
-            </h2>
-            {/* Collection : albums commencés, triés par progression. */}
-            <Link to="/collection?mine=1" className="section__link">{t('home.seeAll')}</Link>
-          </header>
-          <div className="home-shelf">
-            {almost.map(({ id, p }, i) => <AlbumTile key={id} album={almostAlbums[i]} progress={p} compact sizes={SHELF_SIZES} />)}
-          </div>
-        </section>
-      )}
+      {/* P1 : sous le héros et la rangée, jamais au-dessus. */}
+      <SpecialBoosters />
+      <QuestStrip />
 
-      <HowToFinish target={almostAlbums[0]} onAlbumPack={openAlbum} />
+      <HomeFeed onAlbumPack={openAlbum} />
 
-      <section className="section">
+      <section className="section" data-home="recent">
         <header className="section__head">
           <h2>{t('home.recent')}</h2>
         </header>
@@ -289,10 +275,6 @@ export default function Home() {
           <p className="empty">{t('home.start')}</p>
         )}
       </section>
-
-      <Discover />
-
-      <FriendsFeed />
 
       {overlay}
     </div>

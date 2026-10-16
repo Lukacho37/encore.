@@ -1,6 +1,6 @@
 // Outils partagés des composants sociaux — chantier P1-A : adresses des contenus, heure relative, partage d'un lien,
-// retrait des contenus d'un joueur bloqué (événement `albummania:blocks` diffusé par SafetyMenu).
-import { useEffect, useRef } from 'react';
+// retrait des contenus d'un joueur bloqué (événement `albummania:blocks` diffusé par SafetyMenu), requête média.
+import { useEffect, useRef, useState } from 'react';
 import { BLOCKS_EVENT } from '../safety/SafetyMenu.jsx';
 import { timeAgo } from '../safety/NotificationRow.jsx';
 
@@ -59,4 +59,19 @@ export function useOnBlocked(onBlocked) {
     window.addEventListener(BLOCKS_EVENT, handler);
     return () => window.removeEventListener(BLOCKS_EVENT, handler);
   }, []);
+}
+
+/** Vrai tant que la requête média `query` est satisfaite (suit les changements de taille de la fenêtre). */
+export function useMedia(query) {
+  const read = () => (typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia(query).matches : false);
+  const [matches, setMatches] = useState(read);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined;
+    const mql = window.matchMedia(query);
+    const onChange = () => setMatches(mql.matches);
+    onChange();
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, [query]);
+  return matches;
 }

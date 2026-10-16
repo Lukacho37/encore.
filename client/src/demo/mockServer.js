@@ -10,7 +10,9 @@ import {
   ECONOMY, BLINDTEST, SHOWCASE_SLOTS, AVATAR_COLORS, RARITY, RARITIES, packOdds, PACK_SLOTS,
   buildBlindtest, blindtestClues, blindtestPoints, blindtestReward,
   validateEmail, validatePassword, validateUsername,
+  ADVANCED_ALBUMS, isHit, levelRewards, showcaseSlots, wishlistMax, parseBoosterTheme, themeFilterOf, THEME_GENRES,
 } from '@shared/rules.js';
+import { cleanSelection, cosmeticsBetween, cosmeticsForLevel, levelCosmetic } from '@shared/cosmetics.js';
 import { dayStart as parisDayStart } from '@shared/periods.js';
 import MODULES from './mock/index.js';
 
@@ -76,7 +78,10 @@ function seededRng(seed) {
   };
 }
 
-/** Albums commencés mais pas finis (les plus récents d'abord), vers lesquels les boosters gratuits sont orientés. */
+/**
+ * Albums commencés les plus avancés, vers lesquels une partie des boosters est orientée (comme services.focusAlbums) :
+ * les 200 albums pas finis les plus récemment enrichis, puis les ADVANCED_ALBUMS plus avancés d'entre eux.
+ */
 function focusAlbums(cards) {
   const byAlbum = new Map();
   for (const [k, v] of Object.entries(cards)) {
@@ -88,12 +93,20 @@ function focusAlbums(cards) {
     byAlbum.set(t.albumId, e);
   }
   return [...byAlbum.entries()].filter(([, e]) => e.ids.size < e.total)
-    .sort((a, b) => b[1].at - a[1].at).slice(0, 200).map(([id]) => id);
+    .sort((a, b) => b[1].at - a[1].at).slice(0, 200)
+    .sort((a, b) => b[1].ids.size / b[1].total - a[1].ids.size / a[1].total || b[1].ids.size - a[1].ids.size)
+    .slice(0, ADVANCED_ALBUMS)
+    .map(([id]) => id);
 }
 
 function fresh() {
   const now = Date.now();
-  const data = { nextId: 1, users: [], cards: {}, achievements: {}, friendships: [], tokens: [], games: {}, ratings: [], session: null };
+  // boosters : boosters spéciaux (user_boosters) ; wishlists : albums recherchés par joueur ; cosmeticGrants :
+  // cosmétiques accordés hors niveau (user_cosmetics : badges, coffrets, événements).
+  const data = {
+    nextId: 1, users: [], cards: {}, achievements: {}, friendships: [], tokens: [], games: {}, ratings: [], session: null,
+    boosters: [], wishlists: {}, cosmeticGrants: {},
+  };
   // Quelques joueurs fictifs pour tester les amis.
   const bots = [
     { username: 'lea.beats', packs: 60, color: '#3fd6c4' },
@@ -106,7 +119,7 @@ function fresh() {
     const user = {
       id, email: `${b.username}@demo.albummania`, username: b.username, password: hash('demo-bot'), verified: now - 86_400_000 * (30 + i * 9),
       role: 'player', lang: 'fr', avatar: 'initials', avatarColor: b.color, royalties: 500, xp: 0, packs: 0, packsAt: now, bonusPacks: 0,
-      showcase: [], createdAt: now - 86_400_000 * (30 + i * 9), openings: b.packs, bot: true,
+      showcase: [], createdAt: now - 86_400_000 * (30 + i * 9), openings: b.packs, bot: true, pity: 0, cosmetics: {},
       prefs: {}, onboardedAt: now - 86_400_000 * (30 + i * 9), termsAcceptedAt: now - 86_400_000 * (30 + i * 9), termsVersion: TERMS_VERSION,
     };
     data.users.push(user);
@@ -171,24 +184,28 @@ const num = (x, fallback) => (Number.isFinite(x) ? x : fallback);
 function sanitize(d) {
   if (!isObj(d) || !Array.isArray(d.users)) return null;
   const now = Date.now();
-  for (const k of ['friendships', 'tokens', 'ratings']) if (!Array.isArray(d[k])) d[k] = [];
-  for (const k of ['cards', 'achievements', 'games']) if (!isObj(d[k])) d[k] = {};
+  for (const k of ['friendships', 'tokens', 'ratings', 'boosters']) if (!Array.isArray(d[k])) d[k] = [];
+  for (const k of ['cards', 'achievements', 'games', 'wishlists', 'cosmeticGrants']) if (!isObj(d[k])) d[k] = {};
   d.users = d.users.filter((u) => isObj(u) && Number.isInteger(u.id) && typeof u.username === 'string' && u.username);
   if (!d.users.length) return null;
   for (const u of d.users) {
-    u.showcase = Array.from({ length: SHOWCASE_SLOTS }, (_, i) => (Array.isArray(u.showcase) && trackOf(u.showcase[i]) ? u.showcase[i] : null));
+    u.xp = num(u.xp, 0);
+    // Vitrine : 6 cartes, +1 aux niveaux 10 et 30 (PLAN.md 6.6).
+    u.showcase = Array.from({ length: showcaseSlots(levelFromXp(u.xp).level) }, (_, i) => (Array.isArray(u.showcase) && trackOf(u.showcase[i]) ? u.showcase[i] : null));
     if (typeof u.avatar !== 'string' || (u.avatar !== 'initials' && !ALBUM.has(avatarAlbum(u.avatar)))) u.avatar = 'initials';
     if (u.avatarColor !== 'auto' && !AVATAR_COLORS.includes(u.avatarColor)) u.avatarColor = 'auto';
     if (u.lang !== 'fr' && u.lang !== 'en') u.lang = 'fr';
     if (u.role !== 'admin') u.role = 'player';
     if (u.ratingScale !== 'stars' && u.ratingScale !== 'points') delete u.ratingScale;
     u.royalties = num(u.royalties, 0);
-    u.xp = num(u.xp, 0);
     u.packs = num(u.packs, 0);
     u.bonusPacks = num(u.bonusPacks, 0);
     u.packsAt = num(u.packsAt, now);
     u.createdAt = num(u.createdAt, now);
     u.openings = num(u.openings, 0);
+    // Jeu de collection (P1-D) : compteur de pitié, cosmétiques choisis.
+    u.pity = Math.max(0, Math.floor(num(u.pity, 0)));
+    if (!isObj(u.cosmetics)) u.cosmetics = {};
     // Champs ajoutés en P0 (préférences, parcours d'accueil, CGU) : une ancienne sauvegarde a déjà fait son accueil
     // (comme l'étape v8 du serveur) et ses joueurs avaient accepté les CGU de l'époque.
     if (!isObj(u.prefs)) u.prefs = {};
@@ -232,6 +249,17 @@ function sanitize(d) {
     && itemExists(r.type, r.id));
   d.friendships = d.friendships.filter((f) => isObj(f) && ids.has(f.requester) && ids.has(f.addressee)
     && ['pending', 'accepted', 'declined'].includes(f.status));
+  // Boosters spéciaux au thème connu, albums recherchés encore au catalogue, cosmétiques accordés bien formés.
+  d.boosters = d.boosters.filter((b) => isObj(b) && Number.isInteger(b.id) && ids.has(b.userId) && parseBoosterTheme(b.theme)
+    && (b.kind === 'theme' || b.kind === 'album'));
+  for (const key of Object.keys(d.wishlists)) {
+    if (!ids.has(Number(key)) || !Array.isArray(d.wishlists[key])) delete d.wishlists[key];
+    else d.wishlists[key] = [...new Set(d.wishlists[key].filter((id) => ALBUM.has(id)))];
+  }
+  for (const key of Object.keys(d.cosmeticGrants)) {
+    if (!ids.has(Number(key)) || !Array.isArray(d.cosmeticGrants[key])) delete d.cosmeticGrants[key];
+    else d.cosmeticGrants[key] = d.cosmeticGrants[key].filter((c) => isObj(c) && typeof c.id === 'string');
+  }
   d.nextId = Math.max(num(d.nextId, 1), ...d.users.map((u) => u.id + 1));
   if (!ids.has(d.session)) d.session = null;
   return d;
@@ -312,6 +340,172 @@ function rankOf(uid, key) {
   return rank;
 }
 
+// ---------- jeu de collection (P1-D : PLAN.md 6.2 à 6.6, 6.10 ; même calcul que server/services.js) ----------
+
+const levelOf = (u) => levelFromXp(u.xp).level;
+
+/** Cosmétiques débloqués (identifiants complets) : ceux du niveau, puis ceux accordés (badges, coffrets…). */
+function unlockedCosmetics(uid) {
+  const u = userById(uid);
+  if (!u) return [];
+  const out = cosmeticsForLevel(levelOf(u));
+  const seen = new Set(out.map((c) => c.id));
+  for (const c of db.cosmeticGrants[uid] || []) if (!seen.has(c.id)) out.push({ id: c.id, source: c.source });
+  return out;
+}
+
+/** Sélection de cosmétiques affichée : seulement ce qui est débloqué. */
+const cosmeticsOf = (u) => cleanSelection(u.cosmetics || {}, unlockedCosmetics(u.id).map((c) => c.id));
+
+/** Cadre ou titre d'un résumé de joueur : null si le cosmétique de niveau n'est plus débloqué. */
+function shownCosmetic(kind, key, level) {
+  if (typeof key !== 'string' || !key) return null;
+  const def = levelCosmetic(`${kind}:${key}`);
+  return def && def.level > level ? null : key;
+}
+
+/** Albums recherchés du joueur (liste d'envies), dans l'ordre d'ajout. */
+const wishlistOf = (uid) => (db.wishlists[uid] ||= []);
+
+/** Ajoute un booster spécial à l'inventaire (user_boosters) ; renvoie son identifiant. */
+function insertBooster(uid, kind, theme, source) {
+  const id = db.nextId++;
+  db.boosters.push({ id, userId: uid, kind, theme: String(theme).slice(0, 100), source: String(source || 'game').slice(0, 80), createdAt: Date.now(), openedAt: null });
+  return id;
+}
+
+/**
+ * Ajoute de l'XP et applique les récompenses de niveau (PLAN.md 6.6) : un booster bonus par niveau gagné, un booster
+ * spécial « À ton goût » tous les 10 niveaux. Renvoie `levelUp` ({ from, to, boosters, themed, cosmetics, wishlist,
+ * showcase }) ou null, comme services.gainXp.
+ */
+function gainXp(u, xp) {
+  const amount = Math.floor(Number(xp) || 0);
+  if (amount <= 0) return null;
+  const from = levelOf(u);
+  u.xp += amount;
+  const to = levelOf(u);
+  if (to <= from) return null;
+  const rewards = levelRewards(from, to);
+  u.bonusPacks += rewards.boosters;
+  for (const l of rewards.themed) insertBooster(u.id, 'theme', 'taste', `level:${l}`);
+  return {
+    from, to, boosters: rewards.boosters, themed: rewards.themed.length, cosmetics: cosmeticsBetween(from, to),
+    wishlist: rewards.wishlist, showcase: rewards.showcase,
+  };
+}
+
+/** Liste d'envies pour le tirage : albums recherchés pas encore complets et cartes déjà possédées parmi les leurs. */
+function wishlistFocus(uid) {
+  const owned = ownedSet(uid);
+  const albumIds = wishlistOf(uid).filter((id) => staticCatalog.albumTrackIds(id).some((t) => !owned.has(t)));
+  return { albumIds, owned };
+}
+
+/** Artistes du joueur qui ont des promos : cartes possédées ou albums recherchés. */
+function promoArtistsOf(uid, wishlistIds = []) {
+  const withPromos = new Set(staticCatalog.promoArtists());
+  const mine = new Set();
+  for (const id of ownedSet(uid)) {
+    const artistId = trackOf(id)?.artistId;
+    if (withPromos.has(artistId)) mine.add(artistId);
+  }
+  for (const id of wishlistIds) {
+    const artistId = ALBUM.get(id)?.artistId;
+    if (withPromos.has(artistId)) mine.add(artistId);
+  }
+  return [...mine];
+}
+
+/** Ciblage complet d'un booster du joueur (rollPack) : liste d'envies, albums avancés, promos de ses artistes. */
+function packFocus(uid) {
+  const wishlist = wishlistFocus(uid);
+  return { wishlist, focusAlbumIds: focusAlbums(cardsOf(uid)), promoArtistIds: () => promoArtistsOf(uid, wishlist.albumIds) };
+}
+
+/** Boosters tirés l'un après l'autre : la pitié de chacun dépend des précédents. */
+function rollSeries(count, pity, options) {
+  const packs = [];
+  let n = pity;
+  for (let i = 0; i < count; i++) {
+    const pack = rollPack(rand, staticCatalog, { ...options, pity: n });
+    packs.push(pack);
+    n = pack.some((c) => isHit(c.rarity)) ? 0 : n + 1;
+  }
+  return { packs, pity: n };
+}
+
+/** Une carte ultra ou mieux d'un booster d'album remet la pitié à zéro (sans compter le booster). */
+function resetPityOnHit(u, cards) {
+  if (cards.some((c) => isHit(c.rarity))) u.pity = 0;
+  return u.pity || 0;
+}
+
+/** Promos pressables : un album de l'artiste complété (PLAN.md 6.4). */
+const promoUnlocked = (uid, artistId) => Object.keys(achOf(uid)).some((k) => k.startsWith('album:') && ALBUM.get(k.slice(6))?.artistId === artistId);
+
+/** Ce que coûte le pressage d'une carte pour ce joueur (GET /me/press/:trackId), comme services.pressInfo. */
+function pressInfo(u, trackId) {
+  const track = trackOf(idOf(trackId));
+  if (!track) fail(404, 'unknown_track');
+  const base = pressCost(track.rarity, { promoUnlocked: track.rarity === 'promo' && promoUnlocked(u.id, track.artistId) });
+  const owned = ownedSet(u.id).has(track.id);
+  return {
+    trackId: track.id, cost: isAdmin(u) ? 0 : base, pressable: !owned && (base != null || isAdmin(u)),
+    reason: owned ? 'owned' : base == null ? 'promo_locked' : null, artistId: track.artistId,
+  };
+}
+
+/** Genres d'un booster « À ton goût » : ceux où le joueur a le plus de cartes (au plus 3). */
+function tasteGenres(uid) {
+  const count = new Map();
+  for (const id of ownedSet(uid)) {
+    const g = trackOf(id)?.genre;
+    if (g && THEME_GENRES.includes(g)) count.set(g, (count.get(g) || 0) + 1);
+  }
+  return [...count.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([g]) => g);
+}
+
+/**
+ * Ouvre un booster spécial de l'inventaire (PLAN.md 6.10), comme services.openSpecialPack : thématique (chances du
+ * booster standard, pitié comprise, réservoir filtré par le thème) ou d'album (5 cartes de l'album, manquantes
+ * d'abord ; `albumId` pour « album:choice »).
+ */
+function openSpecialPack(u, boosterId, { albumId } = {}) {
+  const row = db.boosters.find((b) => b.id === Number(boosterId) && b.userId === u.id);
+  if (!row) fail(404, 'booster_not_found');
+  if (row.openedAt) fail(409, 'booster_opened');
+  const parsed = parseBoosterTheme(row.theme);
+  let cards;
+  let target = null;
+  if (parsed?.kind === 'album' || parsed?.kind === 'choice') {
+    target = parsed.kind === 'album' ? parsed.value : idOf(albumId);
+    if (!target) fail(400, 'album_required');
+    if (!ALBUM.has(target)) fail(404, 'unknown_album');
+    cards = rollAlbumPack(rand, staticCatalog, target, ownedSet(u.id));
+    resetPityOnHit(u, cards);
+  } else {
+    // Thème inconnu (événement retiré…) : booster standard, sans ciblage.
+    const theme = themeFilterOf(parsed, { tasteGenres: parsed?.kind === 'taste' ? tasteGenres(u.id) : [] });
+    const series = rollSeries(1, u.pity || 0, { theme });
+    cards = series.packs[0];
+    u.pity = series.pity;
+  }
+  row.openedAt = Date.now();
+  const result = addCards(u, cards, 'special');
+  return { booster: { id: row.id, kind: row.kind, theme: row.theme }, albumId: target, packs: [cards.length], ...result, pity: u.pity || 0 };
+}
+
+/**
+ * Démo seulement : boosters spéciaux offerts à l'activation du compte (un thématique, une décennie, un album au
+ * choix), une fois par joueur. Sur le vrai site, ils viennent de l'accueil, des quêtes, des paliers et des événements.
+ */
+function demoGift(u) {
+  if (u.bot || u.demoGift) return;
+  u.demoGift = true;
+  for (const theme of ['genre:rap', 'decade:1970', 'album:choice']) insertBooster(u.id, theme.startsWith('album:') ? 'album' : 'theme', theme, 'demo');
+}
+
 /** Préférences du joueur avec leurs valeurs par défaut (comme prefsOf côté serveur). */
 const prefsOf = (u) => ({
   listen: LISTEN_PLATFORMS.includes(u.prefs?.listen) ? u.prefs.listen : 'deezer',
@@ -323,6 +517,10 @@ function selfPayload(u) {
   return {
     id: u.id, username: u.username, email: u.email, role: u.role, lang: u.lang, avatar: u.avatar, avatarColor: u.avatarColor,
     royalties: u.royalties, level: levelFromXp(u.xp), showcase: u.showcase, createdAt: u.createdAt, ratingScale: u.ratingScale || 'stars',
+    // Jeu de collection (PLAN.md 6.4 à 6.6) : places selon le niveau, compteur de pitié, cosmétiques choisis.
+    slots: { wishlist: wishlistMax(levelOf(u)), showcase: showcaseSlots(levelOf(u)) },
+    pity: u.pity || 0,
+    cosmetics: cosmeticsOf(u),
     prefs: prefsOf(u),
     onboarded: u.onboardedAt != null,
     termsOk: !!u.termsAcceptedAt && u.termsVersion === TERMS_VERSION,
@@ -411,9 +609,11 @@ function artistCounts(owned, artistIds) {
 
 /**
  * Ajoute des cartes à la collection, attribue XP, royalties, succès et récompenses (même calcul que le serveur).
- * `source` : 'pack', 'admin-pack', 'album-pack' ou 'press' (une carte pressée ne rapporte pas de royalties).
- * Renvoie les deltas de la réponse, comme services.addCards : cards, at, xp, royalties, achievements (avec leur
- * rang), albumDeltas, artistDeltas, catalog.
+ * `source` : 'pack', 'admin-pack', 'album-pack', 'special' ou 'press' (une carte pressée ne rapporte pas de
+ * royalties). Renvoie les deltas de la réponse, comme services.addCards : cards, at, xp, royalties, achievements
+ * (album complété : rang « Pressage n° », date et première carte de l'album, PLAN.md 6.2), albumDeltas,
+ * artistDeltas, levelUp (paliers de niveau, PLAN.md 6.6), catalog. Chaque carte garde sa rareté au moment du tirage
+ * (`r`, comme cards.pulled_rarity).
  */
 function addCards(u, cards, source) {
   const now = Date.now();
@@ -434,7 +634,7 @@ function addCards(u, cards, source) {
     const k = `${trackId}|${variant}`;
     const newTrack = !owned.has(trackId);
     const newVariant = !mine[k];
-    mine[k] = { count: (mine[k]?.count || 0) + 1, at: mine[k]?.at || now };
+    mine[k] = { count: (mine[k]?.count || 0) + 1, at: mine[k]?.at || now, r: mine[k]?.r || rarity };
     owned.add(trackId);
     xp += xpForCard(rarity, newTrack);
     if (newTrack && source !== 'press') cardRoyalties += newCardRoyalties(rarity);
@@ -448,8 +648,14 @@ function addCards(u, cards, source) {
     royalties += a.royalties;
     xp += a.xp;
   }
-  for (const a of achievements) if (a.type === 'album') a.rank = rankOf(u.id, a.key);
-  u.xp += xp;
+  for (const a of achievements) {
+    if (a.type !== 'album') continue;
+    a.rank = rankOf(u.id, a.key);
+    a.at = now;
+    // Première carte de l'album (« 6 jours après ta première carte »).
+    a.firstCardAt = Math.min(now, ...staticCatalog.albumTrackIds(a.id).flatMap((t) => [mine[`${t}|std`]?.at, mine[`${t}|holo`]?.at]).filter(Number.isFinite));
+  }
+  const levelUp = gainXp(u, xp);
   u.royalties += royalties;
   u.openings = (u.openings || 0) + 1;
   const afterCounts = albumCounts(owned, albumIds);
@@ -476,6 +682,7 @@ function addCards(u, cards, source) {
     achievements,
     albumDeltas,
     artistDeltas,
+    levelUp,
     catalog: refs({ trackIds: ids, albumIds, artistIds: achievements.filter((a) => a.type === 'artist').map((a) => a.id) }),
   };
 }
@@ -508,9 +715,12 @@ function summaries(ids) {
       if (f?.status === 'accepted') relation = 'friend';
       else if (f?.status === 'pending') relation = f.requester === viewer ? 'outgoing' : 'incoming';
     }
+    // Cadre et titre choisis (PLAN.md 6.6) ; un cosmétique de niveau au-dessus du niveau actuel ne s'affiche plus.
+    const level = levelOf(u);
     out.set(id, {
-      id, username: u.username, avatar: u.avatar, avatarColor: u.avatarColor, level: levelFromXp(u.xp).level,
-      uniqueCards: ownedSet(id).size, frame: u.frame || null, title: u.title || null, relation,
+      id, username: u.username, avatar: u.avatar, avatarColor: u.avatarColor, level,
+      uniqueCards: ownedSet(id).size, frame: shownCosmetic('frame', u.cosmetics?.frame, level),
+      title: shownCosmetic('title', u.cosmetics?.title, level), relation,
     });
   }
   return out;
@@ -572,6 +782,8 @@ function publicProfile(viewer, target) {
       promos: stats.promos.owned, promosTotal: stats.promos.total,
     },
     showcase: slotIds.map((id) => (id && owned.has(id) ? { trackId: id, variant: holo.has(id) ? 'holo' : 'std' } : null)),
+    // Cosmétiques choisis (cadre, couleur de vinyle, thème, titre : PLAN.md 6.6).
+    cosmetics: cosmeticsOf(target),
     completedAlbums: vinyls.map((v) => v.albumId),
     vinyls,
     masteredArtists: mastered,
@@ -659,73 +871,13 @@ function loadGame(u, gameId) {
   return g;
 }
 
-// ---------- notes ----------
+// ---------- éléments notés, code de l'admin ----------
 
 const ADMIN_CODE_SHA256 = '22ecf3278dbed86211363046e3c6cc4a43be18686bc9a35e9815f6ac4d949fd9';
 
 function itemExists(type, id) {
   if (!idOf(id)) return false;
   return type === 'album' ? ALBUM.has(id) : type === 'track' ? TRACK.has(id) : false;
-}
-
-function friendIds(uid) {
-  return new Set(db.friendships.filter((f) => f.status === 'accepted' && (f.requester === uid || f.addressee === uid))
-    .map((f) => (f.requester === uid ? f.addressee : f.requester)));
-}
-
-function author(uid) {
-  const u = userById(uid);
-  return { id: u.id, username: u.username, avatar: u.avatar, avatarColor: u.avatarColor, level: levelFromXp(u.xp).level };
-}
-
-function summarize(scores) {
-  const distribution = Array(11).fill(0);
-  for (const s of scores) distribution[s] += 1;
-  return { count: scores.length, average: scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null, distribution };
-}
-
-/** Références des éléments notés (titres, visuels) et des photos de profil des auteurs. */
-function ratingRefs(items, authors = []) {
-  return refs({
-    albumIds: [...items.filter((x) => x.type === 'album').map((x) => x.id), ...authors.map((a) => avatarAlbum(a.avatar)).filter(Boolean)],
-    trackIds: items.filter((x) => x.type === 'track').map((x) => x.id),
-  });
-}
-
-function itemRatings(viewerId, type, id) {
-  if (!itemExists(type, id)) fail(404, 'unknown_item');
-  const rows = db.ratings.filter((r) => r.type === type && r.id === id);
-  const mine = rows.find((r) => r.userId === viewerId);
-  const friends = friendIds(viewerId);
-  const others = rows.filter((r) => r.userId !== viewerId).sort((a, b) => b.updatedAt - a.updatedAt);
-  const reviews = others.filter((r) => r.review)
-    .sort((a, b) => Number(friends.has(b.userId)) - Number(friends.has(a.userId)) || b.updatedAt - a.updatedAt)
-    .slice(0, 30)
-    .map((r) => ({ user: author(r.userId), score: r.score, review: r.review, updatedAt: r.updatedAt, friend: friends.has(r.userId) }));
-  const friendScores = others.filter((r) => friends.has(r.userId)).slice(0, 12).map((r) => ({ user: author(r.userId), score: r.score }));
-  const result = {
-    summary: summarize(rows.map((r) => r.score)),
-    mine: mine ? { score: mine.score, review: mine.review, updatedAt: mine.updatedAt } : null,
-    reviews,
-    friendScores,
-    catalog: ratingRefs([], [...reviews, ...friendScores].map((r) => r.user)),
-  };
-  if (type === 'album') {
-    const tracks = {};
-    for (const trackId of staticCatalog.albumTrackIds(id)) {
-      const list = db.ratings.filter((r) => r.type === 'track' && r.id === trackId);
-      const m = list.find((r) => r.userId === viewerId);
-      if (list.length) tracks[trackId] = { count: list.length, average: list.reduce((a, r) => a + r.score, 0) / list.length, ...(m ? { mine: m.score } : {}) };
-    }
-    result.tracks = tracks;
-  }
-  return result;
-}
-
-function adminReviews() {
-  const items = db.ratings.filter((r) => r.review).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 60)
-    .map((r) => ({ user: author(r.userId), type: r.type, id: r.id, score: r.score, review: r.review, updatedAt: r.updatedAt }));
-  return { items, catalog: ratingRefs(items, items.map((i) => i.user)) };
 }
 
 function requireAdmin() {
@@ -845,6 +997,8 @@ const routes = [
       // Un joueur fictif t'envoie une demande d'ami pour montrer la fonctionnalité.
       const bot = userByName('maxvinyl');
       if (bot && !between(bot.id, u.id)) db.friendships.push({ id: db.nextId++, requester: bot.id, addressee: u.id, status: 'pending', createdAt: Date.now() });
+      // Et quelques boosters spéciaux offerts, pour essayer le panneau « Boosters spéciaux » tout de suite.
+      demoGift(u);
     }
     db.session = u.id;
     return state();
@@ -933,9 +1087,10 @@ const routes = [
         u.packs -= 1;
       } else u.bonusPacks -= 1;
     }
-    const focusAlbumIds = focusAlbums(cardsOf(u.id));
-    const packs = Array.from({ length: n }, () => rollPack(rand, staticCatalog, { focusAlbumIds }));
-    return { packs: packs.map((p) => p.length), ...addCards(u, packs.flat(), admin ? 'admin-pack' : 'pack'), state: partialState() };
+    // Ciblage (liste d'envies, albums avancés, promos de ses artistes) et pitié douce, comme le serveur.
+    const { packs, pity } = rollSeries(n, u.pity || 0, packFocus(u.id));
+    u.pity = pity;
+    return { packs: packs.map((p) => p.length), ...addCards(u, packs.flat(), admin ? 'admin-pack' : 'pack'), pity, state: partialState() };
   }],
   // Booster d'album : 5 cartes de l'album choisi, en priorité celles qui manquent ; payé en royalties (gratuit pour l'admin).
   ['POST', /^\/packs\/album$/, ({ body }) => {
@@ -947,7 +1102,8 @@ const routes = [
     u.royalties -= cost;
     const owned = ownedSet(u.id);
     const cards = rollAlbumPack(rand, staticCatalog, album.id, owned);
-    return { spent: cost, albumId: album.id, packs: [cards.length], ...addCards(u, cards, 'album-pack'), state: partialState() };
+    const pity = resetPityOnHit(u, cards);
+    return { spent: cost, albumId: album.id, packs: [cards.length], ...addCards(u, cards, 'album-pack'), pity, state: partialState() };
   }],
   ['POST', /^\/shop\/buy-pack$/, () => {
     const u = me();
@@ -977,9 +1133,10 @@ const routes = [
     const track = trackOf(idOf(body.trackId));
     if (!track) fail(404, 'unknown_track');
     const admin = isAdmin(u);
-    const base = pressCost(track.rarity);
+    // Promo : pressable une fois un album de son artiste complété (1 200 royalties, PLAN.md 6.4).
+    const base = pressCost(track.rarity, { promoUnlocked: track.rarity === 'promo' && promoUnlocked(u.id, track.artistId) });
     // L'admin presse gratuitement, promos comprises, pour tester.
-    if (base == null && !admin) fail(400, 'not_pressable');
+    if (base == null && !admin) fail(409, 'promo_locked', { artistId: track.artistId });
     const cost = admin ? 0 : base;
     if (ownedSet(u.id).has(track.id)) fail(409, 'already_owned');
     if (u.royalties < cost) fail(409, 'not_enough_royalties');
@@ -1001,10 +1158,12 @@ const routes = [
   }],
   ['POST', /^\/profile\/showcase$/, ({ body }) => {
     const u = me();
-    if (!Array.isArray(body.slots) || body.slots.length > SHOWCASE_SLOTS) fail(400, 'invalid_showcase');
+    // Vitrine : 6 cartes, +1 aux niveaux 10 et 30 (PLAN.md 6.6).
+    const max = showcaseSlots(levelOf(u));
+    if (!Array.isArray(body.slots) || body.slots.length > max) fail(400, 'invalid_showcase');
     const owned = ownedSet(u.id);
     const clean = body.slots.map((id) => (idOf(id) && owned.has(id) ? id : null));
-    while (clean.length < SHOWCASE_SLOTS) clean.push(null);
+    while (clean.length < max) clean.push(null);
     u.showcase = clean;
     return { state: partialState() };
   }],
@@ -1033,55 +1192,7 @@ const routes = [
     if (!target || !target.verified) fail(404, 'user_not_found');
     return publicProfile(viewer, target);
   }],
-  ['GET', /^\/users\/([^/]+)\/ratings$/, ({ params }) => {
-    me();
-    const target = userByName(decodeURIComponent(params[0]));
-    if (!target || !target.verified) fail(404, 'user_not_found');
-    const rows = db.ratings.filter((r) => r.userId === target.id && itemExists(r.type, r.id)).sort((a, b) => b.updatedAt - a.updatedAt);
-    const entry = (r) => ({ type: r.type, id: r.id, score: r.score, review: r.review, updatedAt: r.updatedAt });
-    const albums = rows.filter((r) => r.type === 'album');
-    const result = {
-      stats: { ...summarize(rows.map((r) => r.score)), albums: albums.length, tracks: rows.length - albums.length, reviews: rows.filter((r) => r.review).length },
-      topAlbums: [...albums].sort((a, b) => b.score - a.score || b.updatedAt - a.updatedAt).slice(0, 4).map(entry),
-      topTracks: rows.filter((r) => r.type === 'track').sort((a, b) => b.score - a.score || b.updatedAt - a.updatedAt).slice(0, 5).map(entry),
-      recent: rows.slice(0, 12).map(entry),
-      reviews: rows.filter((r) => r.review).slice(0, 10).map(entry),
-    };
-    result.catalog = ratingRefs([...result.topAlbums, ...result.topTracks, ...result.recent, ...result.reviews]);
-    return result;
-  }],
-  ['GET', /^\/ratings\/feed$/, () => {
-    const u = me();
-    botsRespond(u);
-    const friends = friendIds(u.id);
-    const items = db.ratings.filter((r) => friends.has(r.userId) && itemExists(r.type, r.id)).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 20)
-      .map((r) => ({ user: author(r.userId), type: r.type, id: r.id, score: r.score, review: r.review, updatedAt: r.updatedAt }));
-    return { items, catalog: ratingRefs(items, items.map((i) => i.user)) };
-  }],
-  ['GET', /^\/ratings\/(album|track)\/([^/]+)$/, ({ params }) => itemRatings(me().id, params[0], decodeURIComponent(params[1]))],
-  ['PUT', /^\/ratings\/(album|track)\/([^/]+)$/, ({ params, body }) => {
-    const u = me();
-    const [type, id] = [params[0], decodeURIComponent(params[1])];
-    if (!itemExists(type, id)) fail(404, 'unknown_item');
-    if (!Number.isInteger(body.score) || body.score < 0 || body.score > 10) fail(400, 'invalid_score');
-    const existing = db.ratings.find((r) => r.userId === u.id && r.type === type && r.id === id);
-    // Sans champ `review`, on garde la critique déjà écrite (changement de note depuis la tracklist).
-    let text = body.review === undefined ? existing?.review || '' : typeof body.review === 'string' ? body.review : '';
-    text = text.trim();
-    if (text.length > 2000) fail(400, 'review_too_long');
-    const now = Date.now();
-    if (existing) Object.assign(existing, { score: body.score, review: text || null, updatedAt: now });
-    else db.ratings.push({ userId: u.id, type, id, score: body.score, review: text || null, createdAt: now, updatedAt: now });
-    // `rating` : le delta de la note du joueur, fusionné dans state.ratings par le site.
-    return { ...itemRatings(u.id, type, id), rating: { type, id, score: body.score }, state: partialState() };
-  }],
-  ['DELETE', /^\/ratings\/(album|track)\/([^/]+)$/, ({ params }) => {
-    const u = me();
-    const [type, id] = [params[0], decodeURIComponent(params[1])];
-    if (!itemExists(type, id)) fail(404, 'unknown_item');
-    db.ratings = db.ratings.filter((r) => !(r.userId === u.id && r.type === type && r.id === id));
-    return { ...itemRatings(u.id, type, id), rating: { type, id, score: null }, state: partialState() };
-  }],
+  // Notes et critiques (/ratings/*, /users/:u/ratings) : jumeau du module ratings (mock/ratings.js).
   // Démo : l'accès admin se déverrouille avec le code du propriétaire (seule son empreinte SHA-256 est ici).
   ['POST', /^\/demo\/unlock-admin$/, async ({ body }) => {
     const u = me();
@@ -1182,15 +1293,17 @@ const routes = [
     g.score += points;
     if (correct) g.correct += 1;
     let final = null;
+    let levelUp = null;
     if (g.current === g.questions.length - 1) {
       const rewardPacks = g.rewarded ? blindtestReward(g.correct) : 0;
       const xp = g.correct * 10;
       u.bonusPacks += rewardPacks;
-      u.xp += xp;
+      // L'XP passe par les paliers de niveau (booster bonus, PLAN.md 6.6), comme toute autre source.
+      levelUp = gainXp(u, xp);
       g.finishedAt = Date.now();
       final = { score: g.score, correct: g.correct, rounds: g.questions.length, rewardPacks, rewarded: g.rewarded, xp };
     }
-    const result = { result: { correct, answer: q.answer, picked: q.picked, points, score: g.score }, final, catalog: refs({ trackIds: [q.answer] }) };
+    const result = { result: { correct, answer: q.answer, picked: q.picked, points, score: g.score }, final, levelUp, catalog: refs({ trackIds: [q.answer] }) };
     return final ? { ...result, state: partialState() } : result;
   }],
   ['POST', /^\/blindtest\/([^/]+)\/next$/, ({ params }) => {
@@ -1247,19 +1360,7 @@ const routes = [
     t.royalties += royalties;
     return { packs, royalties };
   }],
-  ['GET', /^\/admin\/reviews$/, () => {
-    requireAdmin();
-    return adminReviews();
-  }],
-  ['DELETE', /^\/admin\/reviews\/(\d+)\/(album|track)\/([^/]+)$/, ({ params }) => {
-    requireAdmin();
-    const [userId, type, id] = [Number(params[0]), params[1], decodeURIComponent(params[2])];
-    // Comme le vrai serveur : on efface le texte, la note reste.
-    const row = db.ratings.find((r) => r.userId === userId && r.type === type && r.id === id && r.review);
-    if (!row) fail(404, 'review_not_found');
-    row.review = null;
-    return adminReviews();
-  }],
+  // Critiques récentes et suppression d'une critique : file de modération (mock/moderation.js).
   ['GET', /^\/admin\/covers$/, () => {
     requireAdmin();
     return coverStatus();
@@ -1282,6 +1383,7 @@ const routes = [
     db.cards[u.id] = {};
     db.achievements[u.id] = {};
     u.xp = 0;
+    u.pity = 0;
     u.avatar = 'initials';
     u.showcase = [];
     return { state: state() };
@@ -1328,6 +1430,11 @@ const routes = [
  * renvoyé par une action (PLAN.md 4.1.1 : { partial, user, packs, counts, stats: { summary }, serverTime }), à
  * accompagner des deltas de l'action. Un module peut aussi exporter `counts(db, ctx, userId)` → { unread… } pour
  * les pastilles de state.counts (ex. notifications non lues).
+ * `ctx.collection` : le jeu de collection (jumeau de deps.collection et des services de P1-D), pour les autres
+ * jumeaux : addXp(userId, xp, source) → levelUp | null (la seule façon d'ajouter de l'XP : paliers de niveau),
+ * grantBooster(userId, kind, theme, source) → id, unlockedCosmetics(userId), grantCosmetic(userId, id, source),
+ * cosmeticsOf(userId), setCosmetics(userId, selection), wishlist(userId), addToWishlist(userId, albumIds) ; et pour
+ * mock/collection.js : ownedSet, achOf, rankOf, levelOf, pressInfo, openSpecialPack, demoGift.
  */
 export const ctx = {
   get db() {
@@ -1348,6 +1455,65 @@ export const ctx = {
   TRACK,
   ALBUM,
   ARTIST,
+  collection: {
+    addXp(userId, xp) {
+      const u = userById(userId);
+      if (!u) fail(404, 'user_not_found');
+      return gainXp(u, xp);
+    },
+    grantBooster(userId, kind, theme, source = 'game') {
+      // Comme deps.collection.grantBooster : le type se déduit du thème quand il est omis.
+      let [k, t] = [kind, theme];
+      if (k !== 'theme' && k !== 'album') [k, t] = [null, kind];
+      const parsed = parseBoosterTheme(t);
+      if (!parsed) fail(400, 'invalid_theme');
+      if (parsed.kind === 'album' && !ALBUM.has(parsed.value)) fail(404, 'unknown_album');
+      return insertBooster(userId, parsed.kind === 'album' || parsed.kind === 'choice' ? 'album' : 'theme', t, source);
+    },
+    unlockedCosmetics,
+    grantCosmetic(userId, id, source = 'game') {
+      const list = (db.cosmeticGrants[userId] ||= []);
+      if (!list.some((c) => c.id === id)) list.push({ id, source: String(source).slice(0, 80), at: Date.now() });
+    },
+    cosmeticsOf: (userId) => cosmeticsOf(userById(userId) || { id: userId }),
+    /** Comme deps.collection.setCosmetics : { frame, vinyl, theme, title } (clé courte ou complète, null = aucun). */
+    setCosmetics(userId, selection) {
+      const u = userById(userId);
+      if (!u) fail(404, 'user_not_found');
+      if (!selection || typeof selection !== 'object' || Array.isArray(selection)) fail(400, 'invalid_input', { field: 'cosmetics' });
+      const unlocked = new Set(unlockedCosmetics(userId).map((c) => c.id));
+      const next = { ...cosmeticsOf(u) };
+      for (const kind of ['frame', 'vinyl', 'theme', 'title']) {
+        if (!(kind in selection)) continue;
+        const value = selection[kind];
+        if (value === null || value === '') {
+          next[kind] = null;
+          continue;
+        }
+        if (typeof value !== 'string') fail(400, 'invalid_input', { field: kind });
+        const key = value.startsWith(`${kind}:`) ? value.slice(kind.length + 1) : value;
+        if (!unlocked.has(`${kind}:${key}`)) fail(409, 'cosmetic_locked', { id: `${kind}:${key}` });
+        next[kind] = key;
+      }
+      u.cosmetics = next;
+      return next;
+    },
+    wishlist: (userId) => [...wishlistOf(userId)],
+    addToWishlist(userId, albumIds = []) {
+      const u = userById(userId);
+      const list = wishlistOf(userId);
+      const max = wishlistMax(u ? levelOf(u) : 1);
+      for (const id of [...new Set(albumIds)].slice(0, 50)) if (ALBUM.has(id) && !list.includes(id) && list.length < max) list.push(id);
+      return [...list];
+    },
+    ownedSet,
+    achOf,
+    rankOf,
+    levelOf,
+    pressInfo,
+    openSpecialPack,
+    demoGift,
+  },
 };
 
 // Routes des modules d'abord : un module peut préciser ou remplacer une route du cœur.

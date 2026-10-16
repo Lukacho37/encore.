@@ -1,4 +1,4 @@
-import { Fragment, lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Vinyl } from './Vinyl.jsx';
 import { Icon, Modal, useToast } from './ui.jsx';
 import { RatingInput } from './Rating.jsx';
@@ -73,7 +73,7 @@ function CompletionMoment({ a, album, full }) {
   return (
     <div className="gm-moment">
       <p className="gm-moment__stats mono">
-        {parts.map((p, i) => <Fragment key={i}>{i > 0 && <span className="gm-moment__dot" aria-hidden="true">·</span>}<span>{p}</span></Fragment>)}
+        {parts.map((p, i) => <span key={i}>{i > 0 && <span className="gm-moment__dot" aria-hidden="true">· </span>}{p}</span>)}
       </p>
       {full && (
         <>

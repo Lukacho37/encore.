@@ -12,7 +12,8 @@ import UgcText from '../UgcText.jsx';
 import SafetyMenu from '../safety/SafetyMenu.jsx';
 import { LikeButton } from './LikeButton.jsx';
 import { MentionCard } from './MentionCard.jsx';
-import { ReviewCard, ShareButton } from './ReviewCard.jsx';
+import { ReviewCard } from './ReviewCard.jsx';
+import { ShareButton } from './ShareButton.jsx';
 import { CommentThread } from './CommentThread.jsx';
 import { OwnMenu } from './OwnMenu.jsx';
 import { itemHref, timeAgo, userHref } from './util.js';
@@ -36,8 +37,10 @@ export function PostCard({ post: initial, onChange, onRemove, reason, hideItem =
   const [draft, setDraft] = useState(initial.body || '');
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(thread);
-  if (post !== initial && initial.id === post.id && initial.likeCount !== post.likeCount && !busy) {
-    // Le parent a rechargé le post (fil rafraîchi) : la nouvelle version l'emporte.
+  const [prev, setPrev] = useState(initial);
+  if (initial !== prev) {
+    // Le parent a une nouvelle version du post (fil rechargé, compteur de commentaires) : elle l'emporte.
+    setPrev(initial);
     setPost(initial);
   }
   const update = (next) => {

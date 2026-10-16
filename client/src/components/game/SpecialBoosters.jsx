@@ -5,11 +5,11 @@
 // événements). Ouverture avec l'écran d'ouverture inchangé (useBoosterFlow().openSpecial) ; « Voir les chances »
 // publie les chances de chacun. Rien n'est affiché tant que l'inventaire est vide.
 // Monte aussi le message de niveau (LevelUpToast) : l'accueil est la page où l'on ouvre les boosters.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { PackArt } from '../PackOpening.jsx';
 import { Icon, Modal, Spinner, useToast } from '../ui.jsx';
 import { SearchCombobox } from '../search/SearchCombobox.jsx';
-import { post } from '../../api.js';
+import { onApiResponse, post } from '../../api.js';
 import { useI18n } from '../../i18n/index.jsx';
 import { useGame } from '../../state/GameContext.jsx';
 import { useApi, useAlbum } from '../../state/catalog.js';
@@ -27,21 +27,38 @@ function useSourceName() {
     const level = /^level:(\d+)$/.exec(s);
     if (level) return t('game.special.source.level', { n: Number(level[1]) });
     const kind = s.split(':')[0];
-    return ['quest', 'onboarding', 'event', 'badge', 'shop'].includes(kind) ? t(`game.special.source.${kind}`) : t('game.special.source.other');
+    return ['quest', 'onboarding', 'event', 'badge', 'shop', 'demo'].includes(kind) ? t(`game.special.source.${kind}`) : t('game.special.source.other');
+  };
+}
+
+/**
+ * Étiquette courte collée sur le petit paquet (le nom complet est écrit à côté) : « Rap », « 1990 », « Au choix »,
+ * « Ton goût », le nom de l'événement.
+ */
+function useStickerName() {
+  const { t } = useI18n();
+  const themeName = useThemeName();
+  return (theme) => {
+    const p = parseBoosterTheme(theme);
+    if (p?.kind === 'genre') return themeName(theme).split('/')[0].trim();
+    if (p?.kind === 'decade') return String(p.value);
+    if (p?.kind === 'choice' || p?.kind === 'taste') return t(`game.special.sticker.${p.kind}`);
+    return themeName(theme);
   };
 }
 
 /** Le booster dessiné en petit : visuel de la série (avec l'étiquette du thème) ou pochette de l'album offert. */
-function MiniBooster({ theme, name }) {
+function MiniBooster({ theme }) {
   const parsed = parseBoosterTheme(theme);
   const album = useAlbum(parsed?.kind === 'album' ? parsed.value : null);
+  const sticker = useStickerName();
   if (parsed?.kind === 'album') {
     return <span className="gm-pack gm-pack--album"><PackArt album={album || undefined} /></span>;
   }
   return (
     <span className={`gm-pack gm-pack--${parsed?.kind || 'standard'}`}>
       <PackArt />
-      <span className="gm-pack__sticker">{name}</span>
+      <span className="gm-pack__sticker">{sticker(theme)}</span>
     </span>
   );
 }
@@ -86,6 +103,17 @@ export function SpecialBoosters() {
   const sourceName = useSourceName();
   const [oddsFor, setOddsFor] = useState(undefined);
   const [choosing, setChoosing] = useState(null);
+
+  // Un booster spécial gagné ailleurs (palier des dizaines en ouvrant un booster du héros, quête, badge) : la réponse
+  // le signale (`levelUp.themed`, `boosters`), l'inventaire est rechargé.
+  const reloadRef = useRef(reload);
+  useEffect(() => {
+    reloadRef.current = reload;
+  });
+  useEffect(() => onApiResponse((res, { path } = {}) => {
+    if (path?.startsWith('/me/boosters')) return;
+    if (res?.levelUp?.themed > 0 || res?.boosters?.granted > 0) reloadRef.current();
+  }), []);
 
   // Boosters identiques (même thème) réunis en une pile « ×3 » ; on ouvre le plus ancien d'abord.
   const stacks = useMemo(() => {
@@ -146,7 +174,7 @@ export function SpecialBoosters() {
               <li key={stack.theme} className="gm-special__item">
                 <button type="button" className="gm-special__art" onClick={() => open(stack)} disabled={flow.opening}
                   aria-label={`${t('game.special.open')} · ${name}`}>
-                  <MiniBooster theme={stack.theme} name={name} />
+                  <MiniBooster theme={stack.theme} />
                   {stack.count > 1 && <span className="gm-special__stack mono" aria-hidden="true">×{stack.count}</span>}
                 </button>
                 <div className="gm-special__text">

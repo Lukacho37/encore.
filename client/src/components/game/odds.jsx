@@ -36,35 +36,38 @@ export function useThemeName() {
   };
 }
 
-/** Tableau des emplacements : chance de chaque rareté pour chacune des 5 cartes. */
+/**
+ * Tableau des emplacements : une ligne par rareté, une colonne par carte (5 colonnes étroites : le tableau tient sur
+ * un téléphone sans défiler).
+ */
 function SlotTable({ slots, caption }) {
   const { t } = useI18n();
   const pct = usePct();
   const shown = RARITIES.filter((r) => slots.some((s) => s[r]));
+  const totals = slots.map((slot) => Object.values(slot).reduce((s, w) => s + w, 0));
   return (
     <div className="table-wrap">
       <table className="table gm-odds__table">
         <caption className="small muted">{caption}</caption>
         <thead>
           <tr>
-            <th>{t('game.odds.card')}</th>
-            {shown.map((r) => (
-              <th key={r} className="num"><span className="gm-odds__rarity" style={{ color: RARITY[r].color }}><RarityGem rarity={r} size={11} /> {t(`rarity.${r}`)}</span></th>
+            <th scope="col"><span className="sr-only">{t('game.odds.rarity')}</span></th>
+            {slots.map((_, i) => (
+              <th key={i} scope="col" className="num mono">
+                <span className="gm-odds__word">{t('game.odds.card')} </span>{i + 1}
+              </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {slots.map((slot, i) => {
-            const total = Object.values(slot).reduce((s, w) => s + w, 0);
-            return (
-              <tr key={i}>
-                <th scope="row" className="mono">{t('game.odds.slot', { n: i + 1 })}</th>
-                {shown.map((r) => (
-                  <td key={r} className="num mono" data-label={t(`rarity.${r}`)}>{slot[r] ? pct(slot[r] / total) : '–'}</td>
-                ))}
-              </tr>
-            );
-          })}
+          {shown.map((r) => (
+            <tr key={r}>
+              <th scope="row"><span className="gm-odds__rarity" style={{ color: RARITY[r].color }}><RarityGem rarity={r} size={11} /> {t(`rarity.${r}`)}</span></th>
+              {slots.map((slot, i) => (
+                <td key={i} className="num mono">{slot[r] ? pct(slot[r] / totals[i]) : <span className="muted">–</span>}</td>
+              ))}
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>

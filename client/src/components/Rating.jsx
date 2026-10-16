@@ -6,10 +6,12 @@ import { useI18n } from '../i18n/index.jsx';
 import { useAlbum, useTrack } from '../state/catalog.js';
 import { useCursorList } from '../state/paged.js';
 import CoverArt from './CoverArt.jsx';
-import { Avatar, useToast } from './ui.jsx';
+import { Avatar, Icon, useToast } from './ui.jsx';
 import { LoadMore, Skeleton } from './feedback.jsx';
 import UgcText from './UgcText.jsx';
 import SafetyMenu from './safety/SafetyMenu.jsx';
+import { LikeButton } from './social/LikeButton.jsx';
+import { ShareButton } from './social/ShareButton.jsx';
 import '../styles/profile.css';
 import '../styles/track.css';
 
@@ -17,6 +19,8 @@ import '../styles/track.css';
 // Affichage au choix du joueur : 5 étoiles avec demi-étoiles (1 point = ½ étoile) ou une note sur 10.
 // Notes v2 (PLAN.md 4.1.2, chantier P0-C) : chaque critique a un identifiant stable (ancre #review-<id>), les critiques
 // des amis (« Vos amis ») passent avant celles de la communauté (« Communauté AlbumMania »), page par page.
+// P1 (chantier P1-A) : pied de critique (J'aime, « N réponses » vers le permalien /review/:id, Partager), tri
+// « Récentes / Populaires » des critiques de la communauté ; les anciennes clés `reviews` / `friendScores` ne sont plus lues.
 
 const REVIEW_MAX = 2000;
 
@@ -180,8 +184,6 @@ const EMPTY_RATINGS = {
   mine: null,
   friends: { scores: [], reviews: [], nextCursor: null },
   community: { reviews: [], nextCursor: null },
-  reviews: [],
-  friendScores: [],
 };
 
 /**
@@ -328,9 +330,38 @@ export function ReviewEditor({ data, save, remove, compact = false }) {
 const ratingIdOf = (r) => (Number.isInteger(r.ratingId) ? r.ratingId : !r.type && Number.isInteger(r.id) ? r.id : null);
 
 /**
+ * Pied d'une critique (P1-A, components.css .review__foot) : J'aime, « N réponses » (ou « Répondre ») qui ouvre son
+ * permalien /review/:id, Partager. Seulement pour les critiques publiées (pas celles masquées par la modération).
+ */
+export function ReviewFoot({ review, ratingId }) {
+  const { t } = useI18n();
+  const [count, setCount] = useState({ liked: !!review.liked, likeCount: review.likeCount || 0 });
+  useEffect(() => {
+    setCount({ liked: !!review.liked, likeCount: review.likeCount || 0 });
+  }, [review.liked, review.likeCount]);
+  const replies = review.commentCount || 0;
+  const href = `/review/${ratingId}`;
+  return (
+    <div className="review__foot">
+      <LikeButton targetType="review" targetId={ratingId} liked={count.liked} count={count.likeCount}
+        onChange={({ liked, likeCount }) => setCount({ liked, likeCount })} />
+      <Link to={href} className="act-btn" data-replies={ratingId}>
+        <Icon name="comment" size={18} />
+        <span>{replies ? t('reviewFoot.replies', { n: replies }) : t('reviewFoot.reply')}</span>
+      </Link>
+      <ShareButton path={href} label={false} title={shareTitle(t, review)} />
+    </div>
+  );
+}
+
+/** Titre du lien partagé d'une critique (« Critique de camille »). */
+const shareTitle = (t, review) => (review.user?.username ? t('reviewPage.kicker', { name: review.user.username }) : undefined);
+
+/**
  * Liste de critiques. Chaque critique porte l'ancre « review-<id> », son texte passe par UgcText et le menu
  * « Signaler / Bloquer » (SafetyMenu) accompagne celles des autres joueurs. `renderItem(r)` remplace l'auteur
- * (journal d'un profil : l'élément noté à la place).
+ * (journal d'un profil : l'élément noté à la place). Les critiques v2 (avec leurs compteurs) ont leur pied :
+ * J'aime, réponses, Partager.
  */
 export function ReviewList({ reviews, renderItem, empty }) {
   const { t, date } = useI18n();
@@ -356,6 +387,7 @@ export function ReviewList({ reviews, renderItem, empty }) {
               <span className="small muted">{date(r.updatedAt)}</span>
             </div>
             {r.review && <div className="review__text trk-review__text"><UgcText text={r.review} clamp /></div>}
+            {ratingId && r.review && !r.moderated && Number.isInteger(r.likeCount) && <ReviewFoot review={r} ratingId={ratingId} />}
           </li>
         );
       })}
@@ -367,9 +399,9 @@ export function ReviewList({ reviews, renderItem, empty }) {
  * Un groupe de critiques (« Vos amis » ou « Communauté AlbumMania ») : la première page arrive avec les notes de
  * l'élément ; « Voir plus » lit les suivantes par curseur (GET /api/ratings/:type/:id/reviews?scope=…&cursor=…),
  * seulement à la demande. Chaque page suivante a sa propre adresse (curseur compris), lue une fois par useCursorList
- * et ajoutée à la liste par `onPage` : la première page n'est jamais redemandée.
+ * et ajoutée à la liste par `onPage` : la première page n'est jamais redemandée. `tools` : à côté du titre (tri).
  */
-function ReviewGroup({ type, id, scope, title, initial, nextCursor, empty }) {
+function ReviewGroup({ type, id, scope, title, initial, nextCursor, empty, tools = null }) {
   const { t } = useI18n();
   const [cursor, setCursor] = useState(null);
   const [more, setMore] = useState({ items: [], next: nextCursor });
@@ -382,12 +414,54 @@ function ReviewGroup({ type, id, scope, title, initial, nextCursor, empty }) {
   const reviews = [...initial, ...more.items].filter((r) => !seen.has(r.id) && seen.add(r.id));
   return (
     <div className={`trk-group trk-group--${scope}`}>
-      <h3 className="trk-group__title">{title}</h3>
+      <GroupTitle title={title} tools={tools} />
       <ReviewList reviews={reviews} empty={empty} />
       {(more.next || page.error) && (
         <LoadMore hasMore loading={page.loading} error={page.error} onRetry={page.reload}
           onClick={() => setCursor(more.next)} label={t('track.reviews.more')} />
       )}
+    </div>
+  );
+}
+
+/** Titre d'un groupe de critiques, avec le tri à côté quand il y en a un. */
+function GroupTitle({ title, tools }) {
+  if (!tools) return <h3 className="trk-group__title">{title}</h3>;
+  return (
+    <div className="so-group-head">
+      <h3 className="trk-group__title">{title}</h3>
+      {tools}
+    </div>
+  );
+}
+
+/**
+ * Critiques de la communauté triées par mentions « J'aime » (P1-A : GET …/reviews?scope=community&sort=popular,
+ * curseur par décalage, 200 au plus).
+ */
+function PopularReviews({ type, id, title, tools, empty }) {
+  const { t } = useI18n();
+  const list = useCursorList(`/ratings/${type}/${encodeURIComponent(id)}/reviews?scope=community&sort=popular`, { limit: 10 });
+  return (
+    <div className="trk-group trk-group--community">
+      <GroupTitle title={title} tools={tools} />
+      {list.loading && !list.items.length ? <Skeleton kind="row" count={2} /> : <ReviewList reviews={list.items} empty={empty} />}
+      <LoadMore hasMore={list.hasMore} loading={list.loading} error={list.items.length ? list.error : null} onRetry={list.loadMore}
+        onClick={list.loadMore} label={t('track.reviews.more')} />
+    </div>
+  );
+}
+
+/** Tri des critiques de la communauté : Récentes · Populaires. */
+function SortSwitch({ sort, onChange }) {
+  const { t } = useI18n();
+  return (
+    <div className="seg so-sort" role="group" aria-label={t('reviewSort.label')}>
+      {['recent', 'popular'].map((s) => (
+        <button key={s} type="button" className={`seg__btn${sort === s ? ' is-on' : ''}`} aria-pressed={sort === s} onClick={() => onChange(s)}>
+          {t(`reviewSort.${s}`)}
+        </button>
+      ))}
     </div>
   );
 }
@@ -421,6 +495,7 @@ function FriendScores({ scores }) {
 export function RatingsSection({ type, id, ratingsApi, className = '' }) {
   const { t } = useI18n();
   const { data, save, remove } = ratingsApi;
+  const [sort, setSort] = useState('recent');
   const ready = !!data;
   // Lien vers une critique (#review-<id>, notifications, fil) : la page défile jusqu'à elle une fois les notes chargées.
   useEffect(() => {
@@ -436,8 +511,11 @@ export function RatingsSection({ type, id, ratingsApi, className = '' }) {
     );
   }
   const { summary } = data;
-  const friends = data.friends || { scores: data.friendScores || [], reviews: [], nextCursor: null };
-  const community = data.community || { reviews: data.reviews || [], nextCursor: null };
+  const friends = data.friends || { scores: [], reviews: [], nextCursor: null };
+  const community = data.community || { reviews: [], nextCursor: null };
+  // Le tri n'a de sens qu'à partir de deux critiques de la communauté.
+  const sortable = community.reviews.length > 1 || !!community.nextCursor;
+  const tools = sortable ? <SortSwitch sort={sort} onChange={setSort} /> : null;
   return (
     <section className={`section album-ratings ${className}`} id="critiques">
       <header className="section__head"><h2>{t('reviews.title')}</h2></header>
@@ -465,8 +543,12 @@ export function RatingsSection({ type, id, ratingsApi, className = '' }) {
         <ReviewGroup key={`friends:${friends.nextCursor ?? ''}`} type={type} id={id} scope="friends" title={t('track.reviews.friends')}
           initial={friends.reviews} nextCursor={friends.nextCursor} />
       )}
-      <ReviewGroup key={`community:${community.nextCursor ?? ''}`} type={type} id={id} scope="community" title={t('track.reviews.community')}
-        initial={community.reviews} nextCursor={community.nextCursor} empty={t('track.reviews.communityEmpty')} />
+      {sort === 'popular' && sortable ? (
+        <PopularReviews type={type} id={id} title={t('track.reviews.community')} tools={tools} empty={t('track.reviews.communityEmpty')} />
+      ) : (
+        <ReviewGroup key={`community:${community.nextCursor ?? ''}`} type={type} id={id} scope="community" title={t('track.reviews.community')}
+          initial={community.reviews} nextCursor={community.nextCursor} empty={t('track.reviews.communityEmpty')} tools={tools} />
+      )}
     </section>
   );
 }

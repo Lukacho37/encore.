@@ -17,7 +17,8 @@
 // Score (affiché comme raison : « Ami », « Proche de tes goûts », « Populaire ») :
 //   0.5^(âge en heures / 36) × (1 + affinité + engagement + bonus du type) ; affinité 1 pour un ami, 0.5 pour un Taste
 //   Match en cache ≥ 70 ; engagement = min(1, log10(1 + j'aime + 2 × commentaires) / 2) ; jamais plus de 2 éléments
-//   d'affilée du même joueur. Les joueurs bloqués sont retirés avant le score ; l'hydratation est groupée.
+//   d'affilée du même joueur. Les joueurs bloqués sont retirés avant le score ; le classement se fait sur les lignes
+//   d'activité, seule la page affichée est hydratée (requêtes groupées).
 // FeedItem = { id, verb, actor, object, item?, groupCount, data, post?, review?, list?, likeCount, commentCount, liked,
 //              reason, createdAt, updatedAt }.
 // API interne (deps.feed) : refreshEngagement(type, id), record(...), backfill(), feed(viewerId, query),
@@ -77,7 +78,7 @@ export function diversify(items, actorOf = (x) => x.actorId) {
 }
 
 export function init(deps) {
-  const { db, catalog, services, paging, periods, HttpError } = deps;
+  const { db, services, paging, periods, HttpError } = deps;
   const statements = new Map();
   const q = (sql) => {
     let st = statements.get(sql);
@@ -466,18 +467,25 @@ export function init(deps) {
     });
   }
 
-  /** L'élément d'une activité correspond-il à ces goûts ? (album / morceau : genre ou artiste ; artiste : favori) */
-  function matchesTaste(row, taste, memo) {
-    const key = `${row.item_type}:${row.item_id}`;
-    if (memo.has(key)) return memo.get(key);
-    let hit = false;
-    if (row.item_type === 'artist') hit = taste.artists.has(row.item_id);
-    else {
-      const it = row.item_type === 'album' ? catalog.album(row.item_id) : row.item_type === 'track' ? catalog.track(row.item_id) : null;
-      hit = !!it && (taste.genres.has(it.genre) || taste.artists.has(it.artistId));
+  /** Genre et artiste des albums et morceaux de ces lignes : Map « type:id » → { genre, artistId } (deux requêtes). */
+  function itemFacts(rows) {
+    const out = new Map();
+    const ids = (type) => json([...new Set(rows.filter((r) => r.item_type === type).map((r) => r.item_id))]);
+    for (const f of q('SELECT id, genre, artist_id FROM cat_albums WHERE id IN (SELECT value FROM json_each(?))').all(ids('album'))) {
+      out.set(`album:${f.id}`, { genre: f.genre, artistId: f.artist_id });
     }
-    memo.set(key, hit);
-    return hit;
+    for (const f of q(`SELECT t.id, COALESCE(t.genre, al.genre) AS genre, t.artist_id FROM cat_tracks t LEFT JOIN cat_albums al ON al.id = t.album_id
+        WHERE t.id IN (SELECT value FROM json_each(?))`).all(ids('track'))) {
+      out.set(`track:${f.id}`, { genre: f.genre, artistId: f.artist_id });
+    }
+    return out;
+  }
+
+  /** L'élément d'une activité correspond-il à ces goûts ? (album / morceau : genre ou artiste ; artiste : favori) */
+  function matchesTaste(row, taste, facts) {
+    if (row.item_type === 'artist') return taste.artists.has(row.item_id);
+    const f = facts.get(`${row.item_type}:${row.item_id}`);
+    return !!f && (taste.genres.has(f.genre) || taste.artists.has(f.artistId));
   }
 
   /** Candidats classés de Pour toi ou Communauté : [{ id, reason }] (≤ 200). */
@@ -492,12 +500,13 @@ export function init(deps) {
     } else {
       const taste = tasteOf(viewer.id);
       const excluded = json([...viewer.friends, ...viewer.hidden, viewer.id]);
-      const memo = new Map();
       rows = [];
       if (taste.genres.size || taste.artists.size) {
-        for (const r of q(`SELECT ${ACT_COLS} FROM activity WHERE created_at >= ? AND visibility = 'public' AND item_type IS NOT NULL
-            AND actor_id NOT IN (SELECT value FROM json_each(?)) ORDER BY created_at DESC LIMIT ?`).all(recent, excluded, FORYOU_SCAN)) {
-          if (matchesTaste(r, taste, memo)) {
+        const scanned = q(`SELECT ${ACT_COLS} FROM activity WHERE created_at >= ? AND visibility = 'public' AND item_type IS NOT NULL
+            AND actor_id NOT IN (SELECT value FROM json_each(?)) ORDER BY created_at DESC LIMIT ?`).all(recent, excluded, FORYOU_SCAN);
+        const facts = itemFacts(scanned);
+        for (const r of scanned) {
+          if (matchesTaste(r, taste, facts)) {
             rows.push(r);
             tasteIds.add(r.id);
           }
@@ -519,9 +528,29 @@ export function init(deps) {
           AND actor_id NOT IN (SELECT value FROM json_each(?)) ORDER BY created_at DESC LIMIT ?`).all(recent, excluded, RANKED_CAP).filter((r) => !seen.has(r.id)));
       }
     }
-    const refs = collector();
-    const items = rank(viewer, hydrate(viewer, rows.slice(0, RANKED_CAP), refs), now, { tasteIds });
-    return items.map((x) => ({ id: x.id, reason: x.reason }));
+    // Classement sur les lignes elles-mêmes (engagement recopié dans `activity`) : seule la page affichée est hydratée
+    // (rankedTab), jamais les 200 candidats. La confidentialité du Studio est relue ici, en une requête.
+    const kept = readable(viewer, rows.slice(0, RANKED_CAP));
+    const items = rank(viewer, kept.map((r) => ({
+      id: r.id, verb: r.verb, actor: { id: r.actor_id }, likeCount: r.engagement || 0, commentCount: 0, createdAt: r.created_at, reason: null,
+    })), now, { tasteIds });
+    return items.map((x) => ({ id: x.id, reason: x.reason || 'popular' }));
+  }
+
+  /** Lignes d'activité lisibles par `viewer` d'après la confidentialité actuelle du Studio de leurs auteurs. */
+  function readable(viewer, rows) {
+    const others = [...new Set(rows.map((r) => r.actor_id))].filter((id) => id !== viewer.id);
+    const privacy = new Map(others.length
+      ? q('SELECT id, profile_visibility FROM users WHERE id IN (SELECT value FROM json_each(?))').all(json(others)).map((u) => [u.id, u.profile_visibility])
+      : []);
+    return rows.filter((r) => {
+      if (r.actor_id === viewer.id) return true;
+      if (viewer.hidden.has(r.actor_id)) return false;
+      const friend = viewer.friends.has(r.actor_id);
+      if (r.visibility === 'private' || (r.visibility === 'friends' && !friend)) return false;
+      const p = privacy.get(r.actor_id) || 'public';
+      return !(STUDIO_VERBS.has(r.verb) && (p === 'private' || (p === 'friends' && !friend)));
+    });
   }
 
   /** Pour toi / Communauté : classement gardé 5 minutes, pages par décalage (curseur [offset] ≤ 200). */

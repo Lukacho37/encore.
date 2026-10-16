@@ -1,6 +1,7 @@
 // Message « Niveau 11 ! » — chantier P1-D (PLAN.md 6.6, 9.4). Écoute `levelUp` dans les réponses de l'API
 // (onApiResponse : GameContext.jsx reste figé) : boosters bonus, booster spécial des dizaines, cosmétiques et places
-// débloqués. Le message attend la fin de l'écran d'ouverture d'un booster pour ne pas cacher les cartes.
+// débloqués. Le message attend la fin de l'écran d'ouverture d'un booster (les cartes d'abord) et la fermeture d'une
+// fenêtre ouverte (guide, célébration) pour ne rien cacher.
 // Sans props. Plusieurs exemplaires peuvent être montés (coquille du site, panneau des boosters spéciaux) : un seul,
 // le premier monté, affiche les messages ; s'il disparaît, le suivant prend le relais avec la file en cours.
 import { useEffect, useId, useState, useSyncExternalStore } from 'react';
@@ -67,7 +68,7 @@ export function LevelUpToast() {
 
   const current = leader === key ? queue[0] : null;
 
-  // Attente de la fin de l'écran d'ouverture (les cartes d'abord), puis affichage quelques secondes.
+  // Attente de la fin de l'écran d'ouverture et des fenêtres ouvertes, puis affichage quelques secondes.
   useEffect(() => {
     if (!current) {
       setReady(false);
@@ -75,7 +76,7 @@ export function LevelUpToast() {
     }
     let shownAt = null;
     const id = setInterval(() => {
-      const busy = !!document.querySelector('.opening');
+      const busy = !!document.querySelector('.opening, .modal-backdrop');
       if (shownAt == null && !busy) {
         shownAt = Date.now();
         setReady(true);

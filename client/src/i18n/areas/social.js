@@ -99,6 +99,7 @@ export default {
       },
       end: 'Tu es à jour.',
       more: 'Voir plus',
+      aside: 'À côté du fil',
     },
     post: {
       title: 'Post',
@@ -116,6 +117,12 @@ export default {
       notFoundBody: 'Son auteur l’a retirée, ou elle n’est plus visible.',
       replies: 'Réponses',
       seeAll: 'Toutes les critiques',
+      edit: 'Modifier ma critique',
+    },
+    reviewSort: {
+      label: 'Trier les critiques',
+      recent: 'Récentes',
+      popular: 'Populaires',
     },
     comment: {
       label: 'Ton commentaire',
@@ -270,6 +277,7 @@ export default {
       },
       end: 'You’re all caught up.',
       more: 'See more',
+      aside: 'Next to the feed',
     },
     post: {
       title: 'Post',
@@ -287,6 +295,12 @@ export default {
       notFoundBody: 'Its author removed it, or it is no longer visible.',
       replies: 'Replies',
       seeAll: 'All reviews',
+      edit: 'Edit my review',
+    },
+    reviewSort: {
+      label: 'Sort reviews',
+      recent: 'Recent',
+      popular: 'Popular',
     },
     comment: {
       label: 'Your comment',

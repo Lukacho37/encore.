@@ -56,6 +56,11 @@
 
 .so-feed > li { min-width: 0; }
 
+/* La colonne de l'accueil rangée dans le fil (téléphone, tablette) : après la première page. */
+.so-feedwrap { display: flex; flex-direction: column; gap: var(--s-12); min-width: 0; }
+.so-insert { margin: var(--s-8) 0; }
+.so-insert:has(> .so-aside:empty) { display: none; }
+
 .so-end {
   padding: var(--s-12) 0 var(--s-4);
   text-align: center;
@@ -233,6 +238,9 @@ a.mention:hover {
 .mention--artist .mention__cover { border-radius: 50%; }
 .mention--list .mention__cover { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
 .mention--list .mention__cover > .cover { width: 100%; height: 100%; }
+.mention--static { grid-template-columns: 72px minmax(0, 1fr); }
+.mention--static.mention--track { grid-template-columns: 56px minmax(0, 1fr); }
+.mention--static.mention--sm { grid-template-columns: 48px minmax(0, 1fr); }
 .mention--missing { color: var(--haze); grid-template-columns: minmax(0, 1fr); padding: var(--s-12) var(--s-14); }
 
 .mention--sm { grid-template-columns: 48px minmax(0, 1fr) auto; gap: var(--s-10); padding: var(--s-6) var(--s-10) var(--s-6) var(--s-6); }
@@ -262,6 +270,7 @@ a.mention:hover {
 }
 
 .act-btn:disabled { cursor: default; opacity: 0.6; }
+.so-composer__tools .act-btn.is-on { background: var(--stage-2); color: var(--paper); }
 .act-btn .mono { font-size: var(--fs-13); }
 .act-btn--like.is-on { color: var(--like); }
 .act-btn--like.is-on svg { fill: currentColor; animation: so-like-pop 0.35s var(--ease-spring); }
@@ -420,6 +429,9 @@ a.mention:hover {
   align-items: start;
 }
 
+.so-composer__main { min-width: 0; }
+.so-composer--compact .so-composer__row { grid-template-columns: minmax(0, 1fr); }
+
 .so-composer__field.input {
   min-height: 46px;
   padding: var(--s-12) var(--s-14);
@@ -458,6 +470,8 @@ a.mention:hover {
   margin-left: 52px;
 }
 
+.so-composer__mention .mention { padding-right: var(--s-40); }
+
 .so-composer__mention .so-unmention {
   position: absolute;
   top: 6px;
@@ -491,6 +505,15 @@ a.mention:hover {
 .so-edit__actions { display: flex; justify-content: flex-end; gap: var(--s-8); }
 
 /* ---------- activités agrégées du fil ---------- */
+
+.so-act__one {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-12);
+}
+
+.so-act__rank { align-self: flex-start; }
 
 .so-strip {
   display: flex;
@@ -549,6 +572,9 @@ a.mention:hover {
   align-self: flex-start;
 }
 
+.so-badge__go { color: var(--cue); font-size: var(--fs-13); }
+.so-badge:hover .so-badge__go { text-decoration: underline; text-underline-offset: 3px; }
+
 .so-badge__icon {
   display: inline-grid;
   place-items: center;
@@ -596,6 +622,8 @@ a.mention:hover {
   border: 1px solid var(--line-soft);
 }
 
+.so-skel--short { height: 64px; }
+
 @keyframes so-shimmer {
   to { background-position: -200% 0; }
 }
@@ -605,6 +633,16 @@ a.mention:hover {
 }
 
 /* ---------- colonne : presque complets ---------- */
+
+.so-almost { display: flex; flex-direction: column; gap: var(--s-10); }
+.so-almost .panel__title { margin: 0; }
+
+.so-almost__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-10);
+}
 
 .so-almost__list {
   list-style: none;
@@ -672,12 +710,41 @@ a.mention:hover {
 }
 
 .so-page__back { align-self: flex-start; }
+.so-page__about { display: flex; flex-direction: column; gap: var(--s-6); }
+.so-page__edit { align-self: flex-start; display: inline-flex; align-items: center; gap: var(--s-6); }
+.so-page__all { align-self: flex-start; }
+.so-count { color: var(--haze); font-size: var(--fs-14); margin-left: var(--s-4); }
+
+/* Commentaire visé par un lien (#comment-<id>) : un halo bref. */
+.so-flash { animation: so-flash 1.6s ease-out; border-radius: var(--rad-sm); }
+
+@keyframes so-flash {
+  0%, 30% { background: color-mix(in oklab, var(--cue) 16%, transparent); }
+  100% { background: transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .so-flash { animation: none; }
+}
 .so-page__section { display: flex; flex-direction: column; gap: var(--s-12); }
 .so-page__section h2 { font: var(--fw-title) var(--fs-18) / var(--lh-title) var(--font-display); }
 
 /* ---------- discussions d'un album, d'un morceau, d'un artiste ---------- */
 
 .so-discussions { display: flex; flex-direction: column; gap: var(--s-12); }
+.so-group { display: flex; flex-direction: column; gap: var(--s-8); }
+.so-userposts { display: flex; flex-direction: column; gap: var(--s-12); }
+
+/* Tri des critiques de la communauté (Récentes · Populaires), à côté du titre du groupe. */
+.so-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-8) var(--s-12);
+}
+
+.so-sort .seg__btn { white-space: nowrap; }
 .so-group__title { margin: var(--s-4) 0 0; color: var(--haze); font: var(--fw-semi) var(--fs-13) / 1.2 var(--font-body); }
 
 /* ---------- liste « Aimé par » ---------- */
@@ -705,6 +772,9 @@ a.mention:hover {
   .mention__cover { width: 60px; height: 60px; }
   .mention--track { grid-template-columns: 52px minmax(0, 1fr) auto; }
   .mention--track .mention__cover { width: 52px; height: 52px; }
+  .mention--static { grid-template-columns: 60px minmax(0, 1fr); }
+  .mention--static.mention--track { grid-template-columns: 52px minmax(0, 1fr); }
+  .mention--static.mention--sm { grid-template-columns: 48px minmax(0, 1fr); }
   .thread { margin-left: 6px; padding-left: var(--s-12); }
   .so-composer { padding: var(--s-12); }
   .so-composer__row { grid-template-columns: 32px minmax(0, 1fr); gap: var(--s-10); }

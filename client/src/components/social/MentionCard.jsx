@@ -23,11 +23,11 @@ function useLabel() {
   };
 }
 
-function Frame({ to, kind, size, children, label }) {
-  const cls = `mention mention--${kind}${size === 'sm' ? ' mention--sm' : ''}`;
-  return to
+function Frame({ to, kind, size, children, label, linked = true }) {
+  const cls = `mention mention--${kind}${size === 'sm' ? ' mention--sm' : ''}${linked ? '' : ' mention--static'}`;
+  return to && linked
     ? <Link to={to} className={cls} aria-label={label} data-mention={kind}>{children}<span className="mention__go" aria-hidden="true"><Icon name="chevron" size={18} /></span></Link>
-    : <div className={cls}>{children}</div>;
+    : <div className={cls} data-mention={kind}>{children}</div>;
 }
 
 function Placeholder({ kind, size }) {
@@ -40,14 +40,14 @@ function Placeholder({ kind, size }) {
   );
 }
 
-function AlbumMention({ id, stats, size }) {
+function AlbumMention({ id, stats, size, linked }) {
   const { t } = useI18n();
   const label = useLabel();
   const album = useAlbum(id);
   if (!album) return <Placeholder kind="album" size={size} />;
   const eyebrow = [t('mention.album'), album.genre && label(`genre.${album.genre}`), album.year].filter(Boolean).join(' · ');
   return (
-    <Frame to={itemHref('album', album.id)} kind="album" size={size} label={`${album.title} · ${album.artist}`}>
+    <Frame to={itemHref('album', album.id)} kind="album" size={size} linked={linked} label={`${album.title} · ${album.artist}`}>
       <span className="mention__cover"><CoverArt art={{ ...album.art, seed: album.art?.seed || album.id }} sizes="72px" /></span>
       <span className="mention__body">
         <span className="eyebrow">{eyebrow}</span>
@@ -64,14 +64,14 @@ function AlbumMention({ id, stats, size }) {
   );
 }
 
-function TrackMention({ id, stats, size }) {
+function TrackMention({ id, stats, size, linked }) {
   const { t } = useI18n();
   const track = useTrack(id);
   if (!track) return <Placeholder kind="track" size={size} />;
   const eyebrow = [t('mention.track'), track.album].filter(Boolean).join(' · ');
   const rarity = track.rarity;
   return (
-    <Frame to={itemHref('track', track.id)} kind="track" size={size} label={`${track.title} · ${track.artist}`}>
+    <Frame to={itemHref('track', track.id)} kind="track" size={size} linked={linked} label={`${track.title} · ${track.artist}`}>
       <span className={`mention__cover${rarity === 'legendary' ? ' is-gold' : ''}`}>
         <CoverArt art={{ ...track.art, seed: track.art?.seed || track.albumId || track.id }} sizes="56px" />
         {rarity && <RarityGem rarity={rarity} size={12} />}
@@ -89,14 +89,14 @@ function TrackMention({ id, stats, size }) {
   );
 }
 
-function ArtistMention({ id, size }) {
+function ArtistMention({ id, size, linked }) {
   const { t } = useI18n();
   const label = useLabel();
   const artist = useArtist(id);
   if (!artist) return <Placeholder kind="artist" size={size} />;
   const eyebrow = [t('mention.artist'), artist.genre && label(`genre.${artist.genre}`)].filter(Boolean).join(' · ');
   return (
-    <Frame to={itemHref('artist', artist.id)} kind="artist" size={size} label={artist.name}>
+    <Frame to={itemHref('artist', artist.id)} kind="artist" size={size} linked={linked} label={artist.name}>
       <span className="mention__cover"><ArtistBadge artist={artist} size={size === 'sm' ? 48 : 72} /></span>
       <span className="mention__body">
         <span className="eyebrow">{eyebrow}</span>
@@ -108,13 +108,13 @@ function ArtistMention({ id, size }) {
 }
 
 /** Liste citée (ListSummary) : quatre pochettes de ses albums, titre, auteur, nombre d'éléments. */
-function ListMention({ list, size }) {
+function ListMention({ list, size, linked }) {
   const { t } = useI18n();
   const ids = list?.coverAlbumIds || [];
   const albums = useAlbums(ids);
   if (!list) return <div className="mention mention--missing">{t('mention.unavailable')}</div>;
   return (
-    <Frame to={itemHref('list', list.id)} kind="list" size={size} label={list.title}>
+    <Frame to={itemHref('list', list.id)} kind="list" size={size} linked={linked} label={list.title}>
       <span className="mention__cover">
         {albums.filter(Boolean).slice(0, 4).map((a) => <CoverArt key={a.id} art={{ ...a.art, seed: a.art?.seed || a.id }} sizes="36px" />)}
       </span>
@@ -129,15 +129,16 @@ function ListMention({ list, size }) {
 
 /**
  * Carte de mention. `item` = { type: 'album' | 'track' | 'artist', id } ; `list` = ListSummary (type 'list') ;
- * `stats` = { average, count } (moyenne de l'élément, fournie par le post) ; `size` = 'md' | 'sm'.
+ * `stats` = { average, count } (moyenne de l'élément, fournie par le post) ; `size` = 'md' | 'sm' ; `linked` = false :
+ * carte sans lien (aperçu du compositeur : un clic ne doit pas faire perdre le brouillon).
  */
-export function MentionCard({ item, list, stats, size = 'md' }) {
+export function MentionCard({ item, list, stats, size = 'md', linked = true }) {
   const { t } = useI18n();
-  if (list || item?.type === 'list') return <ListMention list={list} size={size} />;
+  if (list || item?.type === 'list') return <ListMention list={list} size={size} linked={linked} />;
   if (!item?.id) return null;
-  if (item.type === 'album') return <AlbumMention id={item.id} stats={stats} size={size} />;
-  if (item.type === 'track') return <TrackMention id={item.id} stats={stats} size={size} />;
-  if (item.type === 'artist') return <ArtistMention id={item.id} size={size} />;
+  if (item.type === 'album') return <AlbumMention id={item.id} stats={stats} size={size} linked={linked} />;
+  if (item.type === 'track') return <TrackMention id={item.id} stats={stats} size={size} linked={linked} />;
+  if (item.type === 'artist') return <ArtistMention id={item.id} size={size} linked={linked} />;
   return <div className="mention mention--missing">{t('mention.unavailable')}</div>;
 }
 

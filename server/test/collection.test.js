@@ -391,6 +391,9 @@ test('cosmétiques : débloqués par le niveau, accordés par un badge, sélecti
 test('Pressage n° : rangs distincts sous des complétions simultanées ; complétion vue d’un ami', async () => {
   const players = [];
   for (let i = 0; i < 6; i++) players.push(await signupVerified(app, { username: `press_${i}` }));
+  // Les tests précédents (centaines de boosters sur les 20 albums de la graine) ont pu compléter l'album avant eux.
+  const before = db.prepare("SELECT COUNT(*) AS n FROM achievements WHERE key = 'album:exodus'").get().n;
+  const expected = [1, 2, 3, 4, 5, 6].map((n) => before + n);
   const missing = [];
   for (const p of players) {
     db.prepare('UPDATE users SET royalties = 10000 WHERE id = ?').run(p.user.id);
@@ -404,16 +407,17 @@ test('Pressage n° : rangs distincts sous des complétions simultanées ; compl�
     assert.ok(ach.at && ach.firstCardAt, 'date et première carte pour la carte de statistiques');
     return ach.rank;
   });
-  assert.deepEqual([...ranks].sort((a, b) => a - b), [1, 2, 3, 4, 5, 6]);
-  const dbRanks = db.prepare("SELECT rank FROM achievements WHERE key = 'album:exodus' ORDER BY rank").all().map((r) => r.rank);
-  assert.deepEqual(dbRanks, [1, 2, 3, 4, 5, 6]);
+  assert.deepEqual([...ranks].sort((a, b) => a - b), expected);
+  const dbRanks = db.prepare(`SELECT rank FROM achievements WHERE key = 'album:exodus' AND user_id IN (SELECT value FROM json_each(?))
+    ORDER BY rank`).all(JSON.stringify(players.map((p) => p.user.id))).map((r) => r.rank);
+  assert.deepEqual(dbRanks, expected);
 
   // Page d'album : « Complété par 6 joueurs · N amis », et le pressage du joueur.
   const viewer = players[0];
   db.prepare("INSERT INTO friendships (requester_id, addressee_id, status, created_at, responded_at) VALUES (?, ?, 'accepted', ?, ?)")
     .run(viewer.user.id, players[1].user.id, Date.now(), Date.now());
   const done = (await api(app.base, viewer.cookie, 'GET', '/albums/exodus/completion')).body;
-  assert.equal(done.completedBy, 6);
+  assert.equal(done.completedBy, before + 6);
   assert.deepEqual(done.friends.map((f) => f.username), ['press_1']);
   assert.equal(done.mine.rank, ranks[0]);
   assert.equal(typeof done.mine.days, 'number');

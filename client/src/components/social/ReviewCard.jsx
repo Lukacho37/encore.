@@ -8,12 +8,13 @@ import { Link } from 'react-router';
 import { useI18n } from '../../i18n/index.jsx';
 import CoverArt from '../CoverArt.jsx';
 import { RatingValue, useRatedItem } from '../Rating.jsx';
-import { Avatar, Icon, useToast } from '../ui.jsx';
+import { Avatar, Icon } from '../ui.jsx';
 import UgcText from '../UgcText.jsx';
 import SafetyMenu from '../safety/SafetyMenu.jsx';
 import { LikeButton } from './LikeButton.jsx';
 import { CommentThread } from './CommentThread.jsx';
-import { itemHref, shareLink, timeAgo, userHref } from './util.js';
+import { ShareButton } from './ShareButton.jsx';
+import { itemHref, timeAgo, userHref } from './util.js';
 import '../../styles/social.css';
 
 /** Album ou morceau noté : petite pochette, titre, artiste. */
@@ -28,20 +29,8 @@ export function ReviewItem({ item }) {
   );
 }
 
-/** Bouton Partager d'une adresse du site (feuille de partage du système, sinon lien copié). */
-export function ShareButton({ path, title, label = true }) {
-  const { t } = useI18n();
-  const toast = useToast();
-  const share = async () => {
-    const done = await shareLink(path, title || t('social.shareText'));
-    if (done === 'copied') toast(t('social.shareCopied'), 'success');
-  };
-  return (
-    <button type="button" className="act-btn" onClick={share} aria-label={t('social.share')}>
-      <Icon name="share" size={18} />{label && <span>{t('social.share')}</span>}
-    </button>
-  );
-}
+// Bouton Partager : réexporté pour les anciens imports (`import { ShareButton } from './ReviewCard.jsx'`).
+export { ShareButton };
 
 export function ReviewCard({ review, variant = 'feed', headline, reason, onChange, thread = false }) {
   const { t, lang } = useI18n();

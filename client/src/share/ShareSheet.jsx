@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, Modal, Spinner, useToast } from '../components/ui.jsx';
 import { ListIcon } from '../components/lists/icons.jsx';
+import { useStableCallback } from '../components/lists/stable.js';
 import { useI18n } from '../i18n/index.jsx';
 import { useApi } from '../state/catalog.js';
 import { useCovers } from '../state/CoversContext.jsx';
@@ -28,8 +29,9 @@ function slug(text) {
 /** Téléphone ou tablette : le doigt remplace la souris (appui long pour enregistrer une image). */
 const coarse = () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
 
-export function ShareSheet({ spec, title, onClose, controls = true, fileName }) {
+export function ShareSheet({ spec, title, onClose: rawClose, controls = true, fileName }) {
   const { t } = useI18n();
+  const onClose = useStableCallback(rawClose);
   const toast = useToast();
   const covers = useCovers();
   const legal = useApi('/legal/info');

@@ -420,8 +420,10 @@ function compose(canvas, spec, tiles, sources, tk) {
     return usedCovers;
   }
 
-  // En-tête : titre (Archivo 800, 2 lignes au plus) et sous-titre (« @pseudo ») en mono, à droite s'il tient.
-  const titleSize = W * 0.084;
+  // En-tête : titre (Archivo 800, 2 lignes au plus) et sous-titre (« @pseudo ») en mono, à droite s'il tient ; un
+  // peu plus petit en carré, où la hauteur manque.
+  const square = spec.format === 'square';
+  const titleSize = W * (square ? 0.072 : 0.084);
   setFont(ctx, { weight: 600, size: W * 0.034, family: tk['--font-mono'] });
   const subW = spec.subtitle ? ctx.measureText(spec.subtitle).width : 0;
   setFont(ctx, { weight: 800, size: titleSize, family: tk['--font-display'], stretch: true, spacing: -0.02 });
@@ -430,17 +432,31 @@ function compose(canvas, spec, tiles, sources, tk) {
   const headH = titleLines.length * titleSize * 1.04 + (spec.subtitle && !inline ? W * 0.05 : 0);
   const blocksH = drawBlocks(ctx, spec.blocks, pad, 0, cw, W, pal, tk, true);
 
-  // Grille : 2 colonnes jusqu'à 4 vignettes, 3 jusqu'à 9, 4 au-delà ; libellés sous les pochettes si demandés.
+  // Grille : 2 colonnes jusqu'à 4 vignettes, 3 jusqu'à 9, 4 au-delà ; libellés sous les pochettes si demandés, à
+  // une taille qui suit celle des pochettes (bornée pour rester lisible) : la place des libellés dépend donc de la
+  // taille des pochettes, et réciproquement (trois passes suffisent pour se stabiliser).
   const n = tiles.length;
   const cols = n <= 4 ? 2 : n <= 9 ? 3 : 4;
   const rows = Math.ceil(n / cols);
   const gap = W * 0.024;
-  const labelH = withLabels ? W * 0.07 : 0;
-  const gapTop = W * 0.05;
+  const gapTop = W * (square ? 0.035 : 0.05);
   const availH = bottom - pad - headH - blocksH - gapTop;
-  const needH = (sz) => rows * (sz + labelH) + (rows - 1) * gap;
+  const fonts = (sz) => ({
+    label: Math.min(W * 0.026, Math.max(W * 0.017, sz * 0.115)),
+    sub: Math.min(W * 0.022, Math.max(W * 0.015, sz * 0.1)),
+  });
+  const labelOf = (sz) => {
+    if (!withLabels) return 0;
+    const f = fonts(sz);
+    return W * 0.012 + f.label * 1.3 + f.sub * 1.3;
+  };
+  const needH = (sz) => rows * (sz + labelOf(sz)) + (rows - 1) * gap;
   let s = (cw - gap * (cols - 1)) / cols;
-  if (needH(s) > availH) s = Math.max(W * 0.08, (availH - (rows - 1) * gap) / rows - labelH);
+  for (let pass = 0; pass < 3 && needH(s) > availH; pass++) {
+    s = Math.max(W * 0.08, (availH - (rows - 1) * gap) / rows - labelOf(s));
+  }
+  const labelH = labelOf(s);
+  const font = fonts(s);
   const gridW = cols * s + (cols - 1) * gap;
   const content = headH + blocksH + gapTop + needH(s);
   // Story : le bloc est centré verticalement ; sinon il part du haut.
@@ -467,21 +483,24 @@ function compose(canvas, spec, tiles, sources, tk) {
     y += blocksH;
   }
   y += gapTop;
+  // Grille plus petite que la place (carré avec titres) : centrée entre l'en-tête et le pied.
+  if (!story) y += Math.max(0, availH - needH(s)) / 2;
   const x0 = (W - gridW) / 2;
   tiles.forEach((tile, i) => {
     const tx = x0 + (i % cols) * (s + gap);
     const ty = y + Math.floor(i / cols) * (s + labelH + gap);
     drawTile(ctx, tx, ty, s, sources[i], tile, pal, W);
     if (withLabels && tile) {
-      setFont(ctx, { weight: 700, size: Math.min(W * 0.026, s * 0.11), family: tk['--font-body'] });
+      setFont(ctx, { weight: 700, size: font.label, family: tk['--font-body'] });
       ctx.fillStyle = pal.text;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
-      ctx.fillText(ellipsis(ctx, tile.label || '', s), tx, ty + s + W * 0.032);
+      const y1 = ty + s + W * 0.008 + font.label * 1.05;
+      ctx.fillText(ellipsis(ctx, tile.label || '', s), tx, y1);
       if (tile.sub) {
-        setFont(ctx, { weight: 600, size: Math.min(W * 0.022, s * 0.095), family: tk['--font-body'] });
+        setFont(ctx, { weight: 600, size: font.sub, family: tk['--font-body'] });
         ctx.fillStyle = pal.muted;
-        ctx.fillText(ellipsis(ctx, tile.sub, s), tx, ty + s + W * 0.06);
+        ctx.fillText(ellipsis(ctx, tile.sub, s), tx, y1 + font.sub * 1.3);
       }
     }
   });

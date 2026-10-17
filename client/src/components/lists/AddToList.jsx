@@ -14,6 +14,7 @@ import { EmptyState, LoadMore, Skeleton } from '../feedback.jsx';
 import { Icon, Modal, Spinner, useToast } from '../ui.jsx';
 import { ListCard, useItemCount } from './ListCard.jsx';
 import { ListIcon } from './icons.jsx';
+import { useStableCallback } from './stable.js';
 import '../../styles/lists.css';
 
 const enc = encodeURIComponent;
@@ -69,8 +70,9 @@ function GridRow({ albumId }) {
 }
 
 /** Feuille « Ajouter à une liste ». */
-function AddSheet({ item, onClose }) {
+function AddSheet({ item, onClose: rawClose }) {
   const { t, error } = useI18n();
+  const onClose = useStableCallback(rawClose);
   const toast = useToast();
   const count = useItemCount();
   const album = useAlbum(item.type === 'album' ? item.id : null);

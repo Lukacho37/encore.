@@ -126,7 +126,7 @@ export default {
       deskTitle: 'Glisse pour réordonner',
       deskHint: `{n}/9 · touche une case pour la remplacer`,
       gridLabel: 'Grille de 9 albums',
-      keysHelp: 'Entrée pour remplacer l’album, Alt et les flèches pour déplacer la case.',
+      keysHelp: 'Entrée pour remplacer l’album ou le déplacer, Alt et les flèches pour déplacer la case.',
       add: 'Ajouter',
       addAt: 'Choisir l’album de la case {n}',
       replace: `Case {n}${N}: {title}. Remplacer`,
@@ -146,7 +146,7 @@ export default {
       edit: 'Modifier',
       share: 'Partager',
       see: 'Voir',
-      makeYours: 'Faire les miens',
+      makeYours: 'Choisir mes 9',
       shareTitle: 'Partager « Mes 9 albums »',
       picker: {
         title: 'Case {n} · choisis un album',
@@ -155,6 +155,8 @@ export default {
         placeholder: 'Titre ou artiste…',
         hint: 'Tape au moins 2 lettres. Choisir un album le met dans la case.',
         remove: 'Retirer',
+        move: 'Déplacer',
+        swapWith: 'Échanger avec la case {n}',
       },
       save: { saving: 'Enregistrement…', saved: 'Enregistré', error: 'Pas enregistré.', retry: 'Réessayer' },
       read: {
@@ -321,7 +323,7 @@ export default {
       deskTitle: 'Drag to reorder',
       deskHint: '{n}/9 · tap a square to replace it',
       gridLabel: 'Grid of 9 albums',
-      keysHelp: 'Enter to replace the album, Alt and the arrow keys to move the square.',
+      keysHelp: 'Enter to replace or move the album, Alt and the arrow keys to move the square.',
       add: 'Add',
       addAt: 'Pick the album for square {n}',
       replace: 'Square {n}: {title}. Replace',
@@ -341,7 +343,7 @@ export default {
       edit: 'Edit',
       share: 'Share',
       see: 'See',
-      makeYours: 'Make mine',
+      makeYours: 'Pick my 9',
       shareTitle: 'Share “My 9 albums”',
       picker: {
         title: 'Square {n} · pick an album',
@@ -350,6 +352,8 @@ export default {
         placeholder: 'Title or artist…',
         hint: 'Type at least 2 letters. Picking an album puts it in the square.',
         remove: 'Remove',
+        move: 'Move',
+        swapWith: 'Swap with square {n}',
       },
       save: { saving: 'Saving…', saved: 'Saved', error: 'Not saved.', retry: 'Retry' },
       read: {

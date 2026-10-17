@@ -24,6 +24,7 @@ import { SafetyMenu } from '../components/safety/SafetyMenu.jsx';
 import { SearchCombobox } from '../components/search/SearchCombobox.jsx';
 import { GRID_SIZE, Grid9, NinePreview, nineSpec } from '../components/lists/Grid9.jsx';
 import { ListIcon } from '../components/lists/icons.jsx';
+import { useStableCallback } from '../components/lists/stable.js';
 import { BackLink } from './PostPage.jsx';
 import '../styles/lists.css';
 
@@ -51,15 +52,38 @@ function readPrefs() {
   };
 }
 
-/** Fenêtre de recherche d'un album pour une case (champ actif tout de suite ; « Retirer » si la case est pleine). */
-function PickerDialog({ index, current, onPick, onRemove, onClose }) {
+/** Cases voisines d'une case de la grille 3 × 3 : [direction, case] (gauche, droite, haut, bas). */
+function neighbours(index) {
+  const out = [];
+  if (index % 3 > 0) out.push(['left', index - 1]);
+  if (index % 3 < 2) out.push(['right', index + 1]);
+  if (index >= 3) out.push(['up', index - 3]);
+  if (index < 6) out.push(['down', index + 3]);
+  return out;
+}
+
+/**
+ * Fenêtre de recherche d'un album pour une case (champ actif tout de suite). Case pleine : l'album actuel, « Retirer »
+ * et « Déplacer » (échange avec une case voisine : au doigt comme au clavier, sans rien poser sur les pochettes).
+ */
+function PickerDialog({ index, current, onPick, onRemove, onMove, onClose }) {
   const { t } = useI18n();
   const album = useAlbum(current || null);
+  const inputRef = useRef(null);
+  const close = useStableCallback(onClose);
+  // La fenêtre (Modal) donne le focus à son premier bouton une image après son ouverture : le champ le reprend
+  // juste après, pour qu'on puisse taper tout de suite (comme my9games).
+  useEffect(() => {
+    let id = requestAnimationFrame(() => {
+      id = requestAnimationFrame(() => inputRef.current?.focus());
+    });
+    return () => cancelAnimationFrame(id);
+  }, []);
   return (
-    <Modal open onClose={onClose} title={current ? t('nine.picker.replaceTitle', { n: index + 1 }) : t('nine.picker.title', { n: index + 1 })}
+    <Modal open onClose={close} title={current ? t('nine.picker.replaceTitle', { n: index + 1 }) : t('nine.picker.title', { n: index + 1 })}
       className="modal--narrow ls-picker-modal">
       <div className="ls-picker" data-nine-picker="">
-        <SearchCombobox scope="album" variant="inline" autoFocus recent={false} label={t('nine.picker.label')}
+        <SearchCombobox scope="album" variant="inline" autoFocus inputRef={inputRef} recent={false} label={t('nine.picker.label')}
           placeholder={t('nine.picker.placeholder')} onSubmit={() => {}}
           onPick={(pick) => pick?.kind === 'album' && onPick(String(pick.id))} />
         <p className="small muted ls-picker__hint">{t('nine.picker.hint')}</p>
@@ -72,6 +96,17 @@ function PickerDialog({ index, current, onPick, onRemove, onClose }) {
             <span className="small muted">{album?.artist}</span>
           </span>
           <button type="button" className="btn btn--ghost btn--sm" onClick={onRemove}><Icon name="close" size={14} /> {t('nine.picker.remove')}</button>
+        </div>
+      )}
+      {current && (
+        <div className="ls-picker__move" role="group" aria-label={t('nine.picker.move')}>
+          <span className="label">{t('nine.picker.move')}</span>
+          {neighbours(index).map(([dir, to]) => (
+            <button key={dir} type="button" className="icon-btn ls-picker__dir" onClick={() => onMove(to)} data-move={dir}
+              aria-label={t('nine.picker.swapWith', { n: to + 1 })} title={t('nine.picker.swapWith', { n: to + 1 })}>
+              <ListIcon name={dir} size={16} />
+            </button>
+          ))}
         </div>
       )}
     </Modal>
@@ -226,6 +261,7 @@ function Editor() {
           <label className="ls-nine-title">
             <span className="sr-only">{t('nine.titleLabel')}</span>
             <input className="ls-nine-title__input" value={title} maxLength={TITLE_MAX} disabled={!load.ready} data-nine-title=""
+              size={Math.max(8, [...title].length + 1)}
               onChange={(e) => {
                 setTitle(e.target.value);
                 touch();
@@ -273,7 +309,11 @@ function Editor() {
       </div>
 
       {picker != null && (
-        <PickerDialog index={picker} current={slots[picker]} onPick={pick} onRemove={() => removeAt(picker)} onClose={() => setPicker(null)} />
+        <PickerDialog index={picker} current={slots[picker]} onPick={pick} onRemove={() => removeAt(picker)} onClose={() => setPicker(null)}
+          onMove={(to) => {
+            swap(picker, to);
+            setPicker(null);
+          }} />
       )}
       {sharing && (
         <Suspense fallback={null}>

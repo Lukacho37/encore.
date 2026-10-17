@@ -50,7 +50,7 @@ function EditRow({ item, index, total, ranked, dragging, onMove, onRemove, onNot
         <span className="ls-row__cover">{x && <CoverArt art={{ ...x.art, seed: x.art?.seed || x.albumId || x.id }} sizes="48px" />}</span>
         <span className="ls-row__text">
           <span className="ls-row__title">{title}</span>
-          <span className="ls-row__meta">{item.type === 'track' && <span className="chip chip--sm chip--quiet">{t('lists.track')}</span>}{meta}</span>
+          <span className="ls-row__meta">{item.type === 'track' && <span className="chip chip--sm chip--quiet">{t('lists.track')}</span>}<span className="ls-row__meta-text">{meta}</span></span>
         </span>
         <span className="ls-row__tools">
           <button type="button" className={`icon-btn ls-row__btn${noteOpen ? ' is-on' : ''}`} onClick={() => setNoteOpen((o) => !o)}

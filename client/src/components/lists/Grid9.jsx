@@ -2,10 +2,12 @@
 // design-system-current §4.6, classes canoniques .nine*). Props (contrat, ne pas les renommer) : Grid9Block { username, editable }.
 // Grid9 { slots: [albumId | null] × 9, editable?, showTitles?, onSlot(i), onRemove(i), onSwap(a, b), compact? } :
 // - lecture : chaque case mène à la page de l'album ;
-// - édition (comme my9games) : une case vide ou pleine ouvre la recherche (onSlot), la croix retire, on glisse une
-//   pochette sur une autre pour les échanger (souris : tout de suite ; doigt : appui de 250 ms, puis glisser), et au
-//   clavier Alt + flèches (ou les boutons « ← → » qui apparaissent au focus) déplacent la case.
-// Les vraies pochettes s'affichent (CoverArt) ; le visuel généré n'est qu'un repli.
+// - édition (comme my9games) : une case vide ou pleine ouvre la recherche (onSlot ; la fenêtre d'une case pleine
+//   propose aussi « Retirer » et « Déplacer »), la croix (survol, focus) retire, on glisse une pochette sur une autre
+//   pour les échanger (souris : tout de suite ; doigt : appui de 250 ms, puis glisser), et au clavier Alt + flèches
+//   déplacent la case.
+// Les vraies pochettes s'affichent (CoverArt) ; le visuel généré n'est qu'un repli. Rien n'est posé sur une pochette
+// (PLAN.md 7.1 : ni numéro ni flèches) : seule la croix, au coin, apparaît au survol pendant l'édition.
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import CoverArt from '../CoverArt.jsx';
@@ -14,7 +16,6 @@ import UgcText from '../UgcText.jsx';
 import { useI18n } from '../../i18n/index.jsx';
 import { useAlbum, useAlbums, useApi } from '../../state/catalog.js';
 import { CoverStack } from './ListCard.jsx';
-import { ListIcon } from './icons.jsx';
 import '../../styles/lists.css';
 
 // Feuille de partage chargée seulement quand on partage.
@@ -76,8 +77,7 @@ function Slot({ index, albumId, editable, showTitles, compact, drag, onSlot, onR
   if (!editable) {
     return (
       <span className="ls-nine__cell" role="listitem">
-        <Link to={`/album/${enc(albumId)}`} className="nine__slot ls-nine__slot--read" aria-label={album ? `${n}. ${album.title} · ${album.artist}` : String(n)}>
-          {!compact && <span className="nine__num">{n}</span>}
+        <Link to={`/album/${enc(albumId)}`} className="nine__slot ls-nine__slot--read" data-album={albumId} aria-label={album ? `${n}. ${album.title} · ${album.artist}` : String(n)}>
           {cover}
         </Link>
         {caption}
@@ -94,9 +94,8 @@ function Slot({ index, albumId, editable, showTitles, compact, drag, onSlot, onR
   };
   return (
     <span className="ls-nine__cell" role="listitem">
-      <span className={`nine__slot ls-nine__slot${target ? ' is-target' : ''}${lifted ? ' ls-nine__slot--lifted' : ''}`} data-slot={index}
+      <span className={`nine__slot ls-nine__slot${target ? ' is-target' : ''}${lifted ? ' ls-nine__slot--lifted' : ''}`} data-slot={index} data-album={albumId}
         onPointerDown={(e) => onPointerDown?.(e, index)}>
-        <span className="nine__num">{n}</span>
         {cover}
         <button type="button" className="ls-nine__hit" onClick={() => onSlot?.(index)} onKeyDown={keys}
           aria-label={album ? t('nine.replace', { n, title: album.title }) : t('nine.replace', { n, title: '' })}
@@ -104,18 +103,6 @@ function Slot({ index, albumId, editable, showTitles, compact, drag, onSlot, onR
         <button type="button" className="nine__remove" onClick={() => onRemove?.(index)} aria-label={t('nine.remove', { n })}>
           <Icon name="close" size={14} />
         </button>
-        <span className="ls-nine__move">
-          {index % COLS > 0 && (
-            <button type="button" className="ls-nine__arrow" onClick={() => onMove?.(index, index - 1)} aria-label={t('nine.moveLeft', { n })}>
-              <ListIcon name="left" size={14} />
-            </button>
-          )}
-          {index % COLS < COLS - 1 && (
-            <button type="button" className="ls-nine__arrow" onClick={() => onMove?.(index, index + 1)} aria-label={t('nine.moveRight', { n })}>
-              <ListIcon name="right" size={14} />
-            </button>
-          )}
-        </span>
       </span>
       {caption}
     </span>
@@ -199,7 +186,7 @@ function useSwapDrag(slots, onSwap) {
   }, [end]);
 
   const onPointerDown = (e, index) => {
-    if (e.button !== 0 || e.target.closest('.nine__remove, .ls-nine__arrow') || !latest.current.slots[index]) return;
+    if (e.button !== 0 || e.target.closest('.nine__remove') || !latest.current.slots[index]) return;
     const touch = e.pointerType === 'touch';
     const s = { id: e.pointerId, index, x: e.clientX, y: e.clientY, touch, armed: !touch, timer: null };
     if (touch) {
@@ -225,8 +212,8 @@ export function Grid9({ slots = [], editable = false, showTitles = false, compac
   const move = (from, to) => {
     if (to < 0 || to >= GRID_SIZE || from === to) return;
     onSwap?.(from, to);
-    // Le focus suit la case déplacée.
-    requestAnimationFrame(() => gridRef.current?.querySelector(`[data-slot="${to}"] .ls-nine__hit, [data-slot="${to}"]`)?.focus());
+    // Le focus suit la case déplacée (son bouton, pas la case elle-même qui n'est pas focalisable).
+    requestAnimationFrame(() => gridRef.current?.querySelector(`[data-slot="${to}"] .ls-nine__hit`)?.focus());
   };
   return (
     <div className={`nine__grid ls-nine${compact ? ' ls-nine--compact' : ''}${showTitles ? ' ls-nine--titles' : ''}${drag ? ' is-dragging' : ''} ${className}`.trim()}
@@ -255,18 +242,26 @@ export function NinePreview({ title, username, slots, showTitles, format = 'port
         <span className="nine-share__title">{title}</span>
         {username && <span className="nine-share__who">@{username}</span>}
       </div>
-      <div className={`nine-share__grid${showTitles ? ' ls-share-grid--titles' : ''}`}>
-        {slots.map((id, i) => {
-          const a = id ? albums[i] : null;
-          return (
-            <span key={i} className={`ls-share-cell${a ? '' : ' ls-share-cell--empty'}`}>
-              <span className={a ? 'ls-share-cell__cover' : 'nine-share__empty ls-share-cell__cover'}>
-                {a && <CoverArt art={{ ...a.art, seed: a.art?.seed || a.id }} sizes="120px" />}
+      {/* Zone de la grille : les pochettes y tiennent en largeur ET en hauteur (carré avec titres compris), comme dans le PNG. */}
+      <div className="ls-share-area">
+        <div className={`nine-share__grid${showTitles ? ' ls-share-grid--titles' : ''}`}>
+          {slots.map((id, i) => {
+            const a = id ? albums[i] : null;
+            return (
+              <span key={i} className={`ls-share-cell${a ? '' : ' ls-share-cell--empty'}`}>
+                <span className={a ? 'ls-share-cell__cover' : 'nine-share__empty ls-share-cell__cover'}>
+                  {a && <CoverArt art={{ ...a.art, seed: a.art?.seed || a.id }} sizes="120px" />}
+                </span>
+                {showTitles && a && (
+                  <>
+                    <span className="ls-share-cell__title">{a.title}</span>
+                    <span className="ls-share-cell__artist">{a.artist}</span>
+                  </>
+                )}
               </span>
-              {showTitles && a && <span className="ls-share-cell__title">{a.title}</span>}
-            </span>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
       <div className="nine-share__foot"><Logo /></div>
     </div>

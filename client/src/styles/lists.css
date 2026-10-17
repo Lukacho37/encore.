@@ -97,6 +97,13 @@
   box-shadow: var(--shadow-cover);
 }
 .ls-head__mosaic > span { display: block; min-width: 0; background: var(--stage-3); }
+/* Case sans pochette (liste de 2 ou 3 albums) : un disque gravé discret plutôt qu'un aplat (les pochettes restent
+   carrées, jamais recadrées pour remplir la place). */
+.ls-head__mosaic > span:empty {
+  background:
+    radial-gradient(circle, var(--stage-3) 0 9%, transparent 10%),
+    repeating-radial-gradient(circle, var(--stage-2) 0 3px, var(--stage-3) 3px 4px);
+}
 .ls-head__mosaic .cover { width: 100%; height: 100%; display: block; object-fit: cover; }
 /* Une seule pochette : elle prend toute la place. */
 .ls-head__mosaic--1 { grid-template-columns: 1fr; }
@@ -107,13 +114,14 @@
 .ls-head__by { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-6); font-size: var(--fs-14); }
 .ls-head__user { display: inline-flex; align-items: center; gap: var(--s-8); font-weight: var(--fw-semi); color: var(--paper); }
 .ls-head__user:hover { color: var(--cue); }
+.ls-head__date::before { content: '·'; margin-right: var(--s-6); }
 .ls-head__desc { max-width: 70ch; color: var(--paper-dim); line-height: var(--lh-body); }
 .ls-head__flag { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-8); }
 .ls-head__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-8); margin-top: var(--s-6); }
 
 .ls-items { list-style: none; margin: 0; padding: 0; }
 
-.ls-items--ranked { display: grid; gap: var(--s-8); counter-reset: none; }
+.ls-items--ranked { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-8); counter-reset: none; }
 .ls-items--ranked .ls-item {
   display: grid;
   grid-template-columns: 44px 72px minmax(0, 1fr);
@@ -146,7 +154,11 @@
 .ls-item__cover .cover { width: 100%; height: 100%; display: block; object-fit: cover; }
 .ls-item__skel { display: block; width: 100%; height: 100%; background: var(--grad-skeleton); }
 .ls-item__body { display: flex; flex-direction: column; gap: var(--s-4); min-width: 0; }
-.ls-item__title { font: var(--fw-title) var(--fs-16) / 1.25 var(--font-display); color: var(--paper); overflow-wrap: anywhere; }
+.ls-item__line { display: flex; align-items: flex-start; gap: var(--s-8); }
+.ls-item__title { flex: 1; min-width: 0; font: var(--fw-title) var(--fs-16) / 1.25 var(--font-display); color: var(--paper); overflow-wrap: anywhere; }
+/* « Ajouter à une liste » d'un élément : discret, à côté du titre (jamais sur la pochette). */
+.ls-item__add.btn { flex: none; margin-top: -4px; min-height: 30px; padding: 0 var(--s-8); color: var(--haze); border-color: transparent; background: transparent; }
+.ls-item__add.btn:hover, .ls-item__add.btn:focus-visible { color: var(--paper); border-color: var(--line); }
 .ls-item__title:hover { color: var(--cue); }
 .ls-item__meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-6); color: var(--haze); font-size: var(--fs-13); }
 .ls-item__note { margin-top: var(--s-2); color: var(--paper-dim); font-size: var(--fs-14); line-height: var(--lh-body); }
@@ -196,7 +208,8 @@
 .ls-editor__search { margin-bottom: var(--s-16); }
 .ls-editor__help { margin-top: var(--s-10); }
 
-.ls-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-8); }
+/* Une colonne qui ne s'élargit jamais au texte sans retour à la ligne des lignes (minmax(0, 1fr), pas auto). */
+.ls-rows { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-8); }
 .ls-rows.is-dragging { user-select: none; cursor: grabbing; }
 
 .ls-row {
@@ -241,13 +254,14 @@
 .ls-row__cover .cover { width: 100%; height: 100%; display: block; object-fit: cover; }
 .ls-row__text { display: flex; flex-direction: column; gap: var(--s-2); flex: 1; min-width: 0; }
 .ls-row__title { font-weight: var(--fw-semi); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ls-row__meta { display: flex; align-items: center; gap: var(--s-6); color: var(--haze); font-size: var(--fs-13); white-space: nowrap; overflow: hidden; }
+.ls-row__meta { display: flex; align-items: center; gap: var(--s-6); min-width: 0; color: var(--haze); font-size: var(--fs-13); white-space: nowrap; overflow: hidden; }
+.ls-row__meta-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ls-row__tools { display: flex; align-items: center; gap: var(--s-2); flex: none; }
 .ls-row__btn { width: 34px; height: 34px; }
 .ls-row__btn.is-on { color: var(--cue); }
 .ls-row__btn:disabled { opacity: 0.35; cursor: default; }
 .ls-row__btn--remove:hover { color: var(--danger); }
-.ls-row__note { display: grid; gap: var(--s-4); padding: 0 var(--s-12) var(--s-12) 46px; }
+.ls-row__note { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-4); padding: 0 var(--s-12) var(--s-12) 46px; }
 .ls-row__note .ls-count { justify-self: end; }
 
 .ls-editor__foot {
@@ -284,6 +298,16 @@
 .ls-picker__hint { margin-top: var(--s-10); }
 .ls-picker-modal { overflow: visible; }
 
+.ls-picker__move {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-6);
+  margin-top: var(--s-12);
+}
+.ls-picker__move .label { margin-right: var(--s-6); }
+.ls-picker__dir { width: 40px; height: 40px; border: 1px solid var(--line); }
+
 .ls-picker__current {
   display: flex;
   align-items: center;
@@ -301,7 +325,7 @@
 
 .ls-add-btn--compact { padding-inline: var(--s-10); }
 .ls-add__what { margin-top: calc(var(--s-8) * -1); margin-bottom: var(--s-12); }
-.ls-pick { list-style: none; margin: 0 0 var(--s-12); padding: 0; display: grid; gap: var(--s-6); }
+.ls-pick { list-style: none; margin: 0 0 var(--s-12); padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-6); }
 .ls-pick__row {
   display: flex;
   align-items: center;
@@ -318,7 +342,7 @@
 .ls-pick__text { display: flex; flex-direction: column; gap: var(--s-2); flex: 1; min-width: 0; }
 .ls-pick__title { font-weight: var(--fw-semi); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ls-pick__meta { color: var(--haze); font-size: var(--fs-13); }
-.ls-add__new { display: grid; gap: var(--s-8); margin-top: var(--s-8); padding-top: var(--s-14); border-top: 1px solid var(--line-soft); }
+.ls-add__new { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-8); margin-top: var(--s-8); padding-top: var(--s-14); border-top: 1px solid var(--line-soft); }
 .ls-add__line { display: flex; gap: var(--s-8); }
 .ls-add__line .input { flex: 1; min-width: 0; }
 .ls-add__full { justify-self: start; }
@@ -345,9 +369,10 @@
   color: var(--haze);
 }
 .ls-nine-title__input {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
-  max-width: 640px;
+  max-width: 100%;
+  field-sizing: content; /* le crayon suit le titre ; ailleurs, l'attribut size donne une largeur proche */
   padding: var(--s-4) var(--s-8);
   margin-left: calc(var(--s-8) * -1);
   border: 1px solid transparent;
@@ -435,21 +460,6 @@
   pointer-events: none;
 }
 
-.nine__num {
-  position: absolute;
-  z-index: 2;
-  left: 6px;
-  top: 6px;
-  padding: 1px 7px;
-  border-radius: var(--rad-pill);
-  background: rgba(10, 8, 14, 0.66);
-  backdrop-filter: blur(2px);
-  color: var(--white);
-  font: var(--fw-semi) var(--fs-12) / 1.4 var(--font-mono);
-  font-stretch: 80%;
-  pointer-events: none;
-}
-
 .nine__remove {
   position: absolute;
   z-index: 4;
@@ -513,38 +523,10 @@
 }
 .ls-nine__hit:focus-visible { outline: 2px solid var(--cue); outline-offset: 3px; }
 
-.ls-nine__move {
-  position: absolute;
-  z-index: 3;
-  left: 50%;
-  bottom: 6px;
-  display: flex;
-  gap: var(--s-4);
-  transform: translateX(-50%);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--dur-hover);
-}
-.ls-nine__arrow {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 1px solid var(--line);
-  background: rgba(10, 8, 14, 0.78);
-  color: var(--paper);
-  cursor: pointer;
-}
-.ls-nine__arrow:hover { background: var(--stage-3); }
-
-/* Croix et flèches : au survol (souris) et au focus (clavier) ; toujours là sur écran tactile. */
+/* La croix (retirer) : au coin, au survol (souris) et au focus (clavier) ; au doigt, la fenêtre de la case a
+   « Retirer » et « Déplacer ». */
 .ls-nine__slot:hover .nine__remove,
 .ls-nine__slot:focus-within .nine__remove { opacity: 1; }
-.ls-nine__slot:focus-within .ls-nine__move { opacity: 1; pointer-events: auto; }
-@media (hover: none) {
-  .ls-nine__slot .nine__remove { opacity: 1; }
-}
 
 .ls-nine.is-dragging { cursor: grabbing; user-select: none; }
 .ls-nine.is-dragging .nine__slot:hover { transform: none; }
@@ -659,30 +641,49 @@
   font-stretch: var(--fst-mono);
 }
 
+/* Zone de la grille (conteneur de taille) : une pochette mesure le plus petit de « un tiers de la largeur » et « un
+   tiers de la hauteur moins la place des titres ». Unités cqi / cqb : celles de cette zone (84 % de la largeur de
+   l'image), d'où les valeurs ci-dessous (écart 2,4 % de l'image = 2,86cqi, titres 7 % de l'image = 8,3cqi). */
+.ls-share-area {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  min-height: 0;
+  container-type: size;
+  display: grid;
+  place-items: center;
+}
+
 .nine-share__grid {
+  --ls-gap: 2.86cqi;
+  --ls-label: 0px;
+  --ls-tile: min(calc((100cqi - 2 * var(--ls-gap)) / 3), calc((100cqb - 2 * var(--ls-gap)) / 3 - var(--ls-label)));
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 2.4cqi;
+  grid-template-columns: repeat(3, var(--ls-tile));
+  gap: var(--ls-gap);
 }
+.nine-share__grid.ls-share-grid--titles { --ls-label: 8.3cqi; }
 
-.ls-share-cell { display: flex; flex-direction: column; gap: 1cqi; min-width: 0; }
+.ls-share-cell { display: flex; flex-direction: column; gap: 0.6cqi; min-width: 0; }
 .ls-share-cell__cover {
   display: block;
   aspect-ratio: 1;
-  border-radius: 1.6cqi;
+  border-radius: 1.9cqi;
   overflow: hidden;
-  box-shadow: 0 2cqi 4cqi -2cqi rgba(0, 0, 0, 0.8);
+  box-shadow: 0 2.4cqi 4.8cqi -2.4cqi rgba(0, 0, 0, 0.8);
 }
 .ls-share-cell__cover .cover { width: 100%; height: 100%; display: block; object-fit: cover; }
-.ls-share-cell__title {
-  color: var(--paper);
-  font: var(--fw-bold) 2.4cqi / 1.2 var(--font-body); /* aperçu à l’échelle de l’image */
+/* Titres à l'échelle de l'image : plus petits quand les pochettes rapetissent (carré), comme dans le PNG. */
+.ls-share-cell__title,
+.ls-share-cell__artist {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.ls-share-cell__title { margin-top: 0.4cqi; color: var(--paper); font: var(--fw-bold) min(3.1cqi, calc(var(--ls-tile) * 0.11)) / 1.2 var(--font-body); }
+.ls-share-cell__artist { color: var(--haze); font: var(--fw-semi) min(2.6cqi, calc(var(--ls-tile) * 0.095)) / 1.2 var(--font-body); }
 
 .nine-share__grid .nine-share__empty {
   border: 1px dashed color-mix(in oklab, var(--paper) 22%, transparent);
@@ -713,6 +714,7 @@
 .nine-share--paper .nine-share__title,
 .nine-share--paper .logo,
 .nine-share--paper .ls-share-cell__title { color: var(--ink); }
+.nine-share--paper .ls-share-cell__artist { color: color-mix(in oklab, var(--ink) 66%, var(--paper)); }
 .nine-share--paper .nine-share__who { color: color-mix(in oklab, var(--ink) 66%, var(--paper)); }
 .nine-share--paper .nine-share__foot { border-top-color: rgba(15, 12, 21, 0.14); }
 .nine-share--paper .nine-share__empty { border-color: rgba(15, 12, 21, 0.22); background: none; }
@@ -720,7 +722,8 @@
 /* ---------- « Mes 9 albums » : lecture et bloc du Studio ---------- */
 
 .ls-nine-read__title { font-size: var(--fs-h1); overflow-wrap: anywhere; }
-.ls-nine-read__body { display: flex; flex-direction: column; gap: var(--s-16); max-width: 640px; }
+/* La grille entière tient dans la fenêtre sur ordinateur (au moins 320 px de large). */
+.ls-nine-read__body { display: flex; flex-direction: column; gap: var(--s-16); width: min(100%, 600px, max(320px, calc(100svh - 340px))); }
 
 .ls-grid-block { display: flex; flex-direction: column; gap: var(--s-12); max-width: 440px; }
 .ls-grid-block__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--s-8) var(--s-12); }
@@ -805,9 +808,9 @@
 /* ---------- tablettes et téléphones ---------- */
 
 @media (max-width: 1020px) {
-  .nine { grid-template-columns: 1fr; }
+  .nine { grid-template-columns: minmax(0, 1fr); }
   .ls-nine-preview { position: static; max-width: 420px; }
-  .ls-editor__grid { grid-template-columns: 1fr; }
+  .ls-editor__grid { grid-template-columns: minmax(0, 1fr); }
   .ls-editor__meta { position: static; }
 }
 
@@ -823,7 +826,10 @@
 
 @media (max-width: 640px) {
   .ls-head { grid-template-columns: 1fr; padding: var(--s-16); gap: var(--s-16); }
-  .ls-head__mosaic { width: min(60vw, 220px); }
+  .ls-head__mosaic { width: 136px; }
+  /* La date passe à la ligne sous l'auteur : sans le point de séparation. */
+  .ls-head__date { flex-basis: 100%; }
+  .ls-head__date::before { content: none; }
   .ls-items--ranked .ls-item { grid-template-columns: 30px 56px minmax(0, 1fr); gap: var(--s-10); padding: var(--s-8) var(--s-10) var(--s-8) var(--s-6); }
   .ls-items--ranked .ls-item__cover { width: 56px; }
   .ls-item__rank { font-size: var(--fs-18); }

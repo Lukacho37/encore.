@@ -18,6 +18,7 @@ import { ShareButton } from '../components/social/ShareButton.jsx';
 import { CommentThread } from '../components/social/CommentThread.jsx';
 import { useOnBlocked, userHref } from '../components/social/util.js';
 import { useItemCount } from '../components/lists/ListCard.jsx';
+import { AddToListButton } from '../components/lists/AddToList.jsx';
 import { ListIcon } from '../components/lists/icons.jsx';
 import { BackLink, useCommentAnchor } from './PostPage.jsx';
 import '../styles/lists.css';
@@ -25,7 +26,7 @@ import '../styles/lists.css';
 const ShareSheet = lazy(() => import('../share/ShareSheet.jsx'));
 const enc = encodeURIComponent;
 
-/** Un élément de la liste (album ou morceau) : pochette, titre, artiste, note de l'auteur. */
+/** Un élément de la liste (album ou morceau) : pochette, titre, artiste, note de l'auteur, « Ajouter à une liste ». */
 function ItemRow({ item, rank }) {
   const { t } = useI18n();
   const album = useAlbum(item.type === 'album' ? item.id : null);
@@ -42,7 +43,10 @@ function ItemRow({ item, rank }) {
         {x ? <CoverArt art={{ ...x.art, seed: x.art?.seed || x.albumId || x.id }} sizes="(max-width: 640px) 45vw, 180px" /> : <span className="ls-item__skel" />}
       </Link>
       <div className="ls-item__body">
-        <Link to={href} className="ls-item__title">{x ? x.title : t('common.loading')}</Link>
+        <span className="ls-item__line">
+          <Link to={href} className="ls-item__title">{x ? x.title : t('common.loading')}</Link>
+          <AddToListButton item={{ type: item.type, id: item.id }} compact className="ls-item__add" />
+        </span>
         {meta && <span className="ls-item__meta">{item.type === 'track' && <span className="chip chip--sm chip--quiet">{t('lists.track')}</span>}{meta}</span>}
         {item.note && <p className="ls-item__note"><UgcText text={item.note} clamp /></p>}
       </div>
@@ -130,7 +134,7 @@ export default function ListPage() {
           <h1 className="ls-head__title"><UgcText text={list.title} /></h1>
           <p className="ls-head__by">
             <Link to={userHref(list.user)} className="ls-head__user"><Avatar user={list.user} size={28} /> <span>@{list.user.username}</span></Link>
-            <span className="muted">· {t('lists.page.updated', { date: date(list.updatedAt) })}</span>
+            <span className="muted ls-head__date">{t('lists.page.updated', { date: date(list.updatedAt) })}</span>
           </p>
           {list.moderated && <p className="ls-head__flag"><span className="chip chip--danger">{t('lists.moderated')}</span> <span className="small muted">{t('lists.page.moderatedBody')}</span></p>}
           {description && <div className="ls-head__desc"><UgcText text={description} clamp /></div>}

@@ -301,10 +301,13 @@ function drawLogo(ctx, cx, cy, size, pal, tk) {
   ctx.fillText('Mania', x + wAlbum, cy + size * 0.04);
 }
 
-/** Texte d'attribution par défaut, dans la langue de la page. */
-function defaultAttribution() {
+const PROVIDER_NAMES = { deezer: 'Deezer', spotify: 'Spotify' };
+
+/** Texte d'attribution par défaut, dans la langue de la page, avec les plateformes des pochettes dessinées. */
+function defaultAttribution(sources) {
   const lang = typeof document !== 'undefined' ? document.documentElement.lang : 'fr';
-  return lang === 'en' ? 'Covers: Deezer' : 'Pochettes : Deezer';
+  const names = [...new Set(sources.filter((s) => s?.real).map((s) => PROVIDER_NAMES[s.provider] || PROVIDER_NAMES.deezer))];
+  return `${lang === 'en' ? 'Covers: ' : 'Pochettes : '}${(names.length ? names : [PROVIDER_NAMES.deezer]).join(', ')}`;
 }
 
 /** Blocs (Taste Match, Rétro…) : chiffre, texte, barres. Renvoie la hauteur occupée ; `dry` : mesure sans dessiner. */
@@ -387,7 +390,7 @@ function compose(canvas, spec, tiles, sources, tk) {
     ctx.fillStyle = pal.muted;
     ctx.textAlign = 'right';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText(spec.attribution || defaultAttribution(), W - pad, footTop - W * 0.016);
+    ctx.fillText(spec.attribution || defaultAttribution(sources), W - pad, footTop - W * 0.016);
   }
   const bottom = footTop - W * (usedCovers ? 0.06 : 0.04);
 
@@ -420,21 +423,24 @@ function compose(canvas, spec, tiles, sources, tk) {
     return usedCovers;
   }
 
-  // En-tête : titre (Archivo 800, 2 lignes au plus) et sous-titre (« @pseudo ») en mono, à droite s'il tient ; un
-  // peu plus petit en carré, où la hauteur manque.
+  // En-tête : titre (Archivo 800, 2 lignes au plus) et sous-titre (« @pseudo ») en mono, à droite s'il tient, sinon
+  // dessous ; plus petit en carré, où la hauteur manque (le sous-titre y tient alors plus souvent sur la même ligne).
   const square = spec.format === 'square';
-  const titleSize = W * (square ? 0.072 : 0.084);
-  setFont(ctx, { weight: 600, size: W * 0.034, family: tk['--font-mono'] });
+  const titleSize = W * (square ? 0.064 : 0.084);
+  const subSize = W * 0.034;
+  setFont(ctx, { weight: 600, size: subSize, family: tk['--font-mono'] });
   const subW = spec.subtitle ? ctx.measureText(spec.subtitle).width : 0;
   setFont(ctx, { weight: 800, size: titleSize, family: tk['--font-display'], stretch: true, spacing: -0.02 });
-  const inline = !!spec.subtitle && subW <= cw * 0.3 && ctx.measureText(spec.title).width <= cw - subW - W * 0.04;
-  const titleLines = wrap(ctx, spec.title, inline ? cw - subW - W * 0.04 : cw, 2);
-  const headH = titleLines.length * titleSize * 1.04 + (spec.subtitle && !inline ? W * 0.05 : 0);
+  const inline = !!spec.subtitle && subW <= cw * 0.36 && ctx.measureText(spec.title).width <= cw - subW - W * 0.035;
+  const titleLines = wrap(ctx, spec.title, inline ? cw - subW - W * 0.035 : cw, 2);
+  // Sous-titre dessous : sa ligne de base laisse passer les jambages du titre.
+  const subBelow = titleLines.length * titleSize * 1.04 + subSize * 1.2;
+  const headH = spec.subtitle && !inline ? subBelow + subSize * 0.35 : titleLines.length * titleSize * 1.04;
   const blocksH = drawBlocks(ctx, spec.blocks, pad, 0, cw, W, pal, tk, true);
 
   // Grille : 2 colonnes jusqu'à 4 vignettes, 3 jusqu'à 9, 4 au-delà ; libellés sous les pochettes si demandés, à
   // une taille qui suit celle des pochettes (bornée pour rester lisible) : la place des libellés dépend donc de la
-  // taille des pochettes, et réciproquement (trois passes suffisent pour se stabiliser).
+  // taille des pochettes, et réciproquement. La plus grande taille qui tient est cherchée par dichotomie.
   const n = tiles.length;
   const cols = n <= 4 ? 2 : n <= 9 ? 3 : 4;
   const rows = Math.ceil(n / cols);
@@ -452,8 +458,15 @@ function compose(canvas, spec, tiles, sources, tk) {
   };
   const needH = (sz) => rows * (sz + labelOf(sz)) + (rows - 1) * gap;
   let s = (cw - gap * (cols - 1)) / cols;
-  for (let pass = 0; pass < 3 && needH(s) > availH; pass++) {
-    s = Math.max(W * 0.08, (availH - (rows - 1) * gap) / rows - labelOf(s));
+  if (needH(s) > availH) {
+    let lo = W * 0.08;
+    let hi = s;
+    for (let i = 0; i < 24 && hi - lo > 0.5; i++) {
+      const mid = (lo + hi) / 2;
+      if (needH(mid) <= availH) lo = mid;
+      else hi = mid;
+    }
+    s = lo;
   }
   const labelH = labelOf(s);
   const font = fonts(s);
@@ -467,14 +480,14 @@ function compose(canvas, spec, tiles, sources, tk) {
   ctx.textBaseline = 'alphabetic';
   titleLines.forEach((l, i) => ctx.fillText(l, pad, y + titleSize * 0.86 + i * titleSize * 1.04));
   if (spec.subtitle) {
-    setFont(ctx, { weight: 600, size: W * 0.034, family: tk['--font-mono'] });
+    setFont(ctx, { weight: 600, size: subSize, family: tk['--font-mono'] });
     ctx.fillStyle = pal.muted;
     if (inline) {
       ctx.textAlign = 'right';
       ctx.fillText(spec.subtitle, W - pad, y + titleSize * 0.86);
       ctx.textAlign = 'left';
     } else {
-      ctx.fillText(ellipsis(ctx, spec.subtitle, cw), pad, y + titleLines.length * titleSize * 1.04 + W * 0.03);
+      ctx.fillText(ellipsis(ctx, spec.subtitle, cw), pad, y + subBelow);
     }
   }
   y += headH;

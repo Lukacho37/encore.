@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router';
 import { useI18n } from '../i18n/index.jsx';
 import { ErrorBox } from '../components/feedback.jsx';
-import { Icon, MiniPack, formatDuration, useNow, useToast } from '../components/ui.jsx';
+import { Icon, formatDuration, useNow, useToast } from '../components/ui.jsx';
 import { BadgeToast } from '../components/play/BadgeToast.jsx';
 import { QuestRing, RewardChips, questLink, questTitle, rewardText } from '../components/play/common.jsx';
 import { claimBonus, claimQuest, rerollQuest, useQuests } from '../components/play/questStore.js';
@@ -53,7 +53,10 @@ function BonusRow({ period, scope, busy, onBonus }) {
   const cls = `quest quest--bonus${bonus.claimable || bonus.claimed ? ' quest--done' : ''}${bonus.claimed ? ' quest--claimed' : ''}`;
   return (
     <li className={cls} data-bonus={scope}>
-      <span className="quest__pack" aria-hidden="true"><MiniPack /></span>
+      <span className="quest__ring" aria-hidden="true">
+        <span className="q-ring q-ring--lg" style={{ '--p': Math.round((claimed / 3) * 100) }} />
+        <Icon name={bonus.claimed ? 'check' : 'pack'} size={18} />
+      </span>
       <div>
         <div className="quest__title">{t(scope === 'daily' ? 'quests.bonusDaily' : 'quests.bonusWeekly')}</div>
         <p className="small muted">{t(scope === 'daily' ? 'quests.bonusDailyBody' : 'quests.bonusWeeklyBody')}</p>
@@ -64,18 +67,21 @@ function BonusRow({ period, scope, busy, onBonus }) {
         ) : bonus.claimable ? (
           <button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => onBonus(period.periodKey)}>{t('quests.bonusClaim')}</button>
         ) : (
-          <span className="mono quest__count">{t('quests.bonusLocked', { n: claimed })}</span>
+          <span className="quest__count"><span className="mono">{claimed}/3</span> {t('quests.bonusLockedWord')}</span>
         )}
       </div>
     </li>
   );
 }
 
+/** « Nouvelles quêtes dans 7:25:27 » ; au-delà d'un jour, « dans 4 j 7 h » (la semaine). */
 function Countdown({ end }) {
   const { t } = useI18n();
   useNow(1000);
   const left = Math.max(0, end - Date.now());
-  return <span className="pl-section__meta">{t('quests.renews', { time: '' })}<span className="mono">{formatDuration(left)}</span></span>;
+  const days = Math.floor(left / 86_400_000);
+  const time = days >= 1 ? t('quests.left.days', { d: days, h: Math.floor((left % 86_400_000) / 3_600_000) }) : formatDuration(left);
+  return <span className="pl-section__meta">{t('quests.renews', { time: '' })}<span className="mono">{time}</span></span>;
 }
 
 function PeriodPanel({ id, title, period, scope, busy, onAct, onBonus }) {

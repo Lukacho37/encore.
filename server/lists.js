@@ -676,12 +676,15 @@ export function init(deps) {
 
   /**
    * API interne (onboarding, P1-E) : remplace la grille d'un joueur par ces albums (9 au plus ; inconnus et doublons
-   * ignorés). Renvoie { list, title, slots, catalog } comme GET /api/me/grid9.
+   * ignorés). Renvoie { list, title, slots, catalog } comme GET /api/me/grid9 ; joueur inconnu (compte supprimé
+   * entre-temps) : rien n'est écrit, undefined (comme le squelette de K0).
    */
   function setGrid9(userId, albumIds, { title = null } = {}) {
+    const uid = toId(userId);
+    if (!uid || !q('SELECT 1 FROM users WHERE id = ?').get(uid)) return undefined;
     const slots = checkSlots(Array.isArray(albumIds) ? albumIds.slice(0, GRID_SLOTS) : [], { strict: false });
-    writeGrid(Number(userId), slots, { title });
-    return myGrid({ id: Number(userId) });
+    writeGrid(uid, slots, { title });
+    return myGrid({ id: uid });
   }
 
   // Liste masquée par la modération (ou auteur suspendu) : la recherche la relit, et la retire.

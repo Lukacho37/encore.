@@ -276,7 +276,7 @@ export function Grid9Card() {
   const filled = slots.filter(Boolean);
   return (
     <Link to="/nine" className="list-card ls-card--pinned" data-grid9-card="">
-      <CoverStack albumIds={filled} />
+      <CoverStack albumIds={filled} placeholder={data && !filled.length ? <Icon name="plus" size={22} /> : null} />
       <span className="ls-card__body">
         <span className="eyebrow">{t('nine.pinned')}</span>
         <span className="list-card__title">{data?.title || t('nine.title')}</span>
@@ -295,7 +295,8 @@ export function Grid9Block({ username, editable = false }) {
   const albums = useAlbums(slots.map((id) => id || ''));
   const filled = slots.filter(Boolean).length;
   if (error || !username) return null;
-  if (data && !editable && (data.restricted || !filled)) return null;
+  // Studio d'un autre : rien tant que la grille n'est pas arrivée (pas de grille vide qui disparaît ensuite).
+  if (!editable && (!data || data.restricted || !filled)) return null;
   const title = data?.title || t('nine.title');
   return (
     <section className="ls-grid-block" aria-labelledby="ls-grid-block-title" data-grid9-block="">

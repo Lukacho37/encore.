@@ -41,6 +41,8 @@
 .list-card__stack > span:nth-child(2) { left: 20px; z-index: 2; transform: scale(0.94); }
 .list-card__stack > span:nth-child(3) { left: 40px; z-index: 1; transform: scale(0.88); }
 .list-card__stack > .ls-stack__empty { background: var(--stage-2); border: 1px dashed var(--line); box-shadow: none; }
+/* Grille encore vide (carte épinglée) : un « + » dans la première case, l'action à faire. */
+.list-card__stack > .ls-stack__add { display: grid; place-items: center; color: var(--cue); border-color: color-mix(in oklab, var(--cue) 45%, var(--line)); }
 .list-card__stack .cover { width: 100%; height: 100%; display: block; object-fit: cover; }
 
 .ls-card__body { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
@@ -596,6 +598,8 @@
   container-type: inline-size;
 }
 .nine-share.ls-fmt--square { aspect-ratio: 1; gap: 4%; padding-block: 6% 5%; }
+/* Carré : titre plus petit, comme dans le PNG (la hauteur y manque). */
+.nine-share.ls-fmt--square .nine-share__title { font-size: 6.4cqi; }
 .nine-share.ls-fmt--story { aspect-ratio: 9 / 16; justify-content: center; width: min(100%, 360px); margin-inline: auto; }
 .nine-share.ls-fmt--story .nine-share__foot { margin-top: auto; }
 
@@ -803,7 +807,7 @@
   -webkit-touch-callout: default;
   user-select: auto;
 }
-.ls-share__hint { display: inline-flex; align-items: center; gap: var(--s-8); color: var(--paper-dim); text-align: center; }
+.ls-share__hint { display: flex; flex-direction: column; align-items: center; gap: var(--s-4); max-width: 40ch; color: var(--paper-dim); text-align: center; }
 
 /* ---------- tablettes et téléphones ---------- */
 

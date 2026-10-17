@@ -103,7 +103,8 @@ test('GET /api/battles/next : duels signés, paires ordonnées, catégorie deman
 test('jetons : contrefaçon, autre joueur, expiration, contenu incohérent → 400 bad_token', async () => {
   const me = await player();
   const other = await player();
-  const { duels } = (await next(me, 'global:album')).body;
+  // Un duel de rock : le vote final ne touche aucune catégorie des albums de Daft Punk (test suivant).
+  const { duels } = (await next(me, 'genre:rock')).body;
   const token = duels[0].token;
   const [data, sig] = token.split('.');
   const payload = JSON.parse(Buffer.from(data, 'base64url').toString());
@@ -145,6 +146,8 @@ test('vote : un par paire, Elo mis à jour dans toutes les catégories communes,
   assert.equal(row.counted, 1);
   const cats = JSON.parse(row.categories);
   assert.ok(cats.includes('global:album') && cats.includes('artist:daft-punk') && cats.includes('genre:electro'), cats.join());
+  // Pas de classement par pays tant que moins de 30 albums en ont un (le catalogue des tests en a 20).
+  assert.ok(!cats.some((c) => c.startsWith('country:')), cats.join());
   for (const c of cats) {
     const ra = rating(c, d.a);
     const rb = rating(c, d.b);

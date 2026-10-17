@@ -110,25 +110,25 @@ for (const [name, viewport] of Object.entries(VIEWPORTS)) {
 
     // Battles : 5 votes à la souris (4 sur téléphone après le vote de l'accueil… ici 5 partout), puis « Je ne connais pas ».
     await page.goto(`${BASE}/battles`);
-    await page.waitForSelector('.duel .duel__side:not([disabled])', { timeout: 15_000 });
+    await page.waitForSelector('.duel button.duel__side:not([disabled])', { timeout: 15_000 });
     await page.screenshot({ path: `${OUT}/${p}-10-battle.png` });
     const target = name === 'desktop' ? 5 : 5;
     for (let i = 0; i < target; i++) {
       const token = await page.locator('.duel__arena').first().evaluate((el) => el.closest('.duel')?.dataset.duel + '|' + el.querySelector('.duel__side')?.getAttribute('aria-label'));
-      await page.locator('.duel .duel__side:not([disabled])').nth(i % 2).click();
+      await page.locator('.duel button.duel__side:not([disabled])').nth(i % 2).click();
       await page.waitForSelector('.duel .duel__delta', { timeout: 10_000 });
       if (i === 0) await page.screenshot({ path: `${OUT}/${p}-11-battle-voted.png` });
       await page.waitForFunction((tok) => {
         const el = document.querySelector('.duel__arena');
         const now = `${el?.closest('.duel')?.dataset.duel}|${el?.querySelector('.duel__side')?.getAttribute('aria-label')}`;
-        return now !== tok && !document.querySelector('.duel .duel__delta') && !!document.querySelector('.duel .duel__side:not([disabled])');
+        return now !== tok && !document.querySelector('.duel .duel__delta') && !!document.querySelector('.duel button.duel__side:not([disabled])');
       }, token, { timeout: 10_000 });
     }
     const today = Number(await page.locator('.duel__head [data-today]').getAttribute('data-today'));
     const expected = name === 'desktop' ? 6 : 5;
     if (today !== expected) fail(`[${label}] compteur du jour ${today} (attendu ${expected})`);
     await page.getByRole('button', { name: /Je ne connais pas/ }).click();
-    await page.waitForSelector('.duel .duel__side:not([disabled])');
+    await page.waitForSelector('.duel button.duel__side:not([disabled])');
     // Pas de lecteur intégré dans une battle (PLAN.md 7.1) ; « Écouter » mène à la page de l'album.
     if (await page.locator('.duel iframe, .trk-listen').count()) fail(`[${label}] lecteur intégré dans un duel`);
     const listen = await page.locator('.duel .duel__listen').first().getAttribute('href');
@@ -158,8 +158,8 @@ for (const [name, viewport] of Object.entries(VIEWPORTS)) {
     const counted = (await apiCall(page, 'GET', '/battles/next?n=1')).body.today?.votes ?? 0;
     await voteViaApi(page, 49 - counted, label);
     await page.goto(`${BASE}/battles`);
-    await page.waitForSelector('.duel .duel__side:not([disabled])', { timeout: 15_000 });
-    await page.locator('.duel .duel__side:not([disabled])').first().click();
+    await page.waitForSelector('.duel button.duel__side:not([disabled])', { timeout: 15_000 });
+    await page.locator('.duel button.duel__side:not([disabled])').first().click();
     await page.waitForSelector('[data-toast="badge"]', { timeout: 10_000 });
     await page.screenshot({ path: `${OUT}/${p}-12-badge-toast.png` });
 
@@ -173,6 +173,7 @@ for (const [name, viewport] of Object.entries(VIEWPORTS)) {
     await page.screenshot({ path: `${OUT}/${p}-30-badges.png`, fullPage: name === 'desktop' });
     await judge.click();
     await page.waitForSelector('.modal .pl-tiers .pl-tier.is-earned');
+    await page.waitForTimeout(450); // fin de l'animation d'ouverture de la fenêtre
     await page.screenshot({ path: `${OUT}/${p}-31-badge-detail.png` });
     await page.keyboard.press('Escape');
     if (name === 'phone') await checkNoHorizontalScroll(page, `${label} badges`);
@@ -193,7 +194,7 @@ for (const [name, viewport] of Object.entries(VIEWPORTS)) {
     const album = await page.locator('.pl-rank').first().getAttribute('data-id');
     await page.getByRole('link', { name: /Voter dans cette catégorie/ }).click();
     await page.waitForURL(/\/battles\?category=global/);
-    await page.waitForSelector('.duel .duel__side:not([disabled])');
+    await page.waitForSelector('.duel button.duel__side:not([disabled])');
 
     // Page d'album : « Autour de l'album » quand P1-B monte l'emplacement.
     await page.goto(`${BASE}/album/${enc(album)}`);
@@ -267,9 +268,11 @@ if (fs.existsSync(demoFile)) {
       // Retour à l'accueil (MemoryRouter : par le logo), puis battles par la colonne ou Découvrir.
       await page.locator('.topbar a').first().click();
       await page.waitForSelector('.hero');
-      await page.evaluate(() => document.querySelector('a[href="/battles"]')?.click());
-      await page.waitForSelector('.duel .duel__side:not([disabled])', { timeout: 15_000 });
-      await page.locator('.duel .duel__side:not([disabled])').first().click();
+      // La colonne de l'accueil (battle compacte) arrive avec le fil ; sur téléphone, elle est posée dans le fil.
+      await page.waitForSelector('[data-home="battle"] a[href="/battles"]', { state: 'attached', timeout: 15_000 });
+      await page.evaluate(() => document.querySelector('[data-home="battle"] a[href="/battles"]')?.click());
+      await page.waitForSelector('.duel button.duel__side:not([disabled])', { timeout: 15_000 });
+      await page.locator('.duel button.duel__side:not([disabled])').first().click();
       await page.waitForSelector('.duel .duel__delta');
       await page.screenshot({ path: `${OUT}/${p}-83-demo-battle.png` });
       await page.locator('a[href="/rankings"]').first().click();

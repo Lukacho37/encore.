@@ -14,6 +14,7 @@
 // Classements : note décroissante dans une catégorie, « provisoire » sous 50 votes, pages par décalage (500 au plus),
 // gardés 60 s ; hub des catégories listées (20 éléments classés, ou tous ceux de la catégorie quand elle en a moins) ;
 // « Autour de l'album » : jusqu'à 5 catégories avec le rang de l'élément. Les albums retirés n'apparaissent nulle part.
+// Les classements par pays n'existent qu'à partir de 30 albums dont l'artiste a un pays.
 // API interne (deps.battles) : next, vote, hub, ranking, itemRankings. Événement : battle.voted { userId, voteId,
 // itemType, counted }.
 import crypto from 'node:crypto';
@@ -32,6 +33,7 @@ const HUB_PER_GROUP = 12;
 const DUELS_MAX = 5;
 const ATTEMPTS = 40;
 const FEATURED_DECADES = [1960, 1970, 1980, 1990, 2000, 2010];
+const COUNTRY_MIN_ALBUMS = 30;
 const ITEM_PREF = ['artist', 'album_tracks', 'genre_decade', 'decade', 'genre', 'year', 'artist_tracks', 'country', 'global'];
 
 export function init(deps) {
@@ -82,12 +84,23 @@ export function init(deps) {
 
   // ----- faits du catalogue ----------------------------------------------------------------------------------
 
+  /**
+   * Les pays n'entrent dans les catégories qu'à partir de 30 albums dont l'artiste a un pays (PLAN.md 5.4 : avant,
+   * un classement « France » de trois albums n'aurait pas de sens). Comptage borné, gardé 10 min.
+   */
+  const countriesOn = () => pools.wrap('countries', () => q(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM cat_albums al
+    JOIN cat_artists ar ON ar.id = al.artist_id WHERE ar.country IS NOT NULL AND al.status = 'active' LIMIT ${COUNTRY_MIN_ALBUMS})`)
+    .get().n >= COUNTRY_MIN_ALBUMS);
+
   /** Faits des albums (artiste, année, genre, pays, retiré ?) : Map id → faits. */
   function albumFacts(ids) {
     if (!ids.length) return new Map();
+    const countries = countriesOn();
     return new Map(q(`SELECT al.id, al.artist_id, al.year, al.genre, al.status, ar.country FROM cat_albums al
       JOIN cat_artists ar ON ar.id = al.artist_id WHERE al.id IN (SELECT value FROM json_each(?))`).all(json(ids))
-      .map((r) => [r.id, { id: r.id, artistId: r.artist_id, year: r.year, genre: r.genre, country: r.country || null, active: r.status === 'active' }]));
+      .map((r) => [r.id, {
+        id: r.id, artistId: r.artist_id, year: r.year, genre: r.genre, country: countries ? r.country || null : null, active: r.status === 'active',
+      }]));
   }
   function trackFacts(ids) {
     if (!ids.length) return new Map();

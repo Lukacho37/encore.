@@ -30,7 +30,7 @@ const HOUR = 3_600_000;
 const DAY = 86_400_000;
 // Réaction des joueurs fictifs à une liste publique du joueur (ms) : « J'aime », puis commentaire.
 const BOT_DELAY = [2500, 4500];
-const BOT_COMMENTS = ['Belle sélection, je note les deux derniers !', 'Très bonne liste, il ne manque rien.', 'Je l’écoute dans l’ordre ce soir.'];
+const BOT_COMMENTS = ['Belle sélection, je note les deux derniers !', 'Très bonne liste, il ne manque rien.', 'Je l’écoute dans l’ordre ce soir.'];
 
 // ----- outils ------------------------------------------------------------------------------------
 
@@ -560,12 +560,12 @@ const SEED_GRIDS = [
 // « J'aime » [index de la liste, joueurs] et commentaires [index, joueur, texte, réponse au commentaire n° ?].
 const SEED_LIKES = [[0, ['maxvinyl', 'soulcollector', 'k.dot_fan']], [1, ['lea.beats', 'soulcollector']], [2, ['lea.beats']], [3, ['maxvinyl', 'lea.beats']], [4, ['k.dot_fan']]];
 const SEED_COMMENTS = [
-  [0, 'maxvinyl', 'Moon Safari en premier, évidemment. Il manque juste un peu de Gainsbourg !'],
+  [0, 'maxvinyl', 'Moon Safari en premier, évidemment. Il manque juste un peu de Gainsbourg !'],
   [0, 'lea.beats', 'Melody Nelson est sur ma liste du dimanche, promis.', 0],
   [0, 'soulcollector', 'Je la teste ce soir sur la route.'],
   [1, 'k.dot_fan', 'Abbey Road numéro 1, rien à redire.'],
-  [3, 'maxvinyl', 'good kid en premier, d’accord. Mais Graduation si bas ?'],
-  [3, 'k.dot_fan', 'Assumé ! Il a moins bien vieilli.', 4],
+  [3, 'maxvinyl', 'good kid en premier, d’accord. Mais Graduation si bas ?'],
+  [3, 'k.dot_fan', 'Assumé ! Il a moins bien vieilli.', 4],
 ];
 
 export function seed(db, ctx) {

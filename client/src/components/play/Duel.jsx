@@ -174,7 +174,12 @@ export function Duel({ duel, result, onVote, busy, today, compact = false, head 
             <span className="eyebrow">{t('battles.kicker')} · {label.short}</span>
             <h2>{label.long}</h2>
           </div>
-          {today && <span className="chip chip--quiet" data-today={today.votes}>{t('battles.today', { n: today.votes })}</span>}
+          {today && (
+            <span className="chip chip--quiet" data-today={today.votes}>
+              {t('battles.today', { n: today.votes })}
+              {today.xp > 0 && <> · <span className="mono">{t('battles.xpGain', { n: today.xp })}</span></>}
+            </span>
+          )}
         </header>
       )}
       {arena}

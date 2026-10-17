@@ -266,7 +266,12 @@ function Editor() {
                 setTitle(e.target.value);
                 touch();
               }}
-              onBlur={() => !title.trim() && setTitle(t('nine.title'))} />
+              onBlur={() => {
+                // Titre effacé : le titre par défaut revient, et il est enregistré (un titre vide ne change rien).
+                if (title.trim()) return;
+                setTitle(t('nine.title'));
+                touch();
+              }} />
             <Icon name="edit" size={18} />
           </label>
           <p className="muted ls-nine-head__lead">{t('nine.lead')}</p>

@@ -25,6 +25,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import crypto from 'node:crypto';
+import http from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import {
   ROOT, BASE as INITIAL_BASE, OUT, VIEWPORTS, shot, fail, finish, setBase, startStack, checkNoHorizontalScroll,
@@ -134,6 +135,8 @@ const zoePrivate = (await must('liste privée de Zoé', callAs(zoe, 'POST', '/li
 
 /** Adresses de l'API dont le 404 est attendu (liste privée d'une autre ouverte exprès). */
 const EXPECTED_404 = [`/api/lists/${zoePrivate.id}`];
+/** Origines dont les erreurs de console sont attendues (CDN de pochettes simulé : refus CORS, 404 voulus). */
+const EXPECTED_CONSOLE = [];
 
 // Albums importés (pochettes Deezer) pour l'image d'une liste aux vraies pochettes.
 const imported = db.prepare("SELECT id FROM cat_albums WHERE cover IS NOT NULL ORDER BY id DESC LIMIT 4").all().map((r) => r.id);
@@ -204,7 +207,8 @@ async function session(label, viewport, user, fn, { touch = false } = {}) {
   page.on('pageerror', (e) => fail(`[${label}] ${e.message}`));
   // Les 404 attendus (liste privée d'une autre, demandée exprès) ne comptent pas comme des erreurs.
   const expected404 = (m) => /status of 404/.test(m.text()) && EXPECTED_404.some((x) => (m.location()?.url || '').includes(x));
-  page.on('console', (m) => m.type() === 'error' && !ignoredConsole(m.text()) && !expected404(m) && fail(`[${label}] console: ${m.text()}`));
+  const expectedCdn = (m) => EXPECTED_CONSOLE.some((x) => m.text().includes(x) || (m.location()?.url || '').includes(x));
+  page.on('console', (m) => m.type() === 'error' && !ignoredConsole(m.text()) && !expected404(m) && !expectedCdn(m) && fail(`[${label}] console: ${m.text()}`));
   watchHttp(page, label, EXPECTED_404);
   fs.mkdirSync(OUT, { recursive: true });
   try {
@@ -507,79 +511,94 @@ if (FOCUS.has('desktop')) await session('desktop-friend', VIEWPORTS.desktop, oma
 
 // ---------- moteur d'images (ordinateur, modules du site chargés par Vite) ----------
 
-if (FOCUS.has('engine')) await session('engine', VIEWPORTS.desktop, nina, async (page, ctx) => {
-  await ctx.route(`${BASE}/e2e-cover.png`, (route) => route.fulfill({ status: 200, body: GREEN, headers: { 'content-type': 'image/png' } }));
-  await ctx.route('https://covers.e2e.test/cors/**', (route) => route.fulfill({ status: 200, body: GREEN, headers: { 'content-type': 'image/png', 'access-control-allow-origin': '*' } }));
-  await ctx.route('https://covers.e2e.test/nocors/**', (route) => route.fulfill({ status: 200, body: GREEN, headers: { 'content-type': 'image/png' } }));
-  await ctx.route('https://covers.e2e.test/missing/**', (route) => route.fulfill({ status: 404, body: 'non' }));
-  const cases = [
-    ['même origine', `${BASE}/e2e-cover.png`, true],
-    ['autre origine, CORS', 'https://covers.e2e.test/cors/a.png', true],
-    ['autre origine, sans CORS', 'https://covers.e2e.test/nocors/a.png', false],
-    ['introuvable', 'https://covers.e2e.test/missing/a.png', false],
-  ];
-  for (const [label, src, real] of cases) {
-    const res = await page.evaluate(async ({ src }) => {
-      const { renderImage } = await import('/src/share/renderImage.js');
-      const covers = { items: { discovery: { cover: src, provider: 'deezer' } }, broken: new Set() };
-      const spec = { format: 'square', theme: 'ink', title: 'Essai', tiles: [{ albumId: 'discovery' }, { albumId: 'thriller' }, null, { albumId: 'exodus' }], footer: 'AlbumMania' };
-      const out = await renderImage(spec, { covers });
-      const bmp = await createImageBitmap(out.blob);
-      const c = document.createElement('canvas');
-      c.width = bmp.width;
-      c.height = bmp.height;
-      const g = c.getContext('2d');
-      g.drawImage(bmp, 0, 0);
-      const px = g.getImageData(0, 0, c.width, c.height).data;
-      let green = 0;
-      for (let i = 0; i < px.length; i += 4) if (px[i + 1] > 235 && px[i] < 30 && px[i + 2] < 30) green++;
-      return { usedCovers: out.usedCovers, width: out.width, height: out.height, size: out.blob.size, type: out.blob.type, green };
-    }, { src });
-    if (res.type !== 'image/png' || res.width !== 1080 || res.height !== 1080 || !(res.size > 10_000)) fail(`[engine] ${label} : export ${JSON.stringify(res)}`);
-    if (res.usedCovers !== real) fail(`[engine] ${label} : usedCovers ${res.usedCovers}, attendu ${real}`);
-    // Une vignette sur quatre est la pochette verte (≈ un quart de la grille) ; sinon aucun pixel vert pur.
-    if (real && res.green < 40_000) fail(`[engine] ${label} : vraie pochette absente des pixels (${res.green})`);
-    if (!real && res.green > 0) fail(`[engine] ${label} : pixels de la pochette refusée dessinés (${res.green})`);
-  }
-  // Pochette retirée par l'admin (coverBlocked) : visuel généré même si la pochette est connue.
-  const blockedCover = await page.evaluate(async ({ src }) => {
-    const { renderImage } = await import('/src/share/renderImage.js');
-    const store = await import('/src/catalogStore.js');
-    const album = store.getAlbum('discovery');
-    const art = album.art;
-    album.art = { ...art, coverBlocked: true };
-    try {
-      const out = await renderImage({ format: 'portrait', theme: 'ink', title: 'Essai', tiles: [{ albumId: 'discovery' }, { albumId: 'thriller' }] }, { covers: { items: { discovery: { cover: src } }, broken: new Set() } });
-      return out.usedCovers;
-    } finally {
-      album.art = art;
+// CDN de pochettes simulé par un vrai serveur d'une autre origine (127.0.0.1 ≠ localhost) : une réponse servie par
+// Playwright (route.fulfill) reçoit toujours un en-tête CORS ajouté par Playwright, elle ne peut donc pas imiter un CDN
+// qui n'en envoie pas.
+async function coverCdn() {
+  const server = http.createServer((req, res) => {
+    if (req.url.startsWith('/cors/')) res.writeHead(200, { 'content-type': 'image/png', 'access-control-allow-origin': '*' }).end(GREEN);
+    else if (req.url.startsWith('/nocors/')) res.writeHead(200, { 'content-type': 'image/png' }).end(GREEN);
+    else res.writeHead(404, { 'content-type': 'text/plain' }).end('non');
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  return { origin: `http://127.0.0.1:${server.address().port}`, close: () => new Promise((resolve) => server.close(resolve)) };
+}
+
+if (FOCUS.has('engine')) {
+  const cdn = await coverCdn();
+  EXPECTED_CONSOLE.push(cdn.origin);
+  await session('engine', VIEWPORTS.desktop, nina, async (page, ctx) => {
+    await ctx.route(`${BASE}/e2e-cover.png`, (route) => route.fulfill({ status: 200, body: GREEN, headers: { 'content-type': 'image/png' } }));
+    const cases = [
+      ['même origine', `${BASE}/e2e-cover.png`, true],
+      ['autre origine, CORS', `${cdn.origin}/cors/a.png`, true],
+      ['autre origine, sans CORS', `${cdn.origin}/nocors/a.png`, false],
+      ['introuvable', `${cdn.origin}/missing/a.png`, false],
+    ];
+    for (const [label, src, real] of cases) {
+      const res = await page.evaluate(async ({ src }) => {
+        const { renderImage } = await import('/src/share/renderImage.js');
+        const covers = { items: { discovery: { cover: src, provider: 'deezer' } }, broken: new Set() };
+        const spec = { format: 'square', theme: 'ink', title: 'Essai', tiles: [{ albumId: 'discovery' }, { albumId: 'thriller' }, null, { albumId: 'exodus' }], footer: 'AlbumMania' };
+        const out = await renderImage(spec, { covers });
+        const bmp = await createImageBitmap(out.blob);
+        const c = document.createElement('canvas');
+        c.width = bmp.width;
+        c.height = bmp.height;
+        const g = c.getContext('2d');
+        g.drawImage(bmp, 0, 0);
+        const px = g.getImageData(0, 0, c.width, c.height).data;
+        let green = 0;
+        for (let i = 0; i < px.length; i += 4) if (px[i + 1] > 235 && px[i] < 30 && px[i + 2] < 30) green++;
+        return { usedCovers: out.usedCovers, width: out.width, height: out.height, size: out.blob.size, type: out.blob.type, green };
+      }, { src });
+      if (res.type !== 'image/png' || res.width !== 1080 || res.height !== 1080 || !(res.size > 10_000)) fail(`[engine] ${label} : export ${JSON.stringify(res)}`);
+      if (res.usedCovers !== real) fail(`[engine] ${label} : usedCovers ${res.usedCovers}, attendu ${real}`);
+      // Une vignette sur quatre est la pochette verte (≈ un quart de la grille) ; sinon aucun pixel vert pur.
+      if (real && res.green < 40_000) fail(`[engine] ${label} : vraie pochette absente des pixels (${res.green})`);
+      if (!real && res.green > 0) fail(`[engine] ${label} : pixels de la pochette refusée dessinés (${res.green})`);
     }
-  }, { src: `${BASE}/e2e-cover.png` });
-  if (blockedCover !== false) fail('[engine] pochette retirée par l’admin dessinée quand même');
-  // SHARE_COVERS=off (realCovers: false) : jamais de vraie pochette ; formats et thèmes.
-  for (const [format, theme, w, h] of [['portrait', 'ink', 1080, 1350], ['story', 'ivory', 1080, 1920], ['square', 'ivory', 1080, 1080]]) {
-    const res = await page.evaluate(async ({ src, format, theme }) => {
+    // Pochette retirée par l'admin (coverBlocked) : visuel généré même si la pochette est connue.
+    const blockedCover = await page.evaluate(async ({ src }) => {
       const { renderImage } = await import('/src/share/renderImage.js');
-      const tiles = ['discovery', 'abbey-road', 'thriller', 'nevermind', 'back-to-black', 'kind-of-blue', 'random-access-memories', 'moon-safari', 'exodus']
-        .map((albumId, i) => (i % 2 ? { albumId, label: 'Titre', sub: 'Artiste' } : { albumId }));
-      const out = await renderImage({ format, theme, title: 'Mes 9 albums', subtitle: '@nina', tiles, footer: 'AlbumMania' },
-        { covers: { items: { discovery: { cover: src } }, broken: new Set() }, realCovers: false });
-      return { usedCovers: out.usedCovers, width: out.width, height: out.height, size: out.blob.size };
-    }, { src: `${BASE}/e2e-cover.png`, format, theme });
-    if (res.usedCovers || res.width !== w || res.height !== h) fail(`[engine] ${format}/${theme} : ${JSON.stringify(res)}`);
-  }
-  // Spécification invalide : seule erreur possible.
-  const invalid = await page.evaluate(async () => {
-    const { renderImage } = await import('/src/share/renderImage.js');
-    try {
-      await renderImage({ tiles: [] });
-      return 'résolue';
-    } catch (err) {
-      return err.code;
+      const store = await import('/src/catalogStore.js');
+      const album = store.getAlbum('discovery');
+      const art = album.art;
+      album.art = { ...art, coverBlocked: true };
+      try {
+        const out = await renderImage({ format: 'portrait', theme: 'ink', title: 'Essai', tiles: [{ albumId: 'discovery' }, { albumId: 'thriller' }] }, { covers: { items: { discovery: { cover: src } }, broken: new Set() } });
+        return out.usedCovers;
+      } finally {
+        album.art = art;
+      }
+    }, { src: `${BASE}/e2e-cover.png` });
+    if (blockedCover !== false) fail('[engine] pochette retirée par l’admin dessinée quand même');
+    // SHARE_COVERS=off (realCovers: false) : jamais de vraie pochette ; formats et thèmes.
+    for (const [format, theme, w, h] of [['portrait', 'ink', 1080, 1350], ['story', 'ivory', 1080, 1920], ['square', 'ivory', 1080, 1080]]) {
+      const res = await page.evaluate(async ({ src, format, theme }) => {
+        const { renderImage } = await import('/src/share/renderImage.js');
+        const tiles = ['discovery', 'abbey-road', 'thriller', 'nevermind', 'back-to-black', 'kind-of-blue', 'random-access-memories', 'moon-safari', 'exodus']
+          .map((albumId, i) => (i % 2 ? { albumId, label: 'Titre', sub: 'Artiste' } : { albumId }));
+        const out = await renderImage({ format, theme, title: 'Mes 9 albums', subtitle: '@nina', tiles, footer: 'AlbumMania' },
+          { covers: { items: { discovery: { cover: src } }, broken: new Set() }, realCovers: false });
+        return { usedCovers: out.usedCovers, width: out.width, height: out.height, size: out.blob.size };
+      }, { src: `${BASE}/e2e-cover.png`, format, theme });
+      if (res.usedCovers || res.width !== w || res.height !== h) fail(`[engine] ${format}/${theme} : ${JSON.stringify(res)}`);
     }
+    // Spécification invalide : seule erreur possible.
+    const invalid = await page.evaluate(async () => {
+      const { renderImage } = await import('/src/share/renderImage.js');
+      try {
+        await renderImage({ tiles: [] });
+        return 'résolue';
+      } catch (err) {
+        return err.code;
+      }
   });
   if (invalid !== 'invalid_spec') fail(`[engine] spécification vide : ${invalid}`);
-});
+  });
+  await cdn.close();
+}
 
 // ---------- téléphone ----------
 

@@ -37,6 +37,13 @@
 
 .pl-page .page-head { margin-bottom: 0; }
 
+/* « ← Tous les classements » sur sa propre ligne, au-dessus du surtitre */
+.pl-page .page-head .back-link {
+  display: flex;
+  width: fit-content;
+  margin-bottom: var(--s-10);
+}
+
 .pl-page__intro {
   max-width: 62ch;
   color: var(--haze);
@@ -459,13 +466,6 @@
 
 .quest--bonus.quest--done { border-style: solid; }
 
-.quest__pack {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-}
-
 .pl-panel-foot {
   display: flex;
   flex-wrap: wrap;
@@ -603,6 +603,13 @@ button.medal:focus-visible { outline: none; box-shadow: var(--ring-focus); }
 
 .pl-tier.is-earned { border-color: color-mix(in oklab, var(--gold) 40%, var(--line-soft)); }
 
+.pl-tier__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .pl-tier__goal { font-size: var(--fs-14); }
 .pl-tier__reward { color: var(--haze); font-size: var(--fs-12); }
 .pl-tier__state { color: var(--haze); font-size: var(--fs-13); }
@@ -689,6 +696,7 @@ button.medal:focus-visible { outline: none; box-shadow: var(--ring-focus); }
   aspect-ratio: 1;
   border-radius: var(--rad-sm);
   overflow: hidden;
+  background: var(--stage-2);
   box-shadow: var(--shadow-cover-sm);
 }
 
@@ -744,6 +752,7 @@ button.medal:focus-visible { outline: none; box-shadow: var(--ring-focus); }
   height: 56px;
   border-radius: var(--rad-sm);
   overflow: hidden;
+  background: var(--stage-2);
   box-shadow: var(--shadow-cover-sm);
 }
 
@@ -773,14 +782,17 @@ button.medal:focus-visible { outline: none; box-shadow: var(--ring-focus); }
   white-space: nowrap;
 }
 
+/* Elo · votes · « provisoire » sur une ligne, en colonnes alignées d'une ligne à l'autre */
 .pl-rank__stats {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: 96px 88px 96px;
+  justify-items: end;
+  align-items: center;
+  gap: var(--s-12);
   font-size: var(--fs-13);
   color: var(--haze);
   text-align: right;
+  white-space: nowrap;
 }
 
 .pl-rank__stats .mono { color: var(--paper); }
@@ -804,7 +816,7 @@ button.medal:focus-visible { outline: none; box-shadow: var(--ring-focus); }
 
 .pl-around__row {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) auto;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--s-10);
   padding: var(--s-8) var(--s-12);
@@ -821,15 +833,31 @@ button.medal:focus-visible { outline: none; box-shadow: var(--ring-focus); }
   font-stretch: var(--fst-display);
 }
 
+.pl-around__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
 .pl-around__label {
   font-size: var(--fs-14);
   font-weight: var(--fw-semi);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: var(--lh-snug);
+  overflow-wrap: anywhere;
 }
 
-.pl-around__of { color: var(--haze); font-size: var(--fs-12); }
+.pl-around__of {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-6);
+  color: var(--haze);
+  font-size: var(--fs-12);
+}
+
+.pl-around__go { display: inline-flex; color: var(--haze); }
+.pl-around__row:hover .pl-around__go { color: var(--paper); }
 
 .pl-around__foot {
   display: flex;
@@ -899,11 +927,14 @@ button.medal:focus-visible { outline: none; box-shadow: var(--ring-focus); }
 
   .pl-rank__stats {
     grid-column: 3;
-    flex-direction: row;
+    display: flex;
     flex-wrap: wrap;
     justify-content: flex-start;
     gap: var(--s-6);
   }
+
+  .pl-tier { grid-template-columns: auto minmax(0, 1fr); row-gap: var(--s-4); }
+  .pl-tier__state { grid-column: 2; }
 
   .pl-hub { grid-template-columns: minmax(0, 1fr); }
   .medals { grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); }

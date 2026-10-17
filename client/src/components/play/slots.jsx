@@ -14,7 +14,7 @@ import { useGame } from '../../state/GameContext.jsx';
 import { useApi } from '../../state/catalog.js';
 import { EmptyState, ErrorBox, Skeleton } from '../feedback.jsx';
 import { Icon, Modal, RoyaltyIcon, useToast } from '../ui.jsx';
-import { BADGE_GROUPS, tierRank } from '@shared/badges.js';
+import { BADGE_GROUPS, rewardFor, tierRank } from '@shared/badges.js';
 import { BadgeToast } from './BadgeToast.jsx';
 import { Duel, useBattleQueue } from './Duel.jsx';
 import { CategoryName, Medal, enc, medalName, medalTone, questTitle, rewardText, tierGoal } from './common.jsx';
@@ -159,9 +159,19 @@ function useBadges(username) {
   return { ...api, self };
 }
 
-/** Détail d'une médaille : paliers, objectifs, dates (ou progression). */
+/** Récompense d'un palier (« +400 XP · +1 booster bonus », titre au dernier palier), comme shared/badges.js. */
+function tierReward(t, num, family, tier) {
+  const r = rewardFor(family, tier);
+  const parts = [t('badges.reward.xp', { n: num(r.xp) })];
+  if (r.royalties) parts.push(t('badges.reward.royalties', { n: num(r.royalties) }));
+  if (r.boosters) parts.push(t('badges.reward.boosters'));
+  if (r.cosmetic) parts.push(t('badges.reward.cosmetic', { name: t(`cosmetics.title.${r.cosmetic.split(':')[1]}`) }));
+  return parts.join(' · ');
+}
+
+/** Détail d'une médaille : paliers, objectifs, récompenses, dates (ou progression). */
 export function MedalDetail({ medal, onClose }) {
-  const { t, date } = useI18n();
+  const { t, date, num } = useI18n();
   const name = medal ? medalName(t, medal) : '';
   return (
     <Modal open={!!medal} onClose={onClose} title={name}>
@@ -173,7 +183,10 @@ export function MedalDetail({ medal, onClose }) {
             {medal.tiers.map((tier) => (
               <li key={tier.tier} className={`pl-tier${tier.earnedAt ? ' is-earned' : ''}`} data-tier={tier.tier}>
                 <span className={`medal medal--sm ${medalTone(tier.tier)}`} aria-hidden="true"><span className="medal__disc" /></span>
-                <span className="pl-tier__goal">{t(`badges.tiers.${tier.tier}`)} · {tierGoal(t, medal, tier)}</span>
+                <span className="pl-tier__text">
+                  <span className="pl-tier__goal">{t(`badges.tiers.${tier.tier}`)} · {tierGoal(t, medal, tier)}</span>
+                  <span className="pl-tier__reward">{tierReward(t, num, medal.id, tier.tier)}</span>
+                </span>
                 <span className="pl-tier__state">
                   {tier.earnedAt
                     ? t('badges.earnedOn', { date: date(tier.earnedAt) })
@@ -226,7 +239,8 @@ export function TrophyShelf({ username }) {
   const best = useMemo(() => (data?.families || []).filter((m) => m.best)
     .sort((a, b) => tierRank(b.best) - tierRank(a.best) || (b.earnedAt || 0) - (a.earnedAt || 0))
     .slice(0, SHELF), [data]);
-  if (error?.code === 'profile_private') return null;
+  // Studio privé, joueur introuvable ou bloqué : l'étagère ne s'affiche pas.
+  if (error?.code === 'profile_private' || error?.code === 'user_not_found') return null;
   const all = self ? '/badges' : `/u/${enc(username)}/badges`;
   return (
     <section className="panel pl-shelf" data-studio="trophies" aria-labelledby="pl-shelf-title">
@@ -272,11 +286,14 @@ export function AlbumRankings({ albumId }) {
             <li key={r.category}>
               <Link to={`/rankings/${enc(r.category)}`} className="pl-around__row" data-category={r.category}>
                 <span className="pl-around__rank">{t('rankings.rank', { n: r.rank })}</span>
-                <span className="pl-around__label"><CategoryName category={r.category} /></span>
-                <span className="pl-around__of">
-                  {t('rankings.of', { n: r.total })}
-                  {r.provisional && <> · <span className="chip chip--sm">{t('rankings.provisional')}</span></>}
+                <span className="pl-around__text">
+                  <span className="pl-around__label"><CategoryName category={r.category} /></span>
+                  <span className="pl-around__of">
+                    {t('rankings.of', { n: r.total })}
+                    {r.provisional && <span className="chip chip--sm">{t('rankings.provisional')}</span>}
+                  </span>
                 </span>
+                <span className="pl-around__go" aria-hidden="true"><Icon name="chevron" size={16} /></span>
               </Link>
             </li>
           ))}

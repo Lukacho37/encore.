@@ -25,16 +25,17 @@ export function useItemCount() {
   };
 }
 
-/** Trois pochettes en éventail (ou des cases vides tant que la liste n'a rien). */
-export function CoverStack({ albumIds = [], className = 'list-card__stack' }) {
+/** Trois pochettes en éventail (ou des cases vides tant que la liste n'a rien ; `placeholder` : dans la première). */
+export function CoverStack({ albumIds = [], className = 'list-card__stack', placeholder = null }) {
   const albums = useAlbums(albumIds.slice(0, 3));
   return (
     <span className={className} aria-hidden="true">
       {[0, 1, 2].map((i) => {
         const a = albums[i];
+        const add = !a && i === 0 && placeholder;
         return (
-          <span key={i} className={a ? undefined : 'ls-stack__empty'}>
-            {a && <CoverArt art={{ ...a.art, seed: a.art?.seed || a.id }} sizes="72px" />}
+          <span key={i} className={a ? undefined : `ls-stack__empty${add ? ' ls-stack__add' : ''}`}>
+            {a ? <CoverArt art={{ ...a.art, seed: a.art?.seed || a.id }} sizes="72px" /> : add}
           </span>
         );
       })}

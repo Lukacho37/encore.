@@ -108,7 +108,12 @@ export async function signup(page, email, username, { password = PASSWORD } = {}
   await page.waitForURL('**/check-email');
   const token = await lastMailToken(page, email);
   await page.goto(`${BASE}/verify?token=${token}`);
-  await page.waitForSelector('.hero');
+  // P1 : un nouveau compte est accueilli une fois par session sur /welcome (parcours d'accueil) ; on revient à l'accueil.
+  await page.waitForSelector('.hero, [data-onboarding]');
+  if (!(await page.locator('.hero').count())) {
+    await page.goto(`${BASE}/`);
+    await page.waitForSelector('.hero');
+  }
 }
 
 /**

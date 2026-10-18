@@ -113,9 +113,9 @@ test('PUT / GET / DELETE : identifiant stable, amis puis communauté, anciennes 
   assert.equal(view.community.nextCursor, null);
   const review = view.community.reviews[0];
   for (const k of ['id', 'user', 'score', 'review', 'reviewAt', 'updatedAt', 'likeCount', 'commentCount', 'liked', 'friend']) assert.ok(k in review, k);
-  // Anciennes clés : amis d'abord, sans sa propre critique.
-  assert.deepEqual(view.reviews.map((r) => r.user.username), ['notes_ami', 'notes_inconnu']);
-  assert.deepEqual(view.friendScores.map((s) => s.score), [10]);
+  // Anciennes clés `reviews` / `friendScores` retirées en P1 (P1-A) : toutes les pages lisent `friends` et `community`.
+  assert.ok(!('reviews' in view) && !('friendScores' in view), 'anciennes clés retirées');
+  assert.deepEqual(view.friends.scores.map((s) => s.score), [10]);
   // Album : moyennes des morceaux et mes notes de morceaux.
   deps.ratings.rate(stranger, 'track', 'moon-safari:01', 4, null);
   await call(me, 'PUT', `/ratings/track/${enc('moon-safari:01')}`, { score: 8 });
@@ -274,7 +274,7 @@ test('blocages : critiques et notes des joueurs bloqués masquées dans les deux
   };
   await withAccess(patch, async () => {
     const view = (await api(app.base, me.cookie, 'GET', '/ratings/album/random-access-memories')).body;
-    const names = [...view.friends.reviews, ...view.community.reviews, ...view.reviews].map((r) => r.user.username);
+    const names = [...view.friends.reviews, ...view.community.reviews].map((r) => r.user.username);
     assert.ok(!names.includes('notes_auteur_bloque'), 'critique d’un joueur bloqué masquée');
     assert.ok(names.includes('notes_auteur_libre'));
     assert.ok(!view.friends.scores.some((s) => s.user.id === author), 'note d’un joueur bloqué masquée');

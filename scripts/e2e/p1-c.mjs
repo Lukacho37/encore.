@@ -368,6 +368,8 @@ if (FOCUS.has('desktop')) await session('desktop', VIEWPORTS.desktop, nina, asyn
   // 5. « Ajouter à une liste » depuis la page d'un album (P1-B monte le bouton) ou, sinon, depuis une ligne d'une liste.
   await go(page, '/album/discovery', '.album-head, .page');
   let from = 'album';
+  // L'en-tête de l'album (et ses actions) arrive après la coquille : on attend le bouton un court instant.
+  await page.locator('.album-head [data-add-to-list]').first().waitFor({ timeout: 8000 }).catch(() => {});
   if (!(await page.locator('[data-add-to-list]').first().isVisible().catch(() => false))) {
     from = 'list';
     console.log('[desktop] la page d’album ne monte pas encore « Ajouter à une liste » (P1-B) : essai depuis une liste.');

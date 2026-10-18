@@ -80,6 +80,10 @@ for (const [name, viewport] of Object.entries(VIEWPORTS)) {
     else {
       await signupViaApi(page, email, username);
       await page.goto(`${BASE}/`);
+      // P1 : un nouveau compte passe une fois par session par /welcome (premiers pas) ; on revient à l'accueil.
+      await page.waitForSelector('.hero, [data-onboarding]');
+      await page.waitForTimeout(300);
+      if (!(await page.locator('.hero').count())) await page.goto(`${BASE}/`);
       await page.waitForSelector('.hero');
     }
 
@@ -209,7 +213,9 @@ for (const [name, viewport] of Object.entries(VIEWPORTS)) {
     }
     // Studio : étagère de trophées quand P1-B la monte.
     await page.goto(`${BASE}/studio`);
-    await page.waitForTimeout(1200);
+    // Le Studio (page chargée à la demande) pose ses blocs une fois le profil reçu.
+    await page.waitForSelector('[data-studio-blocks]', { timeout: 15_000 }).catch(() => {});
+    await page.waitForTimeout(400);
     if (await page.locator('[data-studio="trophies"]').count()) {
       await page.locator('[data-studio="trophies"] .medal').first().waitFor();
       await page.locator('[data-studio="trophies"]').scrollIntoViewIfNeeded();

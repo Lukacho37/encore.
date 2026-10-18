@@ -99,10 +99,12 @@ async function newPlayerFlow(page, label, prefix, { create }) {
   const loads = api.state;
   const before = await heroCount(page);
   await shot(page, `${prefix}-10-home`);
-  const { bytes } = await openBooster(page, label, `${prefix}-11-pack`);
+  const { bytes, json } = await openBooster(page, label, `${prefix}-11-pack`);
   await page.waitForTimeout(300);
   const after = await heroCount(page);
-  if (after !== before - 1) fail(`[${label}] héros : ${before} puis ${after} boosters (un de moins attendu)`);
+  // P1 (P1-D, PLAN.md 6.6) : un niveau gagné avec ce booster rend des boosters (+1 par niveau, levelUp.boosters).
+  const bonus = Number(json?.levelUp?.boosters) || 0;
+  if (after !== before - 1 + bonus) fail(`[${label}] héros : ${before} puis ${after} boosters (un de moins attendu, +${bonus} de niveau)`);
   if (api.state !== loads) fail(`[${label}] ${api.state - loads} GET /api/state après l'ouverture (l'état partiel aurait dû suffire)`);
   report.push(`${label} : booster ${bytes} o, héros ${before} → ${after}`);
 

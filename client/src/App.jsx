@@ -1,4 +1,4 @@
-import { useEffect, Suspense } from 'react';
+import { useEffect, useRef, Suspense } from 'react';
 import { Routes, useLocation, useNavigate } from 'react-router';
 import { useGame } from './state/GameContext.jsx';
 import { Logo, Spinner } from './components/ui.jsx';
@@ -6,6 +6,10 @@ import { Logo, Spinner } from './components/ui.jsx';
 import { Header } from './components/shell/Header.jsx';
 import { Footer } from './components/shell/Footer.jsx';
 import { TermsBanner } from './components/shell/TermsBanner.jsx';
+// Message « Niveau N ! » sur toutes les pages (P1-D) : un seul exemplaire affiche, même si l'accueil en monte un autre.
+import { LevelUpToast } from './components/game/LevelUpToast.jsx';
+// Message « Nouvelle médaille ! » (P1-F) sur toutes les pages, même règle d'un seul exemplaire affiché.
+import { BadgeToast } from './components/play/BadgeToast.jsx';
 // Pages : table des routes (chargement à la demande sauf accueil et connexion).
 import { guestRoutes, pageExists, userRoutes } from './routes.jsx';
 
@@ -22,8 +26,9 @@ function ScrollToTop() {
 // Accueil d'un nouveau joueur (P1-B, PLAN.md 2.1 et 2.5 « Onboarding ») : tant que `user.onboarded` vaut false, une seule
 // redirection vers /welcome par session d'onglet (sessionStorage, et une variable du module si le stockage est
 // refusé), jamais depuis les pages légales, les Paramètres, le signalement ou la page d'accueil elle-même, jamais pour le
-// compte du propriétaire (admin), et seulement quand la page Onboarding existe (P1-E). Le joueur peut ensuite naviguer
-// librement : passer l'accueil ne le ramène jamais en boucle.
+// compte du propriétaire (admin), et seulement quand la page Onboarding existe (P1-E). La redirection a lieu avant
+// d'afficher la page demandée (pas d'accueil entrevu puis remplacé) ; le joueur peut ensuite naviguer librement :
+// passer l'accueil ne le ramène jamais en boucle (retour arrière compris : la page demandée reste dans l'historique).
 const ONBOARDING_KEY = 'albummania.onboardingRedirect';
 const ONBOARDING_SKIP = /^\/(legal|settings|report|welcome|verify|reset|dev)(\/|$)/;
 const onboardingDone = new Set(); // comptes déjà redirigés dans cette page (repli du sessionStorage)
@@ -46,22 +51,32 @@ function rememberOnboardingRedirect(userId) {
   }
 }
 
-function OnboardingRedirect() {
+/** La redirection vers /welcome est-elle due pour cette page ? */
+function useOnboardingDue() {
   const { user, isAdmin } = useGame();
   const { pathname } = useLocation();
+  return !!user && user.onboarded === false && !isAdmin && !ONBOARDING_SKIP.test(pathname) && pageExists('Onboarding')
+    && !seenOnboardingRedirect(user.id);
+}
+
+/** Rendue à la place de la page demandée : retient la redirection (une par session), puis mène à /welcome. */
+function OnboardingRedirect() {
+  const { user } = useGame();
   const navigate = useNavigate();
-  const pending = user?.onboarded === false && !isAdmin;
   const userId = user?.id;
+  const sent = useRef(false); // une seule navigation, même si l'effet est rejoué (mode strict)
   useEffect(() => {
-    if (!pending || seenOnboardingRedirect(userId) || ONBOARDING_SKIP.test(pathname) || !pageExists('Onboarding')) return;
+    if (sent.current) return;
+    sent.current = true;
     rememberOnboardingRedirect(userId);
     navigate('/welcome');
-  }, [pending, userId, pathname, navigate]);
+  }, [userId, navigate]);
   return null;
 }
 
 export default function App() {
   const { status } = useGame();
+  const onboardingDue = useOnboardingDue();
 
   if (status === 'loading') {
     return <div className="boot"><Logo /><Spinner /></div>;
@@ -80,15 +95,16 @@ export default function App() {
   return (
     <div className="shell">
       <ScrollToTop />
-      <OnboardingRedirect />
       <Header />
       <TermsBanner />
       <main className="page sh-main" id="main" tabIndex={-1}>
         <Suspense fallback={<div className="boot boot--inline"><Spinner /></div>}>
-          <Routes>{userRoutes}</Routes>
+          {onboardingDue ? <OnboardingRedirect /> : <Routes>{userRoutes}</Routes>}
         </Suspense>
       </main>
       <Footer />
+      <LevelUpToast />
+      <BadgeToast />
     </div>
   );
 }

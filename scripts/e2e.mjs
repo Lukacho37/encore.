@@ -104,6 +104,8 @@ await run('desktop', { width: 1280, height: 820 }, async (page) => {
   await page.waitForSelector('.album-head');
   await page.waitForTimeout(300);
   await shot(page, '12-album-college-dropout');
+  // P1 : la tracklist est la vue par défaut de la page d'album (PLAN.md 2.5) ; les cartes sont à un clic.
+  if (!(await page.locator('.card-grid .card').count())) await page.locator('.toolbar .seg__btn', { hasText: 'Cartes' }).click();
   await page.click('.card-grid .card');
   await page.waitForSelector('.card-detail');
   await page.waitForTimeout(300);
@@ -125,7 +127,7 @@ await run('desktop', { width: 1280, height: 820 }, async (page) => {
   await shot(page, '12b-album-review');
   // Vue tracklist
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.click('.toolbar .seg__btn:nth-child(2)');
+  await page.locator('.toolbar .seg__btn', { hasText: 'Tracklist' }).click();
   await page.waitForSelector('.tracklist');
   await page.waitForTimeout(300);
   await shot(page, '12c-tracklist');

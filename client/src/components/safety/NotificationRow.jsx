@@ -42,6 +42,8 @@ export function notificationHref(n) {
   if (kind === 'friend_request') return '/friends';
   if (kind === 'friend_accept') return actor ? `/u/${enc(actor.username)}` : '/friends';
   if (kind === 'terms_updated') return pageExists('Legal') ? '/legal/terms' : null;
+  // Médaille gagnée (P1-F) : la page des badges plutôt que son propre Studio.
+  if (kind === 'badge_earned') return pageExists('Badges') ? '/badges' : null;
   if (kind === 'report_resolved') return null;
   if (!target) return null;
   if (kind === 'moderation_action' || kind === 'appeal_decided') {

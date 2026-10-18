@@ -298,8 +298,9 @@ async function main() {
         if (!/rgba\(0, 0, 0, 0\)|transparent/.test(d.bg)) fail(`[${v}-player] bouton désactivé avec un fond ${d.bg}`);
       }
       if (!hero.disabled.length) fail(`[${v}-player] aucun bouton désactivé trouvé sur l'accueil d'un nouveau joueur`);
-      // Fil des amis vide : l'état vide propose de trouver des amis.
-      const feedEmpty = await page.locator('.empty-state a[href="/friends"]').count();
+      // Fil sans ami : l'état vide (P0) ou, depuis P1, la carte « Trouve des amis » en tête de l'onglet Communauté
+      // propose de trouver des amis.
+      const feedEmpty = await page.locator('.empty-state a[href="/friends"], .so-invite a[href="/friends"]').count();
       if (!feedEmpty) fail(`[${v}-player] état vide du fil des amis absent`);
       await capture(page, `${v}-10-new-home-full`, { fullPage: true });
       if (v === 'm') {
@@ -327,7 +328,8 @@ async function main() {
       await asUser(page, lib.ADMIN.username);
       await visit(page, v, '/', '.hero', '30-home', { full: true, ms: 1200 });
       // Fil des amis : la note de l'ami mène à la page de l'album (même lien que partout, useRatedItem).
-      const feed = await page.locator('.feed__item .feed__title[href^="/album/"]').count();
+      // P1 : la critique de l'ami est un élément du fil (P1-A) avec le lien de l'album critiqué.
+      const feed = await page.locator('.feed__item .feed__title[href^="/album/"], [data-feed-item] a[href^="/album/"]').count();
       if (!feed) fail(`[${v}-collector] fil des amis vide alors qu'un ami a noté un album`);
 
       // Guide des raretés (séparation jeu / œuvres, royalties = monnaie de jeu), empilé sur téléphone.

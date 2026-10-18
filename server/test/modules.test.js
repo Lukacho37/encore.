@@ -77,7 +77,7 @@ test('deps : dépendances partagées et API sans effet des squelettes', () => {
   assert.equal(deps.access.canSee(2, 2, 'private'), true);
   assert.equal(deps.access.linkPolicy('texte'), 'texte');
   assert.equal(deps.notifications.unreadCount(1), 0);
-  // Modules du niveau P1 : encore des squelettes en P0.
+  // Modules du niveau P1, remplis depuis : joueur inconnu (id 1 sans compte) → rien d'écrit, aucun score, aucun cosmétique.
   assert.equal(deps.lists.setGrid9(1, []), undefined);
   assert.equal(deps.match.cachedScore(1, 2), null);
   assert.deepEqual(deps.collection.unlockedCosmetics(1), []);

@@ -22,7 +22,7 @@ import NotFound from './NotFound.jsx';
 import { pageExists } from '../routes.jsx';
 import { RARITY, SHOWCASE_SLOTS } from '@shared/rules.js';
 import { post } from '../api.js';
-import { usePressCost } from '../components/game/press.js';
+import { usePressCost, PROMO_PRESS_COST } from '../components/game/press.js';
 import { VernirButton } from '../components/game/VernirButton.jsx';
 import { AddToListButton } from '../components/lists/AddToList.jsx';
 import { Discussions } from '../components/social/Discussions.jsx';
@@ -169,7 +169,11 @@ function MyCard({ page, onPress }) {
             <Icon name="press" /> {t('album.press')} · {isAdmin ? t('album.pressFreeShort') : <><RoyaltyIcon size={14} /> <span className="mono">{cost}</span></>}
           </button>
         )}
-        {!mine && cost == null && !press.loading && <p className="small muted">{t('track.mine.promoHint')}</p>}
+        {!mine && cost == null && !press.loading && (
+          <p className="small muted">
+            {press.locked ? t('game.press.promoLocked', { artist: track.artist, cost: PROMO_PRESS_COST }) : t('track.mine.promoHint')}
+          </p>
+        )}
         {mine && (
           <button type="button" className="btn btn--ghost" onClick={togglePin} disabled={busy}>
             {pinned ? t('card.unpin') : t('card.pin')}

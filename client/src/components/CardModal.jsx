@@ -67,7 +67,8 @@ function CardDetail({ trackId, onClose }) {
 
   const togglePin = async () => {
     let slots = [...showcase];
-    while (slots.length < SHOWCASE_SLOTS) slots.push(null);
+    // Places de la vitrine : 6, +1 aux niveaux 10 et 30 (P1-D, donné par /api/state).
+    while (slots.length < (user?.slots?.showcase ?? SHOWCASE_SLOTS)) slots.push(null);
     if (pinned) slots = slots.map((id) => (id === trackId ? null : id));
     else {
       const free = slots.indexOf(null);

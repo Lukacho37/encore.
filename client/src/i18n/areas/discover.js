@@ -151,6 +151,7 @@ export default {
       back: 'Retour',
       skipAll: 'Plus tard',
       finish: 'Voir mon profil musical',
+      finishShort: 'Voir mon profil',
       saving: 'On prépare ton profil…',
       genres: {
         title: 'Tes genres préférés',
@@ -213,6 +214,7 @@ export default {
         firstSteps: 'Premiers pas',
         firstStepsBody: 'Une petite série de quêtes pour bien commencer, avec leurs récompenses.',
         quests: 'Voir mes quêtes',
+        stepDone: 'fait',
         discover: 'Tout Découvrir',
       },
       error: 'Impossible de charger cette étape.',
@@ -380,6 +382,7 @@ export default {
       back: 'Back',
       skipAll: 'Later',
       finish: 'See my music profile',
+      finishShort: 'See my profile',
       saving: 'Building your profile…',
       genres: {
         title: 'Your favourite genres',
@@ -442,6 +445,7 @@ export default {
         firstSteps: 'First steps',
         firstStepsBody: 'A short series of quests to get going, with their rewards.',
         quests: 'See my quests',
+        stepDone: 'done',
         discover: 'Explore Discover',
       },
       error: 'This step could not be loaded.',

@@ -19,8 +19,9 @@ import { post } from '../api.js';
 import { useI18n } from '../i18n/index.jsx';
 import { useGame } from '../state/GameContext.jsx';
 import { apiPath, clearApiCache, useAlbums, useApi, useArtists } from '../state/catalog.js';
-import { Icon, MiniPack, Spinner, useToast } from '../components/ui.jsx';
+import { Icon, Spinner, useToast } from '../components/ui.jsx';
 import CoverArt from '../components/CoverArt.jsx';
+import { PackArt } from '../components/PackOpening.jsx';
 import { AlbumTile } from '../components/AlbumTile.jsx';
 import { RatingInput } from '../components/Rating.jsx';
 import { ErrorBox } from '../components/feedback.jsx';
@@ -234,7 +235,7 @@ function RateRow({ albumId, album, value, onChange }) {
         <span className="dc-rate__artist">{album ? `${album.artist}${album.year ? ` · ${album.year}` : ''}` : ''}</span>
       </span>
       <span className="dc-rate__input">
-        <RatingInput value={typeof value === 'number' ? value : null} onChange={(v) => onChange(v)} size={26} compact label={album?.title} />
+        <RatingInput value={typeof value === 'number' ? value : null} onChange={(v) => onChange(typeof v === 'number' ? v : undefined)} size={26} compact label={album?.title} />
         <button type="button" className={`btn btn--ghost btn--sm dc-rate__skip${skipped ? ' is-on' : ''}`} aria-pressed={skipped}
           onClick={() => onChange(skipped ? undefined : null)} data-not-heard="">
           {skipped && <Icon name="check" size={14} />} {t('onboarding.rate.notHeard')}
@@ -280,6 +281,28 @@ function boosterLabel(t, b, albums) {
   return t('onboarding.result.booster.album');
 }
 
+/** « Premiers pas » : la série de quêtes (libellés de l'espace « quests » de P1-F), la première déjà faite. */
+function FirstSteps({ steps }) {
+  const { t } = useI18n();
+  const rows = (steps || []).map((s) => ({ ...s, label: t(`quests.q.${s.id}`, { n: s.target }) }))
+    .filter((s) => !s.label.startsWith('quests.'));
+  if (!rows.length) return null;
+  return (
+    <ol className="dc-first">
+      {rows.map((s) => {
+        const done = s.metric === 'onboarded';
+        return (
+          <li key={s.id} className={done ? 'is-done' : undefined} data-first-step={s.id}>
+            <span className="dc-first__mark" aria-hidden="true">{done && <Icon name="check" size={12} />}</span>
+            <span>{s.label}</span>
+            {done && <span className="sr-only">{t('onboarding.result.stepDone')}</span>}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 function Result({ result }) {
   const { t } = useI18n();
   const p = result.profile || {};
@@ -315,9 +338,15 @@ function Result({ result }) {
             <>
               <p className="small muted">{t('onboarding.result.boostersBody')}</p>
               <ul className="dc-boosters">
-                {result.boosters.map((b) => (
-                  <li key={b.id} className="dc-booster" data-booster={b.theme}><MiniPack /> <span>{boosterLabel(t, b, albumMap)}</span></li>
-                ))}
+                {result.boosters.map((b) => {
+                  const albumId = b.theme?.startsWith('album:') && b.theme !== 'album:choice' ? b.theme.slice(6) : null;
+                  return (
+                    <li key={b.id} className="dc-booster" data-booster={b.theme}>
+                      <span className="dc-booster__pack"><PackArt album={albumId ? albumMap.get(albumId) : undefined} /></span>
+                      <span>{boosterLabel(t, b, albumMap)}</span>
+                    </li>
+                  );
+                })}
               </ul>
             </>
           ) : <p className="small muted">{t('onboarding.result.boostersNone')}</p>}
@@ -325,6 +354,7 @@ function Result({ result }) {
         <section className="panel" data-result="first-steps">
           <h2 className="panel__title"><Icon name="trophy" /> {t('onboarding.result.firstSteps')}</h2>
           <p className="small muted">{t('onboarding.result.firstStepsBody')}</p>
+          <FirstSteps steps={result.firstSteps} />
           <Link to="/quests#first" className="btn btn--ghost btn--sm">{t('onboarding.result.quests')}</Link>
         </section>
       </div>
@@ -388,14 +418,15 @@ export default function Onboarding() {
   const options = useApi(query && step >= 1 && step <= 3 ? query : null).data;
 
   const gridIds = grid.filter(Boolean);
-  const queryFor = (next) => apiPath('/onboarding', {
-    genres: genres.join(','),
-    artists: next >= 2 ? artists.join(',') : '',
-    exclude: next >= 3 ? gridIds.join(',') : '',
+  // `over` : ce que l'étape qu'on passe vient de vider (l'état n'est pas encore à jour dans cette fermeture).
+  const queryFor = (next, over = {}) => apiPath('/onboarding', {
+    genres: (over.genres ?? genres).join(','),
+    artists: next >= 2 ? (over.artists ?? artists).join(',') : '',
+    exclude: next >= 3 ? (over.grid ?? gridIds).join(',') : '',
   });
 
-  const go = (next) => {
-    if (next >= 1 && next <= 3) setQuery(queryFor(next));
+  const go = (next, over) => {
+    if (next >= 1 && next <= 3) setQuery(queryFor(next, over));
     setStep(next);
     window.scrollTo({ top: 0 });
   };
@@ -447,13 +478,13 @@ export default function Onboarding() {
   const next = (skip = false) => {
     if (step === 0) {
       if (skip) setGenres([]);
-      go(1);
+      go(1, skip ? { genres: [] } : undefined);
     } else if (step === 1) {
       if (skip) setArtists([]);
-      go(2);
+      go(2, skip ? { artists: [] } : undefined);
     } else if (step === 2) {
       if (skip) setGrid(EMPTY_GRID);
-      go(3);
+      go(3, skip ? { grid: [] } : undefined);
     } else if (step === 3) {
       submit(skip ? { ratings: {}, grid: gridIds } : { grid: gridIds });
     }
@@ -507,15 +538,20 @@ export default function Onboarding() {
 
         <div className="onboard__foot">
           {step > 0 ? (
-            <button type="button" className="btn btn--quiet" onClick={() => go(step - 1)} disabled={busy}>
-              <Icon name="back" size={16} /> {t('onboarding.back')}
+            <button type="button" className="btn btn--quiet dc-foot__back" onClick={() => go(step - 1)} disabled={busy} aria-label={t('onboarding.back')}>
+              <Icon name="back" size={16} /> <span className="dc-foot__label">{t('onboarding.back')}</span>
             </button>
           ) : <span />}
           {hint && <span className="dc-foot__hint" aria-live="polite">{hint}</span>}
           <span className="dc-foot__right">
             <button type="button" className="btn btn--quiet" onClick={() => next(true)} disabled={busy} data-onboarding-skip="">{t('onboarding.skip')}</button>
             <button type="button" className="btn btn--primary btn--lg" onClick={() => next(false)} disabled={busy || !valid} data-onboarding-next="">
-              {busy ? <><Spinner /> {t('onboarding.saving')}</> : step === 3 ? t('onboarding.finish') : t('onboarding.next')}
+              {busy ? <><Spinner /> {t('onboarding.saving')}</> : step === 3 ? (
+                <>
+                  <span className="dc-foot__long">{t('onboarding.finish')}</span>
+                  <span className="dc-foot__short" aria-hidden="true">{t('onboarding.finishShort')}</span>
+                </>
+              ) : t('onboarding.next')}
             </button>
           </span>
         </div>

@@ -70,7 +70,7 @@ export function ShowcaseBlock({ profile, isSelf, onPickSlot, onRemoveSlot }) {
       <div className="studio__desk">
         <div className="studio__desk-head">
           <h2 className="studio__label" id="st-block-showcase">{isSelf ? t('studio.selection') : t('studio.selectionOther')}</h2>
-          {isSelf && <p className="small muted">{t('studio.selectionHint')}</p>}
+          {isSelf && <p className="small muted">{t('studio.selectionHint', { n: slots })}</p>}
         </div>
         <div className="showcase st-showcase__grid">
           {showcase.map((item, i) => (

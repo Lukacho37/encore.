@@ -277,8 +277,12 @@ if (fs.existsSync(demoFile)) {
       await page.waitForSelector('.field__ok');
       await page.click('button[type=submit]');
       await page.click('.demo-mail .btn');
-      await page.waitForSelector('.hero');
-      // Parcours d'accueil (P1-E) éventuel : on revient à l'accueil.
+      // Parcours d'accueil (P1-E) : un nouveau compte arrive sur /welcome (une fois par session) ; on revient à l'accueil.
+      await page.waitForSelector('.hero, [data-onboarding]');
+      if (!(await page.locator('.hero').count())) {
+        await page.goto(`file://${demoFile}`);
+        await page.waitForSelector('.hero');
+      }
       if (!(await page.locator('#boosters-speciaux').count())) {
         await page.locator('a[href="/"]:visible').first().click().catch(() => {});
       }

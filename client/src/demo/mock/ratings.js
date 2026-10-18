@@ -141,9 +141,6 @@ function itemPayload(ctx, uid, type, id) {
       : null,
     friends: { scores, reviews: friends.items, nextCursor: friends.nextCursor },
     community: { reviews: community.items, nextCursor: community.nextCursor },
-    // Anciennes clés, comme le serveur (retirées par P1-A).
-    reviews: [...friends.items, ...community.items],
-    friendScores: scores.map((s) => ({ user: s.user, score: s.score })),
   };
   if (type === 'album') {
     const averages = {};

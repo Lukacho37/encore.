@@ -176,8 +176,9 @@
   gap: var(--s-16);
 }
 
-.st-restricted {
-  max-width: 640px;
+/* Studio « amis » ou « privé » vu par un autre : le message sous l'en-tête, sur toute la largeur. */
+.st-restricted .empty {
+  padding-block: var(--s-40);
 }
 
 /* ---------- vue d'ensemble : blocs ---------- */
@@ -260,6 +261,11 @@
 
 .st-block .st-nine:not(:has(.ls-grid-block)) {
   display: none;
+}
+
+/* Sa grille encore vide : plus petite (une invitation, pas neuf grandes cases vides). */
+.st-nine .ls-grid-block:has(.ls-grid-block__empty) {
+  max-width: 420px;
 }
 
 /* Vitrine : nombre de places selon le niveau (6, puis 7 et 8 aux niveaux 10 et 30) ; une ligne sur grand écran. */
@@ -556,6 +562,101 @@
   grid-column: 1 / -1;
 }
 
+/* Tracklist (ou cartes) et « Tes amis » : deux tiers / un tiers à partir de 1080 px ; plus étroit, l'encart disparaît
+   (les notes des amis sont alors dans « Notes & critiques »). */
+.st-album-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-24);
+  align-items: start;
+}
+
+.st-album-main .st-aside {
+  display: none;
+}
+
+@media (min-width: 1080px) {
+  .st-album-main {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+
+  .st-album-main .st-aside {
+    display: flex;
+  }
+}
+
+.st-aside {
+  flex-direction: column;
+  gap: var(--s-14);
+}
+
+.st-aside .panel__title {
+  margin: 0;
+}
+
+.st-aside .st-aside__scores,
+.st-aside .st-aside__reviews {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-10);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.st-aside .st-aside__scores li,
+.st-aside .st-aside__review-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-8);
+  min-width: 0;
+}
+
+.st-aside .st-aside__reviews {
+  gap: var(--s-14);
+  padding-top: var(--s-14);
+  border-top: 1px solid var(--line-soft);
+}
+
+.st-aside .st-aside__who {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-8);
+  min-width: 0;
+  color: var(--paper);
+  font-size: var(--fs-14);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.st-aside .st-aside__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.st-aside .st-aside__text {
+  margin-top: var(--s-6);
+  color: var(--haze);
+  font-size: var(--fs-14);
+}
+
+.st-aside .st-aside__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-12);
+}
+
+.st-aside .st-aside__empty p {
+  margin: 0;
+}
+
+.st-aside .st-aside__all {
+  align-self: flex-start;
+}
+
 .st-pressall p {
   margin: 0;
 }
@@ -633,16 +734,17 @@
   margin-top: var(--s-20);
 }
 
+/* Lignes plus larges que celles d'avant : le Taste Match et les actions tiennent à côté du nom. */
+.st-friends-panel .friend-list {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr));
+}
+
 .st-friend .st-friend__match {
   flex: none;
 }
 
 .st-friend .st-friend__match:empty {
   display: none;
-}
-
-.st-friends-suggest__head p {
-  margin: var(--s-4) 0 0;
 }
 
 /* Tant que les suggestions (P1-E) ne rendent rien, leur état vide prend la place. */

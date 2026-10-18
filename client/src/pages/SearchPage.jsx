@@ -12,6 +12,7 @@ import { prepareQuery, SEARCH_KINDS } from '@shared/search.js';
 import { AlbumTile } from '../components/AlbumTile.jsx';
 import { EmptyState, ErrorBox, LoadMore, Skeleton } from '../components/feedback.jsx';
 import { SafetyMenu } from '../components/safety/SafetyMenu.jsx';
+import { AddToListButton } from '../components/lists/AddToList.jsx';
 import { SearchCombobox } from '../components/search/SearchCombobox.jsx';
 import { countLabel, lookupOf, optionFor, recentEntryOf, RecentBody, ResultLink } from '../components/search/results.jsx';
 import '../styles/search.css';
@@ -35,9 +36,11 @@ function Rows({ kind, rows, lookup, query }) {
   return (
     <ul className="gs-rows">
       {options.map((o) => (
-        <li key={o.key} className={kind === 'user' ? 'gs-rows__member' : undefined}>
+        <li key={o.key} className={kind === 'user' || kind === 'track' ? 'gs-rows__member' : undefined}>
           <ResultLink option={o} query={query} to={resultPath(o.pick)} onClick={() => rememberSearch(recentEntryOf(o, t))} />
           {kind === 'user' && o.item.relation !== 'self' && <SafetyMenu target={{ type: 'user', id: o.item.id }} user={o.item} />}
+          {/* « Ajouter à une liste » depuis la recherche (P1-C, PLAN.md 8.2 P1.3), à côté du lien et jamais dedans. */}
+          {kind === 'track' && <AddToListButton item={{ type: 'track', id: o.id }} compact />}
         </li>
       ))}
     </ul>

@@ -296,6 +296,8 @@ export function init(deps) {
   });
   // Taste Match calculé (module match, P1-E) ou amitié acceptée : « Bonne entente » pour les deux joueurs.
   on('match.computed', (p = {}) => {
+    // Un match sous le seuil ne peut rien débloquer : pas de réévaluation (les suggestions en calculent beaucoup).
+    if (typeof p.score === 'number' && p.score < FRIENDLY_SCORE) return;
     for (const id of [p.userId, p.otherId, p.userA, p.userB, p.a, p.b]) if (id) evaluate(id, 'friendly');
   });
   on('friend.accepted', ({ userId, friendId }) => {

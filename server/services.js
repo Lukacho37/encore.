@@ -273,7 +273,9 @@ export function createServices(db, catalog, { bus = null } = {}) {
     // r : rareté, pour que le site compte doublons et raretés sans charger chaque carte.
     const cards = q('SELECT c.track_id, c.variant, c.count, c.first_at, t.rarity FROM cards c JOIN cat_tracks t ON t.id = c.track_id WHERE c.user_id = ?').all(userId)
       .map((r) => ({ t: r.track_id, v: r.variant, c: r.count, at: r.first_at, r: r.rarity }));
-    const achievements = q('SELECT key, created_at, rank FROM achievements WHERE user_id = ?').all(userId)
+    // Les badges (clés « badge:… », PLAN.md 5.7) ont leur propre route (/api/badges) : l'état ne garde que les albums
+    // complétés et les artistes maîtrisés, comme les deltas des actions que le site y fusionne.
+    const achievements = q("SELECT key, created_at, rank FROM achievements WHERE user_id = ? AND NOT (key >= 'badge:' AND key < 'badge;')").all(userId)
       .map((r) => ({ key: r.key, at: r.created_at, rank: r.rank ?? null }));
     const ratings = q('SELECT item_type, item_id, score FROM ratings WHERE user_id = ?').all(userId)
       .map((r) => ({ t: r.item_type, i: r.item_id, s: r.score }));

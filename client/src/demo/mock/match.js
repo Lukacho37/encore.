@@ -111,6 +111,11 @@ function pairResult(ctx, viewerId, otherId) {
   const A = profileOf(ctx, lo);
   const B = profileOf(ctx, hi);
   const r = compareProfiles(A, B);
+  // Comme la table taste_matches du serveur : le score de la paire est gardé (il nourrit le badge « Bonne entente »).
+  if (!Array.isArray(ctx.db.tasteMatches)) ctx.db.tasteMatches = [];
+  const kept = ctx.db.tasteMatches.find((m) => m.userA === lo && m.userB === hi);
+  if (kept) kept.score = r.score;
+  else ctx.db.tasteMatches.push({ userA: lo, userB: hi, score: r.score });
   const info = (id) => albumInfo(ctx, id);
   const data = {
     hasData: r.hasData, score: r.score, confidence: r.confidence, components: r.components, shared: r.shared, differences: r.differences,

@@ -89,6 +89,8 @@ a.match-figure:hover b { color: var(--paper); }
 }
 
 .match-bars .mono { text-align: right; color: var(--haze); font-size: var(--fs-12); }
+/* Une composante à 100 n'est pas un album complété : pas de dorure. */
+.match-bars .progress--done .progress__fill { background: var(--pc); }
 .match-bars li.is-empty .progress { opacity: 0.45; }
 
 .cover-row {
@@ -131,6 +133,7 @@ a.match-figure:hover b { color: var(--paper); }
 .dc-suggest__list {
   display: grid;
   gap: var(--s-8);
+  container-type: inline-size;
 }
 
 .dc-suggest .user-card { background: var(--stage-2); }
@@ -142,6 +145,25 @@ a.match-figure:hover b { color: var(--paper); }
 }
 
 .dc-suggest__btn { white-space: nowrap; }
+
+/* Colonne étroite (accueil, téléphone) : pseudo et raison en entier, pourcentage et « Ajouter » sur la ligne d'en dessous. */
+@container (max-width: 440px) {
+  .dc-suggest .user-card {
+    grid-template-columns: auto minmax(0, 1fr);
+    row-gap: var(--s-8);
+  }
+
+  .dc-suggest .dc-suggest__actions {
+    grid-column: 2;
+    justify-content: space-between;
+  }
+
+  .dc-suggest .dc-suggest__actions .match-figure {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--s-6);
+  }
+}
 
 /* Carte « Ton profil musical » (compte pas encore passé par les premiers pas) */
 .dc-invite {
@@ -341,6 +363,8 @@ a.match-figure:hover b { color: var(--paper); }
   gap: var(--s-8);
 }
 
+.dc-match-head__actions .btn { justify-content: center; }
+
 .dc-match-skel { display: block; min-height: 180px; border-radius: var(--radius-lg); }
 
 .dc-match__note { margin: 0; color: var(--haze); font-size: var(--fs-14); }
@@ -351,6 +375,9 @@ a.match-figure:hover b { color: var(--paper); }
   gap: var(--s-16);
   align-items: start;
 }
+
+/* Un bloc seul sur sa rangée (pas de différences, par exemple) prend toute la largeur. */
+.dc-match__cols > :only-child { grid-column: 1 / -1; }
 
 .dc-match .match-bars { gap: var(--s-14); }
 
@@ -691,6 +718,7 @@ a.match-figure:hover b { color: var(--paper); }
 }
 
 .onboard__foot .dc-foot__hint { color: var(--haze); font-size: var(--fs-13); }
+.onboard__foot .dc-foot__short { display: none; }
 .onboard__foot .dc-foot__right { display: flex; align-items: center; gap: var(--s-12); margin-left: auto; }
 
 .dc-result__profile {
@@ -729,7 +757,63 @@ a.match-figure:hover b { color: var(--paper); }
   font-weight: var(--fw-semi);
 }
 
-.dc-booster .mini-pack { flex: none; }
+/* Le booster de la série en petit (PackArt), sans ses inscriptions : le nom est écrit à côté. */
+.dc-booster__pack {
+  display: block;
+  flex: none;
+  line-height: 0;
+}
+
+.dc-booster__pack .pack {
+  --pw: 30px;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.45));
+}
+
+.dc-booster__pack .pack__brand,
+.dc-booster__pack .pack__label,
+.dc-booster__pack .pack__content,
+.dc-booster__pack .pack__series,
+.dc-booster__pack .pack__album-brand,
+.dc-booster__pack .pack__album-label,
+.dc-booster__pack .pack__album-title,
+.dc-booster__pack .pack__album-artist,
+.dc-booster__pack .pack__album-content {
+  display: none;
+}
+
+/* « Premiers pas » : la série de quêtes, la première cochée */
+.dc-first {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-6);
+  font-size: var(--fs-13);
+}
+
+.dc-first li {
+  display: flex;
+  align-items: center;
+  gap: var(--s-10);
+}
+
+.dc-first__mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+}
+
+.dc-first li.is-done { color: var(--haze); }
+
+.dc-first li.is-done .dc-first__mark {
+  border-color: var(--cue);
+  background: var(--cue);
+  color: var(--ink);
+}
 
 .dc-result__cta {
   display: flex;
@@ -779,6 +863,12 @@ a.match-figure:hover b { color: var(--paper); }
   .dc-step { padding: var(--s-16); }
   .onboard__foot { margin: 0 calc(-1 * var(--s-16)) calc(-1 * var(--s-16)); padding: 12px var(--s-16) var(--s-14); }
   .onboard__foot .dc-foot__hint { flex-basis: 100%; order: -1; }
+  /* « Retour » en icône seule : les trois boutons tiennent sur une ligne au-dessus de la barre d'onglets. */
+  .onboard__foot .dc-foot__back { padding-inline: var(--s-10); }
+  .onboard__foot .dc-foot__label { display: none; }
+  .onboard__foot .dc-foot__long { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .onboard__foot .dc-foot__short { display: inline; }
+  .onboard__foot .dc-foot__right { gap: var(--s-8); }
   .dc-rate__item { grid-template-columns: 56px minmax(0, 1fr); }
   .dc-rate__cover { width: 56px; height: 56px; }
   .dc-rate__input { grid-column: 1 / -1; justify-content: space-between; }

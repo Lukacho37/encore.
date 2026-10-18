@@ -19,7 +19,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   ROOT, BASE as INITIAL_BASE, OUT, VIEWPORTS, shot, fail, finish, setBase, startStack, checkNoHorizontalScroll,
-  launch, routeFonts, ignoredConsole, run, fillSignup, lastMailToken, signupViaApi, apiCall,
+  launch, routeFonts, ignoredConsole, fillSignup, lastMailToken, signupViaApi, apiCall,
 } from './lib.mjs';
 
 let stack = null;
@@ -35,8 +35,46 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Albums de base du catalogue (mêmes identifiants dans la démo) notés par le jumeau de goûts.
 const TWIN_RATINGS = [
   ['discovery', 10], ['moon-safari', 9], ['random-access-memories', 9], ['thriller', 8], ['abbey-road', 9],
-  ['nevermind', 8], ['the-dark-side-of-the-moon', 9], ['21', 7], ['back-to-black', 3],
+  ['nevermind', 8], ['the-dark-side-of-the-moon', 9], ['21', 7], ['back-to-black', 9],
 ];
+const GENRES = ['electro', 'rock', 'pop'];
+
+/**
+ * Comme lib.run, mais le 403 attendu de la page Taste Match d'un Studio privé (GET /api/match/priv_…, réponse
+ * match_unavailable que la page affiche) n'est pas compté comme une erreur de console.
+ */
+async function runE(name, viewport, fn) {
+  const b = await launch();
+  const ctx = await b.newContext({ viewport, deviceScaleFactor: 1, locale: 'fr-FR' });
+  await routeFonts(ctx);
+  const page = await ctx.newPage();
+  const expected403 = (m) => /status of 403/.test(m.text()) && (m.location()?.url || '').includes('/api/match/priv_');
+  page.on('pageerror', (e) => fail(`[${name}] ${e.message}`));
+  page.on('console', (m) => m.type() === 'error' && !ignoredConsole(m.text()) && !expected403(m) && fail(`[${name}] console: ${m.text()}`));
+  fs.mkdirSync(OUT, { recursive: true });
+  try {
+    await fn(page, ctx);
+  } catch (err) {
+    await page.screenshot({ path: `${OUT}/zz-error-${name}.png` }).catch(() => {});
+    fail(`[${name}] ${err.stack || err.message}`);
+  } finally {
+    await ctx.close();
+  }
+}
+
+/**
+ * Le jumeau fait par l'API les mêmes premiers pas que le compte neuf fera par le site (mêmes genres, les trois
+ * premiers artistes proposés, les quatre premiers albums proposés et Back to Black) : des goûts proches pour de vrai
+ * (artistes favoris en commun → ami suggéré ; « Mes 9 albums » en commun → albums partagés du Taste Match).
+ */
+async function twinOnboarding(page, label) {
+  const first = await apiCall(page, 'GET', `/onboarding?genres=${GENRES.join(',')}`);
+  const artists = (first.body?.artists || []).slice(0, 3);
+  const second = await apiCall(page, 'GET', `/onboarding?genres=${GENRES.join(',')}&artists=${artists.map(encodeURIComponent).join(',')}`);
+  const picks = (second.body?.albums || [])[0]?.items?.slice(0, 4) || [];
+  const res = await apiCall(page, 'POST', '/onboarding', { genres: GENRES, artists, grid9: [...picks, 'back-to-black'], ratings: [] });
+  if (res.status !== 200 || picks.length < 4) fail(`[${label}] premiers pas du jumeau : ${res.status} ${JSON.stringify(res.body).slice(0, 200)}`);
+}
 
 /** Compte secondaire dans un contexte à part (session gardée par ce contexte) ; renvoie { page, ctx, user }. */
 async function account(username) {
@@ -83,7 +121,7 @@ async function onboarding(page, label, p) {
   await shot(page, `${p}-10-onboarding-genres`);
   const next = page.locator('[data-onboarding-next]');
   if (!(await next.isDisabled())) fail(`[${label}] « Continuer » actif avant 3 genres`);
-  for (const g of ['electro', 'rock', 'pop']) await page.click(`.genre-btn[data-genre="${g}"]`);
+  for (const g of GENRES) await page.click(`.genre-btn[data-genre="${g}"]`);
   if (await next.isDisabled()) fail(`[${label}] « Continuer » inactif avec 3 genres`);
   await next.click();
 
@@ -135,9 +173,10 @@ async function onboarding(page, label, p) {
 async function player(name, viewport) {
   const label = name;
   const p = name === 'desktop' ? 'd' : 'p';
-  await run(label, viewport, async (page) => {
+  await runE(label, viewport, async (page) => {
     // Jumeau de goûts (ami) et inconnu au Studio privé.
     const twin = await account(`twin_${p}${stamp}`);
+    await twinOnboarding(twin.page, label);
     await rateAll(twin.page, TWIN_RATINGS);
     const stranger = await account(`priv_${p}${stamp}`);
     await rateAll(stranger.page, TWIN_RATINGS.slice(0, 4));
@@ -288,7 +327,7 @@ if (FOCUS.has('demo') && fs.existsSync(demoFile)) {
       await page.screenshot({ path: `${OUT}/${p}-80-demo-onboarding-result.png`, fullPage: true });
       if (name === 'phone') await checkNoHorizontalScroll(page, `${label} résultat`);
       // Découvrir (onglet de la barre) : sections nourries par les joueurs fictifs.
-      await page.locator('a[href="/discover"]').first().click();
+      await page.locator('a[href="/discover"]:visible').first().click();
       await page.waitForSelector('.dc-shelf[data-section] .album-tile', { timeout: 15_000 });
       const sections = await page.locator('.dc-shelf[data-section]').count();
       if (sections < 3) fail(`[${label}] ${sections} sections dans Découvrir`);

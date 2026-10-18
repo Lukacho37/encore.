@@ -552,6 +552,23 @@
   column-gap: var(--s-8);
 }
 
+/* Téléphone : la ligne de complétion se range une information par ligne (icône à gauche), sans point en tête. */
+@media (max-width: 640px) {
+  .gm-completion__mine {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    row-gap: var(--s-4);
+  }
+
+  .gm-completion__mine > span {
+    grid-column: 2;
+  }
+
+  .gm-completion__mine .gm-moment__dot {
+    display: none;
+  }
+}
+
 .gm-completion__friends {
   display: flex;
   margin: 0;

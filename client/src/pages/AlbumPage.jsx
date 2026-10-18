@@ -1,8 +1,9 @@
 // Page d'album /album/:id — P0-C, version 2 de P1-B (PLAN.md 2.5 « Album ») : en-tête (pochette ou vinyle, titre,
 // artiste et maîtrise, progression, ligne de complétion, actions Presser les manquantes · Rechercher · Ajouter à une
-// liste · Partager, écoute officielle), booster d'album, tracklist (vue par défaut) ou cartes, notes et critiques
-// (moi, amis, communauté), discussions, statistiques, albums similaires, puis « Autour de l'album » (classements et
-// listes qui le contiennent). Les blocs des autres chantiers sont montés tels quels (contrats PLAN.md 9.2).
+// liste · Partager, écoute officielle), booster d'album, tracklist (vue par défaut) ou cartes avec « Tes amis » à côté
+// sur grand écran, notes et critiques (moi, amis, communauté), discussions, statistiques, albums similaires, puis
+// « Autour de l'album » (classements et listes qui le contiennent). Les blocs des autres chantiers sont montés tels
+// quels (contrats PLAN.md 9.2).
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useGame } from '../state/GameContext.jsx';
@@ -13,7 +14,10 @@ import { PackArt } from '../components/PackOpening.jsx';
 import { useCardModal } from '../components/CardModal.jsx';
 import ListenPanel from '../components/ListenPanel.jsx';
 import { Celebration } from '../components/Achievements.jsx';
-import { Icon, Modal, Progress, RoyaltyIcon, Spinner, useToast } from '../components/ui.jsx';
+import { Avatar, Icon, Modal, Progress, RoyaltyIcon, Spinner, useToast } from '../components/ui.jsx';
+import { Skeleton } from '../components/feedback.jsx';
+import { UgcText } from '../components/UgcText.jsx';
+import { SafetyMenu } from '../components/safety/SafetyMenu.jsx';
 import { Vinyl, TurntableModal, isHoloComplete } from '../components/Vinyl.jsx';
 import { RatingInput, RatingValue, RatingsSection, itemPath, useItemRatings } from '../components/Rating.jsx';
 import { getAlbum, useAlbumDetail, useApi, useTrack } from '../state/catalog.js';
@@ -118,6 +122,23 @@ export function TrackGridSkeleton({ count = 12 }) {
  * à la page du morceau. `trackRatings` : `tracks` des notes de l'album ({ averages: { id: { avg, count } } }).
  * `currentId` : morceau mis en avant (page morceau, « Autres morceaux de l'album »).
  */
+/**
+ * Pastille « Presser » d'une ligne de la tracklist : même coût que PressButton (usePressCost, P1-D), donc une promo
+ * débloquée (un album de son artiste complété) se presse aussi depuis la tracklist ; rien si la carte n'est pas pressable.
+ */
+function InlinePress({ track, onPress }) {
+  const { t } = useI18n();
+  const { isAdmin } = useGame();
+  const { cost } = usePressCost(track);
+  if (cost == null || !onPress) return null;
+  return (
+    <button type="button" className="press-btn press-btn--inline" onClick={() => onPress(track.id)}
+      aria-label={`${t('album.press')} · ${track.title}`}>
+      <Icon name="press" size={13} /> {isAdmin ? t('album.pressFree') : <span className="mono">{cost}</span>}
+    </button>
+  );
+}
+
 export function Tracklist({ tracks, trackRatings, onPress, currentId = null }) {
   const { t, error } = useI18n();
   const { owned, ratings, isAdmin } = useGame();
@@ -168,7 +189,6 @@ export function Tracklist({ tracks, trackRatings, onPress, currentId = null }) {
           {tracks.map((tr) => {
             const mine = owned.get(tr.id);
             const community = trackRatings?.averages?.[tr.id];
-            const cost = isAdmin ? 0 : pressCost(tr.rarity);
             const current = tr.id === currentId;
             const average = community?.count
               ? <><RatingValue value={community.avg} average size={11} /> <span className="muted small mono">({community.count})</span></>
@@ -187,12 +207,7 @@ export function Tracklist({ tracks, trackRatings, onPress, currentId = null }) {
                 <td>
                   {mine ? (
                     <span className={`owned-chip${mine.holo ? ' owned-chip--holo' : ''}`}><Icon name="check" size={13} /> {mine.holo ? t('card.holo') : `×${mine.std}`}</span>
-                  ) : cost != null ? (
-                    <button type="button" className="press-btn press-btn--inline" onClick={() => onPress(tr.id)}
-                      aria-label={`${t('album.press')} · ${tr.title}`}>
-                      <Icon name="press" size={13} /> {isAdmin ? t('album.pressFree') : <span className="mono">{cost}</span>}
-                    </button>
-                  ) : null}
+                  ) : <InlinePress track={tr} onPress={onPress} />}
                 </td>
                 <td className="trk-col-avg">{average ? <span className="tracklist__avg">{average}</span> : <span className="muted">·</span>}</td>
                 <td className="trk-col-mine"><RatingInput key={`${tr.id}-${resetKey}`} value={ratings.get(`track:${tr.id}`) ?? null} onChange={(v) => rateTrack(tr.id, v)} size={15} compact label={`${t('rating.yours')} · ${tr.title}`} /></td>
@@ -341,7 +356,7 @@ function AlbumActions({ album, missing, complete, onPressAll }) {
         </button>
       )}
       <WishlistToggle albumId={album.id} />
-      <AddToListButton item={{ type: 'album', id: album.id }} />
+      <AddToListButton item={{ type: 'album', id: album.id }} className="btn--sm" />
       {complete && (
         <span className="st-album-share">
           <ShareButton path={`/album/${encodeURIComponent(album.id)}`} title={t('studio.album.shareTitle', { title: album.title })} item={{ type: 'album', id: album.id }} />
@@ -373,9 +388,72 @@ function AlbumStats({ albumId, ratings }) {
   );
 }
 
+/**
+ * « Tes amis », à droite de la tracklist sur grand écran (≥ 1080 px, PLAN.md 2.5) : leurs notes (avatar, étoiles) et
+ * leurs dernières critiques en extrait (UgcText, menu ⋯ Signaler), qui mènent à la critique entière plus bas ; sinon
+ * une invitation à trouver des amis. Plus étroit, l'encart disparaît : les mêmes notes sont dans « Notes & critiques ».
+ * `ratings` : réponse de useItemRatings (null le temps du chargement).
+ */
+function FriendsAside({ ratings }) {
+  const { t } = useI18n();
+  const scores = (ratings?.friends?.scores || []).slice(0, 6);
+  const reviews = (ratings?.friends?.reviews || []).filter((r) => r.review && !r.moderated).slice(0, 2);
+  let body;
+  if (!ratings) body = <Skeleton kind="row" count={2} />;
+  else if (!scores.length && !reviews.length) {
+    body = (
+      <div className="st-aside__empty">
+        <p className="small muted">{t('studio.album.friendsEmpty')}</p>
+        <Link to="/friends?tab=suggestions" className="btn btn--ghost btn--sm"><Icon name="users" size={16} /> {t('studio.album.friendsFind')}</Link>
+      </div>
+    );
+  } else {
+    body = (
+      <>
+        {scores.length > 0 && (
+          <ul className="st-aside__scores">
+            {scores.map((s) => (
+              <li key={s.user.id}>
+                <Link to={`/u/${encodeURIComponent(s.user.username)}`} className="st-aside__who">
+                  <Avatar user={s.user} size={28} />
+                  <span className="st-aside__name">{s.user.username}</span>
+                </Link>
+                <RatingValue value={s.score} size={12} />
+              </li>
+            ))}
+          </ul>
+        )}
+        {reviews.length > 0 && (
+          <ul className="st-aside__reviews">
+            {reviews.map((r) => (
+              <li key={r.id} className="st-aside__review">
+                <div className="st-aside__review-head">
+                  <a href={`#review-${r.id}`} className="st-aside__who" aria-label={t('studio.album.friendsRead', { name: r.user.username })}>
+                    <Avatar user={r.user} size={24} />
+                    <span className="st-aside__name">{r.user.username}</span>
+                  </a>
+                  <SafetyMenu target={{ type: 'review', id: r.id }} user={r.user} />
+                </div>
+                <div className="st-aside__text"><UgcText text={r.review} clamp /></div>
+              </li>
+            ))}
+          </ul>
+        )}
+        <a href="#critiques" className="section__link st-aside__all">{t('studio.album.friendsAll')}</a>
+      </>
+    );
+  }
+  return (
+    <aside className="panel st-aside" aria-labelledby="st-aside-title" data-album="friends">
+      <h2 className="panel__title" id="st-aside-title"><Icon name="users" /> {t('studio.album.friendsTitle')}</h2>
+      {body}
+    </aside>
+  );
+}
+
 function AlbumView({ id }) {
   const { t } = useI18n();
-  const { achievements, owned, ratings, albumProgress, isAdmin } = useGame();
+  const { user, achievements, ranks, owned, ratings, albumProgress, isAdmin } = useGame();
   const [pressing, setPressing] = useState(null);
   const [pressAll, setPressAll] = useState(false);
   const [celebrate, setCelebrate] = useState([]);
@@ -425,6 +503,8 @@ function AlbumView({ id }) {
   const doneAt = achievements.get(`album:${id}`);
   const reward = albumReward(album.trackCount || total);
   const edition = doneAt && isHoloComplete(id, owned, tracks || album.trackCount) ? 'holo' : 'black';
+  // Couleur de vinyle choisie dans le Studio (cosmétique P1-D) : seulement pour l'édition noire, comme sur l'étagère.
+  const vinylColor = edition === 'black' ? user?.cosmetics?.vinyl ?? null : null;
   const summary = ratingsApi.data?.summary;
   const palette = album.art?.palette || [];
   const genre = album.genre ? t(`genre.${album.genre}`) : null;
@@ -443,7 +523,8 @@ function AlbumView({ id }) {
       <header className={`album-head${doneAt ? ' album-head--vinyl' : ''}`}>
         {doneAt ? (
           <div className="album-head__vinyl">
-            <Vinyl albumId={id} album={album} edition={edition} onClick={() => setTurntable({ albumId: id, edition, at: doneAt, mine: true })} label={t('album.playVinyl')} />
+            <Vinyl albumId={id} album={album} edition={edition} color={vinylColor} pressing={ranks?.get(`album:${id}`) ?? null}
+              onClick={() => setTurntable({ albumId: id, edition, at: doneAt, mine: true, color: vinylColor })} label={t('album.playVinyl')} />
           </div>
         ) : (
           <div className="album-head__cover">
@@ -484,29 +565,35 @@ function AlbumView({ id }) {
 
       <AlbumBooster album={album} complete={complete} onOpen={() => booster.openAlbum(album)} />
 
-      <div className="toolbar">
-        <div className="seg" role="group" aria-label={t('album.view')}>
-          {[['tracklist', t('album.viewTracklist')], ['cards', t('album.viewCards')]].map(([v, label]) => (
-            <button key={v} type="button" className={`seg__btn seg__btn--wide${view === v ? ' is-on' : ''}`} aria-pressed={view === v} onClick={() => chooseView(v)}>{label}</button>
-          ))}
-        </div>
-      </div>
-
-      {!tracks ? (
-        detail.error ? (
-          <div className="empty album-tracks-error">
-            <p>{t('album.tracksError')}</p>
-            <button type="button" className="btn btn--ghost btn--sm" onClick={detail.reload}>{t('album.retry')}</button>
+      {/* Tracklist (ou cartes) sur deux tiers, « Tes amis » sur le dernier tiers à partir de 1080 px (studio.css). */}
+      <div className={`st-album-main${view === 'cards' ? ' st-album-main--cards' : ''}`}>
+        <div className="st-album-main__tracks">
+          <div className="toolbar">
+            <div className="seg" role="group" aria-label={t('album.view')}>
+              {[['tracklist', t('album.viewTracklist')], ['cards', t('album.viewCards')]].map(([v, label]) => (
+                <button key={v} type="button" className={`seg__btn seg__btn--wide${view === v ? ' is-on' : ''}`} aria-pressed={view === v} onClick={() => chooseView(v)}>{label}</button>
+              ))}
+            </div>
           </div>
-        ) : (
-          <>
-            <span className="sr-only" role="status">{t('album.loading')}</span>
-            <TrackGridSkeleton count={album.trackCount || 12} />
-          </>
-        )
-      ) : view === 'cards'
-        ? <TrackGrid tracks={tracks} onPress={setPressing} />
-        : <Tracklist tracks={tracks} trackRatings={ratingsApi.data?.tracks} onPress={setPressing} />}
+
+          {!tracks ? (
+            detail.error ? (
+              <div className="empty album-tracks-error">
+                <p>{t('album.tracksError')}</p>
+                <button type="button" className="btn btn--ghost btn--sm" onClick={detail.reload}>{t('album.retry')}</button>
+              </div>
+            ) : (
+              <>
+                <span className="sr-only" role="status">{t('album.loading')}</span>
+                <TrackGridSkeleton count={album.trackCount || 12} />
+              </>
+            )
+          ) : view === 'cards'
+            ? <TrackGrid tracks={tracks} onPress={setPressing} />
+            : <Tracklist tracks={tracks} trackRatings={ratingsApi.data?.tracks} onPress={setPressing} />}
+        </div>
+        <FriendsAside ratings={ratingsApi.data} />
+      </div>
 
       <RatingsSection type="album" id={id} ratingsApi={ratingsApi} />
 

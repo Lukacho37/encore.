@@ -198,6 +198,8 @@ export function init(deps) {
     };
     q(`INSERT OR REPLACE INTO taste_matches (user_a, user_b, score, confidence, data, computed_at) VALUES (?, ?, ?, ?, ?, ?)`)
       .run(lo, hi, result.score, result.confidence, json(data), now);
+    // Badge « Bonne entente » (P1-F) : réévalué pour les deux joueurs quand un match neuf est rangé.
+    deps.bus.emit('match.computed', { userA: lo, userB: hi, score: result.score });
     return { ...data, score: result.score, confidence: result.confidence, computedAt: now };
   }
 

@@ -252,14 +252,8 @@ export default function Friends() {
           )}
 
           {tab === 'suggestions' && (
-            <section className="section st-friends-panel" data-friends-panel="suggestions">
-              <header className="section__head st-friends-suggest__head">
-                <div>
-                  <h2>{t('friends.suggestionsTitle')}</h2>
-                  <p className="small muted">{t('friends.suggestionsHint')}</p>
-                </div>
-              </header>
-              {/* Suggestions de P1-E ; tant qu'elles ne rendent rien, l'état vide ci-dessous s'affiche (studio.css). */}
+            <section className="section st-friends-panel" data-friends-panel="suggestions" aria-label={t('friends.tabs.suggestions')}>
+              {/* Suggestions de P1-E (panneau titré) ; quand elles ne rendent rien, l'état vide ci-dessous s'affiche (studio.css). */}
               <div className="st-suggest"><SuggestedFriends limit={12} /></div>
               <div className="st-suggest-empty">
                 <EmptyState icon="users" title={t('friends.suggestionsEmpty')} body={t('friends.suggestionsEmptyBody')} />

@@ -9,6 +9,7 @@ import {
   rollPack, isHit, PITY_AFTER, WISHLIST_FOCUS, ADVANCED_FOCUS, FOCUS_CHANCE, PROMO_FOCUS, PROMO_PRESS_COST, wishlistMax,
 } from '../../shared/rules.js';
 import { staticCatalog } from '../../shared/staticCatalog.js';
+import { parseBadgeKey, rewardFor } from '../../shared/badges.js';
 
 const app = await startApp();
 test.after(() => app.close());
@@ -187,7 +188,14 @@ test('promos pressables : 409 promo_locked, puis 1 200 royalties une fois un alb
   const pressed = await api(app.base, dan.cookie, 'POST', '/collection/press', { trackId: promo.id });
   assert.equal(pressed.status, 200, JSON.stringify(pressed.body));
   assert.equal(pressed.body.spent, PROMO_PRESS_COST);
-  assert.equal(pressed.body.state.user.royalties, 5000 - PROMO_PRESS_COST + pressed.body.royalties);
+  // Presser la promo complète la discographie de Nirvana (son seul album et sa promo) : médaille « Maître » argent,
+  // +100 royalties (PLAN.md 5.7, chantier P1-F). Les royalties des médailles gagnées s'ajoutent au solde attendu.
+  const badgeRoyalties = db.prepare("SELECT key FROM achievements WHERE user_id = ? AND key >= 'badge:' AND key < 'badge;'").all(dan.user.id)
+    .reduce((sum, r) => {
+      const b = parseBadgeKey(r.key);
+      return sum + (b ? rewardFor(b.family, b.tier).royalties : 0);
+    }, 0);
+  assert.equal(pressed.body.state.user.royalties, 5000 - PROMO_PRESS_COST + pressed.body.royalties + badgeRoyalties);
   assert.equal((await api(app.base, dan.cookie, 'GET', `/me/press/${enc(promo.id)}`)).body.reason, 'owned');
 });
 

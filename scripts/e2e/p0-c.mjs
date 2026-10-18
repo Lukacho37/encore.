@@ -113,7 +113,8 @@ await run('desktop', VIEWPORTS.desktop, async (page) => {
   // 1. Depuis le fil des amis de l'accueil : la note d'un morceau mène à sa page.
   await page.goto(`${BASE}/`);
   await page.waitForSelector('.hero');
-  const feedLink = page.locator(`.feed__item a.feed__title[href="${TRACK_URL}"]`).first();
+  // Fil de P1 (P1-A) : la critique de l'ami porte le lien du morceau critiqué (.review__album) dans un élément du fil.
+  const feedLink = page.locator(`[data-feed-item] a[href="${TRACK_URL}"]`).first();
   await feedLink.waitFor({ timeout: 15_000 });
   await feedLink.scrollIntoViewIfNeeded();
   await shot(page, 'd-10-home-feed');

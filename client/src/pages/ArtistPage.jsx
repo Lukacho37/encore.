@@ -1,3 +1,5 @@
+// Page d'artiste /artist/:id — existante (P0), blocs P1 posés par P1-B (PLAN.md 2.5) : en-tête et maîtrise,
+// discographie, promos, puis « Meilleur album de … ? » (duels de P1-F, dès deux albums) et les discussions (P1-A).
 import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useGame } from '../state/GameContext.jsx';
@@ -8,8 +10,11 @@ import { MissingState, PressDialog, TrackGrid } from './AlbumPage.jsx';
 import { Celebration } from '../components/Achievements.jsx';
 import { Icon, Progress } from '../components/ui.jsx';
 import { useArtistDetail } from '../state/catalog.js';
+import { pageExists } from '../routes.jsx';
+import { Discussions } from '../components/social/Discussions.jsx';
 import { ECONOMY } from '@shared/rules.js';
 import '../styles/album.css';
+import '../styles/studio.css';
 
 // Discographie affichée par pages : un artiste importé a au plus une dizaine d'albums, mais on reste prudent.
 const PAGE = 36;
@@ -122,6 +127,26 @@ function ArtistView({ id }) {
           <TrackGrid tracks={promos} onPress={setPressing} />
         </section>
       )}
+
+      {albums.length > 1 && pageExists('Battles') && (
+        <section className="panel st-battle-cta" data-artist="battle" aria-labelledby="st-artist-battle">
+          <span className="st-battle-cta__icon" aria-hidden="true"><Icon name="trophy" size={22} /></span>
+          <div className="st-battle-cta__text">
+            <h2 className="panel__title" id="st-artist-battle">{t('studio.artist.battle', { name: artist.name })}</h2>
+            <p className="small muted">{t('studio.artist.battleBody')}</p>
+          </div>
+          <span className="st-battle-cta__actions">
+            <Link to={`/battles?category=${encodeURIComponent(`artist:${artist.id}`)}`} className="btn btn--ghost btn--sm">
+              <Icon name="trophy" size={16} /> {t('studio.artist.battleCta')}
+            </Link>
+            {pageExists('Rankings') && (
+              <Link to={`/rankings/${encodeURIComponent(`artist:${artist.id}`)}`} className="btn btn--quiet btn--sm">{t('studio.artist.ranking')}</Link>
+            )}
+          </span>
+        </section>
+      )}
+
+      <div className="st-album-block" data-artist="discussions"><Discussions itemType="artist" itemId={id} /></div>
 
       <PressDialog trackId={pressing} onClose={() => setPressing(null)} onDone={(res) => setCelebrate(res.achievements || [])} />
       <Celebration achievements={celebrate} onClose={() => setCelebrate([])} />

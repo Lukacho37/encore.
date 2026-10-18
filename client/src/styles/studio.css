@@ -1,0 +1,1234 @@
+/* @prefix st- */
+/* Studio, amis, pages d'album / morceau / artiste (blocs P1), cadres d'avatar — chantier P1-B (PLAN.md 2.5, 6.6, 9.2).
+   Identité actuelle seulement (DESIGN-OVERRIDE.md) : panneaux, bureau du Studio, onglets, chips et jetons d'app.css ;
+   aucune couleur en dur. Importée par ui.jsx juste après app.css (l'avatar est partout) et par les composants du Studio. */
+
+/* ---------- cadres d'avatar (cosmétiques de niveau : anneau autour de l'avatar, jamais sur la pochette) ---------- */
+
+.avatar.st-frame {
+  --st-gap: 2px;
+  --st-ring: 3px;
+  --st-frame-c: var(--paper-dim);
+  box-shadow: 0 0 0 var(--st-gap) var(--stage), 0 0 0 calc(var(--st-gap) + var(--st-ring)) var(--st-frame-c);
+}
+
+.avatar.st-frame--ivoire {
+  --st-frame-c: var(--paper);
+}
+
+.avatar.st-frame--or {
+  --st-frame-c: var(--gold);
+  box-shadow: 0 0 0 var(--st-gap) var(--stage), 0 0 0 calc(var(--st-gap) + var(--st-ring)) var(--gold),
+    0 0 0 calc(var(--st-gap) + var(--st-ring) + 1px) var(--gold-deep);
+}
+
+.avatar.st-frame--neon {
+  --st-frame-c: var(--cue);
+  box-shadow: 0 0 0 var(--st-gap) var(--stage), 0 0 0 calc(var(--st-gap) + var(--st-ring)) var(--cue),
+    0 0 calc(var(--st-ring) * 4) calc(var(--st-ring) * 0.8) color-mix(in oklab, var(--cue) 55%, transparent);
+}
+
+/* Holo : le reflet des cartes holo, sur l'anneau seulement (trois anneaux décalés aux couleurs du dégradé holo). */
+.avatar.st-frame--holo {
+  box-shadow: 0 0 0 var(--st-gap) var(--stage),
+    0 0 0 calc(var(--st-gap) + var(--st-ring)) var(--r-super),
+    -1.5px -1.5px 0 calc(var(--st-gap) + var(--st-ring)) var(--like),
+    1.5px 1.5px 0 calc(var(--st-gap) + var(--st-ring)) var(--cue),
+    1.5px -1.5px 0 calc(var(--st-gap) + var(--st-ring)) var(--gold);
+}
+
+/* En tête du Studio, l'anneau remplace l'anneau neutre d'app.css (.profile-head__avatar .avatar). */
+.profile-head__avatar .avatar.st-frame {
+  --st-gap: 4px;
+}
+
+/* ---------- en-tête du Studio ---------- */
+
+.st-studio {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-20);
+}
+
+.profile-head.st-head {
+  align-items: start;
+}
+
+.st-head.st-theme--turquoise {
+  background:
+    radial-gradient(ellipse 60% 120% at 0% 0%, color-mix(in oklab, var(--cue) 20%, transparent), transparent 70%),
+    radial-gradient(ellipse 50% 90% at 100% 100%, color-mix(in oklab, var(--cue) 8%, transparent), transparent 70%),
+    var(--stage);
+}
+
+.st-head.st-theme--minuit {
+  background:
+    radial-gradient(ellipse 70% 130% at 100% 0%, color-mix(in oklab, var(--r-rare) 16%, transparent), transparent 70%),
+    linear-gradient(180deg, var(--ink), var(--stage));
+  border-color: color-mix(in oklab, var(--r-rare) 22%, var(--line-soft));
+}
+
+.st-head .st-head__name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-6) var(--s-12);
+  min-width: 0;
+}
+
+.st-head .st-head__name h1 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.st-head .st-head__bio {
+  max-width: 560px;
+  color: var(--paper-dim);
+  font-size: var(--fs-15);
+  line-height: var(--lh-body);
+}
+
+.st-head .st-head__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-4) var(--s-12);
+  margin: 0;
+}
+
+.st-head .st-head__friends {
+  color: var(--cue);
+  font-weight: var(--fw-semi);
+}
+
+.st-head .st-head__vis {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-4);
+  color: var(--haze);
+}
+
+.st-head .st-head__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-8);
+}
+
+.st-head .st-head__side {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--s-12);
+}
+
+.st-head .st-head__match:empty {
+  display: none;
+}
+
+/* Squelettes du premier chargement. */
+.st-skel {
+  display: block;
+  border-radius: var(--rad-md);
+  background: var(--grad-skeleton);
+  background-size: 200% 100%;
+  animation: card-loading 1.4s linear infinite;
+}
+
+.st-skel.st-skel--avatar {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+}
+
+.st-skel.st-skel--lines {
+  width: min(420px, 60vw);
+  height: 96px;
+}
+
+.st-skel.st-skel--block {
+  grid-column: 1 / -1;
+  height: 220px;
+  border-radius: var(--rad-lg);
+}
+
+.st-head.st-head--skel {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+/* ---------- onglets ---------- */
+
+.tabs.st-tabs {
+  margin-bottom: 0;
+  scroll-snap-type: x proximity;
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
+}
+
+.st-tabs .tabs__tab {
+  scroll-snap-align: start;
+  font-size: var(--fs-15);
+}
+
+.st-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-16);
+}
+
+.st-restricted {
+  max-width: 640px;
+}
+
+/* ---------- vue d'ensemble : blocs ---------- */
+
+.st-blocks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-20);
+  align-items: stretch;
+}
+
+/* Deux blocs étroits côte à côte ont la même hauteur. */
+.st-block {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.st-block > * {
+  flex: 1 1 auto;
+}
+
+.st-block.st-block--wide {
+  grid-column: 1 / -1;
+}
+
+/* Un emplacement qui ne rend rien (Studio d'un autre sans contenu) ne laisse pas de trou. */
+.st-block:empty {
+  display: none;
+}
+
+.st-block > .studio {
+  margin-top: 0;
+}
+
+.st-panel {
+  gap: var(--s-14);
+  height: 100%;
+}
+
+.st-panel .st-panel__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-12);
+}
+
+.st-panel .st-panel__head .panel__title {
+  margin: 0;
+}
+
+.st-panel .empty-state {
+  margin: 0;
+}
+
+/* .panel .btn se range à gauche (app.css) : dans un état vide, le bouton reste centré sous le texte. */
+.st-panel .empty-state .btn {
+  align-self: center;
+}
+
+.st-panel .st-linkbtn {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+/* « Mes 9 albums » (Grid9Block, P1-C) posé sur le bureau du Studio, la grille au centre. */
+.st-nine {
+  padding: var(--s-20) clamp(var(--s-16), 3vw, var(--s-28)) var(--s-24);
+  border-radius: var(--rad-lg);
+  border: 1px solid var(--line-soft);
+  background: var(--grad-panel);
+}
+
+.st-nine .ls-grid-block {
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.st-block .st-nine:not(:has(.ls-grid-block)) {
+  display: none;
+}
+
+/* Vitrine : nombre de places selon le niveau (6, puis 7 et 8 aux niveaux 10 et 30) ; une ligne sur grand écran. */
+@media (min-width: 1021px) {
+  .st-showcase.st-showcase--slots-7 .st-showcase__grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+
+  .st-showcase.st-showcase--slots-8 .st-showcase__grid {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+}
+
+/* Cadre cosmétique : il décore l'extérieur des cartes exposées, jamais leur cadre de rareté. */
+.st-showcase--frame-ivoire .showcase__slot,
+.st-showcase--frame-or .showcase__slot,
+.st-showcase--frame-neon .showcase__slot,
+.st-showcase--frame-holo .showcase__slot {
+  border-radius: 14px;
+  outline: 2px solid var(--st-frame-c, var(--paper));
+  outline-offset: 4px;
+}
+
+.st-showcase--frame-or .showcase__slot {
+  --st-frame-c: var(--gold);
+}
+
+.st-showcase--frame-neon .showcase__slot {
+  --st-frame-c: var(--cue);
+  box-shadow: 0 0 18px -4px color-mix(in oklab, var(--cue) 70%, transparent);
+}
+
+.st-showcase--frame-holo .showcase__slot {
+  --st-frame-c: var(--r-super);
+  box-shadow: -3px -3px 0 0 color-mix(in oklab, var(--like) 60%, transparent), 3px 3px 0 0 color-mix(in oklab, var(--cue) 60%, transparent);
+}
+
+/* Vinyle mis en avant, au-dessus de l'étagère. */
+.st-vinyls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-16);
+}
+
+.st-featured {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(var(--s-20), 4vw, var(--s-56));
+  padding: var(--s-24) clamp(var(--s-16), 3vw, var(--s-32));
+  border-radius: var(--rad-lg);
+  border: 1px solid var(--line-soft);
+  background: radial-gradient(ellipse 50% 110% at 0% 50%, color-mix(in oklab, var(--gold) 9%, transparent), transparent 72%), var(--grad-panel);
+}
+
+.st-featured .st-featured__vinyl {
+  width: clamp(150px, 22vw, 220px);
+  padding-right: clamp(36px, 6vw, 70px);
+}
+
+.st-featured .st-featured__vinyl .vinyl {
+  width: 100%;
+}
+
+.st-featured .st-featured__text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-6);
+  min-width: 0;
+}
+
+.st-featured .st-featured__title {
+  color: var(--paper);
+  font: var(--fw-display) var(--fs-display-sm) / var(--lh-title) var(--font-display);
+  font-stretch: var(--fst-title);
+  letter-spacing: var(--ls-title);
+  overflow-wrap: anywhere;
+}
+
+.st-featured .st-featured__title:hover {
+  color: var(--cue);
+}
+
+.st-featured .st-featured__artist {
+  color: var(--haze);
+  font-size: var(--fs-16);
+}
+
+.st-featured .st-featured__facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-4) var(--s-12);
+}
+
+.st-featured .st-featured__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-8);
+  margin-top: var(--s-8);
+}
+
+/* Artistes favoris : pastilles d'artiste rondes et leur nom ; genres en chips. */
+.st-artists {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: var(--s-12);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.st-artists .st-artists__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-6);
+  color: var(--paper);
+  text-align: center;
+}
+
+.st-artists .st-artists__item:hover .st-artists__name {
+  color: var(--cue);
+}
+
+.st-artists .st-artists__name {
+  font-size: var(--fs-13);
+  font-weight: var(--fw-semi);
+  line-height: var(--lh-snug);
+  overflow-wrap: anywhere;
+}
+
+.st-genres {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+}
+
+.st-tracks.top-tracks {
+  margin: 0;
+}
+
+.st-lists {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  gap: var(--s-12);
+}
+
+.st-recent.card-row {
+  margin: 0 calc(-1 * var(--s-4));
+}
+
+.st-activity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Mini-statistiques : barre de progression et chiffre par ligne. */
+.st-stats {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+  margin: 0;
+}
+
+.st-stats .st-stats__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+}
+
+.st-stats dt {
+  color: var(--haze);
+  font-size: var(--fs-13);
+}
+
+.st-stats dd {
+  display: flex;
+  align-items: center;
+  gap: var(--s-10);
+  margin: 0;
+}
+
+.st-stats dd .mono {
+  flex: none;
+  min-width: 7ch;
+  text-align: right;
+  font-size: var(--fs-14);
+}
+
+.st-stats dd small {
+  color: var(--haze-2);
+  font-size: var(--fs-12);
+}
+
+.st-review-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-8);
+}
+
+.st-reviews__all {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+}
+
+.st-vinyls-tab__wait {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--s-16);
+}
+
+/* ---------- page d'album (version 2), page morceau, page d'artiste ---------- */
+
+.st-album-artist {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-6) var(--s-10);
+}
+
+.st-album-artist .master-tag {
+  margin: 0;
+}
+
+.st-album-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-8);
+}
+
+.st-album-actions .st-album-actions__cost {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-4);
+  color: var(--haze);
+}
+
+/* « Partager » (bouton discret du fil, P1-A) au gabarit des boutons fantômes de la rangée. */
+.st-album-share .act-btn {
+  height: 34px;
+  padding: 0 var(--s-14);
+  border: 1px solid var(--line);
+  color: var(--paper);
+  font-weight: var(--fw-ui);
+}
+
+.st-album-share .act-btn:hover {
+  border-color: var(--haze-2);
+}
+
+.st-album-block:empty {
+  display: none;
+}
+
+.st-album .st-album-block,
+.st-album .st-album-stats,
+.st-album .st-around {
+  margin-top: var(--s-40);
+}
+
+.st-album-stats .st-album-stats__grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.st-album-stats__grid dd {
+  display: flex;
+  align-items: center;
+  min-height: 1.6em;
+  font-size: var(--fs-18);
+}
+
+/* Autour de l'album : classements (un tiers) et listes qui le contiennent (deux tiers). */
+.st-around {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: var(--s-20);
+  align-items: start;
+}
+
+.st-around > .section {
+  margin-top: 0;
+}
+
+.st-around > :only-child {
+  grid-column: 1 / -1;
+}
+
+.st-pressall p {
+  margin: 0;
+}
+
+/* Invitation aux duels (morceaux d'un album, albums d'un artiste). */
+.st-battle-cta {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-16);
+  margin-top: var(--s-40);
+}
+
+.st-battle-cta .st-battle-cta__icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--gold) 16%, transparent);
+  color: var(--gold);
+}
+
+.st-battle-cta .st-battle-cta__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-width: 0;
+}
+
+.st-battle-cta .st-battle-cta__text p {
+  margin: 0;
+}
+
+.st-battle-cta .st-battle-cta__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-8);
+}
+
+.trk-page .st-album-block,
+.artist-page .st-album-block {
+  margin-top: var(--s-40);
+}
+
+/* ---------- amis ---------- */
+
+.tabs.st-friends-tabs {
+  margin: var(--s-24) 0 0;
+}
+
+.st-friends-tabs .tabs__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-8);
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.st-friends-tabs .st-friends-tabs__n {
+  font-size: var(--fs-12);
+}
+
+.st-friends-panel.section {
+  margin-top: var(--s-20);
+}
+
+.st-friends-panel > .section:first-child {
+  margin-top: var(--s-20);
+}
+
+.st-friends-panel > .empty-state {
+  margin-top: var(--s-20);
+}
+
+.st-friend .st-friend__match {
+  flex: none;
+}
+
+.st-friend .st-friend__match:empty {
+  display: none;
+}
+
+.st-friends-suggest__head p {
+  margin: var(--s-4) 0 0;
+}
+
+/* Tant que les suggestions (P1-E) ne rendent rien, leur état vide prend la place. */
+.st-suggest-empty {
+  display: none;
+}
+
+.st-suggest:empty + .st-suggest-empty {
+  display: block;
+}
+
+/* ---------- éditeur du Studio ---------- */
+
+.modal.st-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-16);
+}
+
+/* La fenêtre défile : ses enfants gardent leur hauteur au lieu de se tasser. */
+.st-editor > * {
+  flex-shrink: 0;
+}
+
+.st-editor .st-editor__tabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: var(--s-4);
+  scrollbar-width: none;
+}
+
+.st-editor .st-editor__tabs .chip {
+  flex: none;
+}
+
+.st-editor__tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-20);
+}
+
+.st-editor__wait {
+  display: grid;
+  place-items: center;
+  min-height: 200px;
+}
+
+.st-editor__bio.textarea {
+  width: 100%;
+  min-height: 112px;
+  resize: vertical;
+}
+
+.st-editor__count {
+  align-self: flex-end;
+  color: var(--haze);
+}
+
+.st-editor__count[data-over] {
+  color: var(--danger);
+}
+
+.st-editor__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-8);
+}
+
+.st-editor__save {
+  position: sticky;
+  bottom: -22px;
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 -22px -22px;
+  padding: var(--s-16) 22px 22px;
+  background: linear-gradient(to bottom, transparent, var(--stage) 40%);
+}
+
+/* Confidentialité : trois choix en cartes (éditeur et Paramètres). */
+.st-choices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-10);
+}
+
+.st-choice {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-12) var(--s-14);
+  border-radius: var(--rad-md);
+  border: 1px solid var(--line-soft);
+  background: var(--stage-2);
+  cursor: pointer;
+  transition: border-color var(--dur-hover), background var(--dur-hover);
+}
+
+.st-choice:hover {
+  border-color: var(--line);
+}
+
+.st-choice.is-on {
+  border-color: var(--paper);
+  background: color-mix(in oklab, var(--paper) 7%, var(--stage-2));
+}
+
+.st-choice input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.st-choice:has(input:focus-visible) {
+  box-shadow: var(--ring-focus);
+  border-color: var(--cue);
+}
+
+.st-choice .st-choice__label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-6);
+  color: var(--paper);
+  font-weight: var(--fw-semi);
+}
+
+.st-choice .st-choice__hint {
+  color: var(--haze);
+  font-size: var(--fs-13);
+  line-height: var(--lh-ui);
+}
+
+.st-choice.st-choice--skel {
+  min-height: 74px;
+  background: var(--grad-skeleton);
+  background-size: 200% 100%;
+  animation: card-loading 1.4s linear infinite;
+}
+
+.st-privacy .st-choices {
+  margin-top: var(--s-8);
+}
+
+/* Blocs : ligne par bloc, interrupteur et flèches (clavier compris). */
+.st-blocklist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.st-blocklist .st-blocklist__row {
+  display: grid;
+  grid-template-columns: 2.2em minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: var(--s-8);
+  padding: var(--s-6) var(--s-8) var(--s-6) var(--s-12);
+  border-radius: var(--rad-md);
+  border: 1px solid var(--line-soft);
+  background: var(--stage-2);
+}
+
+.st-blocklist .st-blocklist__row.is-off {
+  background: transparent;
+  border-style: dashed;
+}
+
+.st-blocklist .is-off .st-blocklist__name {
+  color: var(--haze);
+}
+
+.st-blocklist .st-blocklist__n {
+  color: var(--haze);
+  font-size: var(--fs-12);
+}
+
+.st-blocklist .st-blocklist__name {
+  color: var(--paper);
+  font-weight: var(--fw-semi);
+  overflow-wrap: anywhere;
+}
+
+.st-blocklist .st-blocklist__moves {
+  display: inline-flex;
+}
+
+.st-rot-up,
+.st-rot-down {
+  display: inline-grid;
+  place-items: center;
+}
+
+.st-rot-up {
+  transform: rotate(-90deg);
+}
+
+.st-rot-down {
+  transform: rotate(90deg);
+}
+
+/* Favoris, vinyle mis en avant, listes épinglées. */
+.st-fav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-10);
+}
+
+.st-fav .st-fav__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-10);
+}
+
+.st-fav__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-8);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.st-fav__chips .st-fav__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-8);
+  min-height: 40px;
+  padding: 0 var(--s-2) 0 var(--s-6);
+  border-radius: var(--rad-pill);
+  border: 1px solid var(--line-soft);
+  background: var(--stage-2);
+  color: var(--paper);
+  font-size: var(--fs-14);
+  font-weight: var(--fw-semi);
+}
+
+.st-fav__chip .icon-btn {
+  width: 32px;
+  height: 32px;
+}
+
+.st-fav__tracks.top-tracks {
+  margin: 0;
+}
+
+.st-fav__tracks .st-fav__track {
+  display: flex;
+  align-items: center;
+  gap: var(--s-6);
+}
+
+.st-fav__track .top-tracks__item {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.st-vpicks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: var(--s-10);
+}
+
+.st-vpick {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  border-radius: var(--rad-sm);
+  overflow: hidden;
+  background: var(--stage-3);
+  color: var(--haze);
+  cursor: pointer;
+  box-shadow: var(--shadow-cover-sm);
+}
+
+.st-vpick .cover {
+  width: 100%;
+  height: 100%;
+}
+
+.st-vpick.is-on {
+  box-shadow: 0 0 0 3px var(--stage), 0 0 0 5px var(--paper);
+}
+
+.st-vpick:focus-visible {
+  box-shadow: 0 0 0 3px var(--stage), 0 0 0 5px var(--cue);
+}
+
+.st-vpick.st-vpick--auto {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-6);
+  border: 1.5px dashed var(--line);
+  background: transparent;
+  box-shadow: none;
+  text-align: center;
+}
+
+.st-vpick.st-vpick--auto.is-on {
+  border-style: solid;
+  border-color: var(--paper);
+  color: var(--paper);
+}
+
+.st-vpick .st-vpick__auto {
+  font-size: var(--fs-12);
+  font-weight: var(--fw-semi);
+  line-height: var(--lh-snug);
+}
+
+.st-vpick .st-vpick__skel {
+  width: 100%;
+  height: 100%;
+  background: var(--grad-skeleton);
+  background-size: 200% 100%;
+  animation: card-loading 1.4s linear infinite;
+}
+
+.st-listpicks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.st-listpicks .st-listpick {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-10);
+  width: 100%;
+  min-height: 48px;
+  padding: var(--s-6) var(--s-12);
+  border-radius: var(--rad-md);
+  border: 1px solid var(--line-soft);
+  background: var(--stage-2);
+  color: var(--paper);
+  text-align: left;
+  cursor: pointer;
+}
+
+.st-listpicks .st-listpick:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.st-listpicks .st-listpick.is-on {
+  border-color: var(--paper);
+}
+
+.st-listpick .st-listpick__n {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px dashed var(--line);
+  font-size: var(--fs-12);
+}
+
+.st-listpick.is-on .st-listpick__n {
+  border: 0;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.st-listpick .st-listpick__title {
+  font-weight: var(--fw-semi);
+  overflow-wrap: anywhere;
+}
+
+/* Cosmétiques : une option par bouton, avec son aperçu ; les verrouillées en contour atténué. */
+.st-cos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: var(--s-10);
+}
+
+.st-cos .st-cos__opt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-8);
+  min-height: 108px;
+  padding: var(--s-12) var(--s-8);
+  border-radius: var(--rad-md);
+  border: 1px solid var(--line-soft);
+  background: var(--stage-2);
+  color: var(--paper);
+  text-align: center;
+  cursor: pointer;
+}
+
+.st-cos .st-cos__opt:hover:not(:disabled) {
+  border-color: var(--line);
+}
+
+.st-cos .st-cos__opt.is-on {
+  border-color: var(--paper);
+  background: color-mix(in oklab, var(--paper) 7%, var(--stage-2));
+}
+
+.st-cos .st-cos__opt.is-locked {
+  background: transparent;
+  border-style: dashed;
+  color: var(--haze);
+  cursor: not-allowed;
+}
+
+.st-cos__opt.is-locked > :first-child {
+  opacity: 0.45;
+}
+
+.st-cos .st-cos__name {
+  font-size: var(--fs-13);
+  font-weight: var(--fw-semi);
+  line-height: var(--lh-snug);
+}
+
+.st-cos .st-cos__lock {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-4);
+  color: var(--haze);
+}
+
+.st-cos .st-cos__disc {
+  display: block;
+  width: 44px;
+  height: 44px;
+}
+
+.st-cos__disc .disc {
+  width: 100%;
+  height: 100%;
+}
+
+.st-cos .st-cos__theme {
+  display: block;
+  width: 64px;
+  height: 40px;
+  border-radius: var(--rad-sm);
+  border: 1px solid var(--line-soft);
+  background: radial-gradient(ellipse 60% 120% at 0% 0%, var(--glow-violet), transparent 70%), var(--stage);
+}
+
+.st-cos .st-cos__theme.st-theme--turquoise {
+  background: radial-gradient(ellipse 70% 130% at 0% 0%, color-mix(in oklab, var(--cue) 38%, transparent), transparent 70%), var(--stage);
+}
+
+.st-cos .st-cos__theme.st-theme--minuit {
+  background: radial-gradient(ellipse 70% 130% at 100% 0%, color-mix(in oklab, var(--r-rare) 30%, transparent), transparent 70%), var(--ink);
+}
+
+.st-cos .st-cos__who {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-4);
+}
+
+.st-cos .st-cos__user {
+  color: var(--paper);
+  font: var(--fw-bold) var(--fs-14) / var(--lh-snug) var(--font-display);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.st-cos .st-cos__title {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 var(--s-8);
+  border-radius: var(--rad-pill);
+  background: color-mix(in oklab, var(--gold) 18%, transparent);
+  color: var(--gold);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-semi);
+}
+
+/* ---------- grand écran / tablette / téléphone ---------- */
+
+@media (max-width: 1020px) {
+  .st-around {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .st-head .st-head__side {
+    grid-column: 1 / -1;
+  }
+
+  .st-head .st-head__side .profile-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+
+  .st-blocks {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 860px) {
+  .st-head .st-head__name,
+  .st-head .st-head__meta,
+  .st-head .st-head__actions {
+    justify-content: center;
+  }
+
+  .st-head .st-head__bio {
+    margin: 0 auto;
+  }
+
+  .st-head .st-head__side {
+    width: 100%;
+  }
+
+  .st-head .st-head__side .profile-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .st-head .masters {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 640px) {
+  .st-studio {
+    gap: var(--s-16);
+  }
+
+  .st-album-stats .st-album-stats__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .st-battle-cta {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .st-battle-cta > .btn,
+  .st-battle-cta .st-battle-cta__actions {
+    grid-column: 1 / -1;
+  }
+
+  .st-friend .st-friend__match {
+    align-self: flex-start;
+  }
+
+  .st-featured {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    text-align: center;
+  }
+
+  .st-featured .st-featured__text {
+    align-items: center;
+  }
+
+  .st-featured .st-featured__facts,
+  .st-featured .st-featured__actions {
+    justify-content: center;
+  }
+
+  .st-choices {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .st-blocklist .st-blocklist__row {
+    grid-template-columns: 1.8em minmax(0, 1fr) auto auto;
+  }
+
+  .st-blocklist .st-blocklist__state {
+    display: none;
+  }
+
+  .st-cos {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

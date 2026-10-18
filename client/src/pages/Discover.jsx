@@ -1,99 +1,139 @@
-// Découvrir : hub P0 — chantier P0-D (PLAN.md 2.5 ; la version complète, personnalisée, vient en P1 avec P1-E).
-// Recherche, albums populaires, chips Par genre et Par décennie (vers la collection filtrée), tuile Blind test (aussi
-// dans la rangée de l'accueil) et tuile Collection. Mêmes composants que le reste du site : .page-head, .panel,
-// .panel--bt, .chip, vignettes d'album (AlbumTile) en étagère comme sur l'accueil.
+// Découvrir personnalisé — chantier P1-E (PLAN.md 2.5, 5.5), reconstruit sur le hub P0 (P0-D).
+// GET /api/discover → { sections, tiles, progress, catalog } : jusqu'à 8 sections d'albums choisis pour le joueur,
+// chacune avec sa raison en une ligne (« Parce que tu as aimé Discovery », « Très apprécié par tes amis » avec leurs
+// avatars…), « Voir plus » par curseur (GET /api/discover/:sectionId?cursor=). Au-dessus : les tuiles Battles ·
+// Classements · Listes · Mes 9 albums · Blind test ; un compte qui n'a pas encore fait ses premiers pas est invité à
+// créer son profil musical (/welcome). En dessous, ce que le hub P0 offrait déjà : la recherche et les chips Par genre
+// et Par décennie (vers la collection filtrée). Mêmes composants que le reste du site : .page-head, .panel,
+// .panel--bt, .chip, vignettes d'album (AlbumTile) en étagère.
 import { Link } from 'react-router';
 import { useI18n } from '../i18n/index.jsx';
+import { useGame } from '../state/GameContext.jsx';
+import { useAlbum, useApi, useArtist, useCatalogInfo } from '../state/catalog.js';
 import { Icon } from '../components/ui.jsx';
-import { AlbumTile, AlbumTileSkeleton } from '../components/AlbumTile.jsx';
-import { apiPath, useApi, useCatalogInfo } from '../state/catalog.js';
+import { AlbumTileSkeleton } from '../components/AlbumTile.jsx';
+import { EmptyState, ErrorBox } from '../components/feedback.jsx';
 import { SearchBox } from '../components/shell/SearchBox.jsx';
+import { Shelf } from '../components/discover/Shelf.jsx';
+import { decadeLabel, genreName } from '../components/match/parts.jsx';
 import '../styles/home.css';
-import '../styles/shell.css';
+import '../styles/discover.css';
 
-const SHELF_SIZES = '(max-width: 700px) 42vw, 196px';
-const POPULAR = 18;
+const enc = encodeURIComponent;
+const TILE_ICONS = { battles: 'trophy', rankings: 'star', lists: 'list', nine: 'grid', blindtest: 'headphones' };
+const DEFAULT_TILES = [
+  { id: 'battles', to: '/battles' },
+  { id: 'rankings', to: '/rankings' },
+  { id: 'lists', to: '/lists' },
+  { id: 'nine', to: '/nine' },
+  { id: 'blindtest', to: '/blindtest' },
+];
+const MARK = '\u0000';
 
-/** Nom d'un genre ; un genre absent des dictionnaires garde son identifiant. */
-function useGenreLabel() {
-  const { t } = useI18n();
-  return (id) => {
-    const label = t(`genre.${id}`);
-    return label === `genre.${id}` ? id : label;
-  };
+/** Texte traduit dont la variable `name` est remplacée par un nœud React (un lien dans un titre). */
+function withNode(t, key, name, node, vars = {}) {
+  const [before, after = ''] = t(key, { ...vars, [name]: MARK }).split(MARK);
+  return <>{before}{node}{after}</>;
 }
 
-function PopularShelf() {
+/** Titre d'une section : album, artiste, décennie ou genre de la section quand il y en a un. */
+function SectionTitle({ section }) {
   const { t } = useI18n();
-  const { data, error } = useApi(apiPath('/catalog/albums', { sort: 'popular', limit: POPULAR }));
-  const items = data?.items || [];
+  const v = section.titleVars || {};
+  const album = useAlbum(v.albumId || null);
+  const artist = useArtist(v.artistId || null);
+  if (v.albumId) {
+    const node = <Link to={`/album/${enc(v.albumId)}`}>{album?.title || '…'}</Link>;
+    return withNode(t, section.titleKey, 'album', node);
+  }
+  if (v.artistId) {
+    const node = <Link to={`/artist/${enc(v.artistId)}`}>{artist?.name || '…'}</Link>;
+    return withNode(t, section.titleKey, 'artist', node);
+  }
+  if (v.decade) return t(section.titleKey, { decade: decadeLabel(t, v.decade) });
+  if (v.genre) return t(section.titleKey, { genre: genreName(t, v.genre) });
+  return t(section.titleKey);
+}
+
+/** Tuiles Battles · Classements · Listes · Mes 9 albums · Blind test. */
+function Tiles({ tiles }) {
+  const { t } = useI18n();
   return (
-    <section className="section" aria-labelledby="hub-popular">
-      <header className="section__head home-head">
-        <h2 id="hub-popular">{t('hub.popular')}</h2>
-        <Link to="/collection/albums?sort=popular" className="section__link">{t('hub.seeAll')}</Link>
-      </header>
-      {error ? (
-        <p className="empty">{t('hub.error')}</p>
-      ) : !data ? (
-        <div className="home-shelf" aria-busy="true">
-          {Array.from({ length: 6 }, (_, i) => <AlbumTileSkeleton key={i} />)}
-        </div>
-      ) : items.length ? (
-        <div className="home-shelf">
-          {items.map((a) => <AlbumTile key={a.id} album={a} discover compact sizes={SHELF_SIZES} />)}
-        </div>
-      ) : (
-        <p className="empty">{t('hub.empty')}</p>
-      )}
+    <nav className="dc-tiles" aria-label={t('discover.tilesLabel')}>
+      {tiles.map((tile) => {
+        const bt = tile.id === 'blindtest';
+        return (
+          <Link key={tile.id} to={tile.to} className={`panel dc-tile${bt ? ' panel--bt' : ''}`} data-tile={tile.id}>
+            {bt && <span className="panel--bt__eq" aria-hidden="true"><i /><i /><i /><i /><i /></span>}
+            <span className="dc-tile__icon" aria-hidden="true"><Icon name={TILE_ICONS[tile.id] || 'compass'} size={18} /></span>
+            <span className="dc-tile__title">
+              <span>{t(`discover.tiles.${tile.id}.title`)}</span>
+              {tile.id === 'nine' && tile.count > 0 && <span className="chip chip--sm chip--mono">{t('discover.tiles.nine.count', { n: tile.count })}</span>}
+            </span>
+            <p className="dc-tile__body">{t(`discover.tiles.${tile.id}.body`)}</p>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+/** Invitation aux premiers pas (compte qui n'a pas encore choisi ses genres et ses artistes). */
+function Invite() {
+  const { t } = useI18n();
+  return (
+    <section className="panel dc-invite" data-discover="invite" aria-labelledby="dc-discover-invite">
+      <span className="eyebrow">{t('discover.invite.eyebrow')}</span>
+      <h2 className="panel__title" id="dc-discover-invite">{t('discover.invite.title')}</h2>
+      <p>{t('discover.invite.body')}</p>
+      <Link to="/welcome" className="btn btn--primary">{t('discover.invite.cta')}</Link>
     </section>
   );
 }
 
-export default function Discover() {
+/** Étagères en attente de la réponse (même hauteur que les vraies). */
+function LoadingShelves() {
+  return Array.from({ length: 3 }, (_, i) => (
+    <section key={i} className="dc-shelf" aria-hidden="true">
+      <span className="skel-row" />
+      <div className="dc-shelf__track">
+        {Array.from({ length: 6 }, (_, j) => <AlbumTileSkeleton key={j} />)}
+      </div>
+    </section>
+  ));
+}
+
+/** Ce que le hub P0 offrait : recherche, genres et décennies (vers la collection filtrée). */
+function Browse() {
   const { t, num } = useI18n();
   const info = useCatalogInfo();
-  const genreLabel = useGenreLabel();
   const genres = (info?.genres || []).slice(0, 18);
   const decades = [...(info?.decades || [])].filter((d) => d.albums > 0).reverse();
   return (
-    <div className="sh-hub">
-      <header className="page-head">
-        <div>
-          <p className="eyebrow">{t('hub.eyebrow')}</p>
-          <h1>{t('hub.title')}</h1>
-          <p className="muted">
-            {info?.totals ? t('hub.intro', { albums: info.totals.albums, tracks: info.totals.tracks }) : t('hub.introShort')}
-          </p>
-        </div>
-      </header>
-
-      <section className="panel sh-hub__search" aria-labelledby="hub-search">
-        <h2 className="panel__title" id="hub-search"><Icon name="search" /> {t('hub.searchTitle')}</h2>
-        <p>{t('hub.searchBody')}</p>
+    <section className="section dc-browse" aria-labelledby="dc-browse-title">
+      <header className="section__head"><h2 id="dc-browse-title">{t('discover.browse')}</h2></header>
+      <div className="panel dc-browse__search">
+        <h3 className="panel__title"><Icon name="search" /> {t('hub.searchTitle')}</h3>
+        <p className="muted">{t('hub.searchBody')}</p>
         <SearchBox />
-      </section>
-
-      <PopularShelf />
-
+      </div>
       {genres.length > 0 && (
-        <section className="section" aria-labelledby="hub-genres">
-          <header className="section__head"><h2 id="hub-genres">{t('hub.genres')}</h2></header>
-          <div className="sh-hub__chips">
+        <div className="dc-browse__group">
+          <h3 className="label">{t('hub.genres')}</h3>
+          <div className="dc-chips">
             {genres.map((g) => (
-              <Link key={g.id} to={`/collection/albums?genre=${encodeURIComponent(g.id)}`} className="chip chip--toggle">
-                {genreLabel(g.id)}
+              <Link key={g.id} to={`/collection/albums?genre=${enc(g.id)}`} className="chip chip--toggle">
+                {genreName(t, g.id)}
                 <span className="chip__n">{num(g.albums)}</span>
               </Link>
             ))}
           </div>
-        </section>
+        </div>
       )}
-
       {decades.length > 0 && (
-        <section className="section" aria-labelledby="hub-decades">
-          <header className="section__head"><h2 id="hub-decades">{t('hub.decades')}</h2></header>
-          <div className="sh-hub__chips">
+        <div className="dc-browse__group">
+          <h3 className="label">{t('hub.decades')}</h3>
+          <div className="dc-chips">
             {decades.map((d) => (
               <Link key={d.decade} to={`/collection/albums?decade=${d.decade}`} className="chip chip--toggle">
                 {t('decade', { d: d.decade })}
@@ -101,22 +141,54 @@ export default function Discover() {
               </Link>
             ))}
           </div>
-        </section>
+        </div>
+      )}
+    </section>
+  );
+}
+
+export default function Discover() {
+  const { t } = useI18n();
+  const { user } = useGame();
+  const { data, error, reload } = useApi('/discover', { keep: false });
+  const sections = data?.sections || [];
+  const progress = data?.progress || {};
+  return (
+    <div className="dc-page" data-discover="page">
+      <header className="page-head">
+        <div>
+          <p className="eyebrow">{t('discover.eyebrow')}</p>
+          <h1>{t('discover.title')}</h1>
+          <p className="muted">{t('discover.intro')}</p>
+        </div>
+      </header>
+
+      {user?.onboarded === false && <Invite />}
+      <Tiles tiles={data?.tiles || DEFAULT_TILES} />
+
+      {error ? (
+        <ErrorBox error={error} onRetry={reload} className="section" />
+      ) : !data ? (
+        <LoadingShelves />
+      ) : sections.length ? (
+        sections.map((s) => (
+          <Shelf
+            key={s.id}
+            id={s.id}
+            title={<SectionTitle section={s} />}
+            reason={t(s.reason.key, s.reason.vars || {})}
+            users={s.users || []}
+            albumIds={s.items.map((x) => x.id)}
+            progress={progress}
+            morePath={`/discover/${enc(s.id)}`}
+            moreCursor={s.moreCursor}
+          />
+        ))
+      ) : (
+        <EmptyState icon="compass" title={t('discover.empty')} body={t('discover.emptyBody')} action={{ label: t('home.open'), to: '/' }} className="section" />
       )}
 
-      <section className="section sh-hub__tiles">
-        <Link to="/blindtest" className="panel panel--bt">
-          <span className="panel--bt__eq" aria-hidden="true"><i /><i /><i /><i /><i /></span>
-          <h2 className="panel__title"><Icon name="headphones" /> {t('nav.blindtest')}</h2>
-          <p>{t('hub.blindtest')}</p>
-          <span className="btn btn--primary btn--sm">{t('hub.blindtestCta')}</span>
-        </Link>
-        <Link to="/collection/albums" className="panel">
-          <h2 className="panel__title"><Icon name="grid" /> {t('hub.collectionTitle')}</h2>
-          <p>{t('hub.collectionBody')}</p>
-          <span className="btn btn--ghost btn--sm">{t('hub.collectionCta')}</span>
-        </Link>
-      </section>
+      <Browse />
     </div>
   );
 }

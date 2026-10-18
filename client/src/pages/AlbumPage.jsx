@@ -1,3 +1,8 @@
+// Page d'album /album/:id — P0-C, version 2 de P1-B (PLAN.md 2.5 « Album ») : en-tête (pochette ou vinyle, titre,
+// artiste et maîtrise, progression, ligne de complétion, actions Presser les manquantes · Rechercher · Ajouter à une
+// liste · Partager, écoute officielle), booster d'album, tracklist (vue par défaut) ou cartes, notes et critiques
+// (moi, amis, communauté), discussions, statistiques, albums similaires, puis « Autour de l'album » (classements et
+// listes qui le contiennent). Les blocs des autres chantiers sont montés tels quels (contrats PLAN.md 9.2).
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useGame } from '../state/GameContext.jsx';
@@ -8,17 +13,27 @@ import { PackArt } from '../components/PackOpening.jsx';
 import { useCardModal } from '../components/CardModal.jsx';
 import ListenPanel from '../components/ListenPanel.jsx';
 import { Celebration } from '../components/Achievements.jsx';
-import { Icon, Modal, Progress, RoyaltyIcon, useToast } from '../components/ui.jsx';
+import { Icon, Modal, Progress, RoyaltyIcon, Spinner, useToast } from '../components/ui.jsx';
 import { Vinyl, TurntableModal, isHoloComplete } from '../components/Vinyl.jsx';
 import { RatingInput, RatingValue, RatingsSection, itemPath, useItemRatings } from '../components/Rating.jsx';
-import { getAlbum, useAlbumDetail, useTrack } from '../state/catalog.js';
+import { getAlbum, useAlbumDetail, useApi, useTrack } from '../state/catalog.js';
 import { useBoosterFlow } from '../state/boosterFlow.js';
 import { ECONOMY, albumReward, pressCost } from '@shared/rules.js';
 import { post, api } from '../api.js';
 import { sound } from '../sound.js';
 import { storage } from '../storage.js';
+import { PressButton } from '../components/game/PressButton.jsx';
+import { usePressCost } from '../components/game/press.js';
+import { CompletionLine } from '../components/game/CompletionLine.jsx';
+import { WishlistToggle } from '../components/game/WishlistToggle.jsx';
+import { AddToListButton, AlbumListsBlock } from '../components/lists/AddToList.jsx';
+import { Discussions } from '../components/social/Discussions.jsx';
+import { ShareButton } from '../components/social/ShareButton.jsx';
+import { SimilarAlbums } from '../components/discover/SimilarAlbums.jsx';
+import { AlbumRankings } from '../components/play/slots.jsx';
 import '../styles/album.css';
 import '../styles/track.css';
+import '../styles/studio.css';
 
 export function PressDialog({ trackId, onClose, onDone }) {
   const { t, error } = useI18n();
@@ -26,7 +41,9 @@ export function PressDialog({ trackId, onClose, onDone }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const track = useTrack(trackId || null);
-  const cost = !track || isAdmin ? 0 : pressCost(track.rarity) ?? 0;
+  // Coût lu par usePressCost (P1-D) : une promo se presse 1 200 royalties une fois un album de son artiste complété.
+  const press = usePressCost(track);
+  const cost = !track || isAdmin ? 0 : press.cost ?? pressCost(track.rarity) ?? 0;
   const missing = Math.max(0, cost - (user?.royalties || 0));
 
   const confirm = async () => {
@@ -66,26 +83,18 @@ export function PressDialog({ trackId, onClose, onDone }) {
 
 /** Grille de cartes (objets carte de l'API) : possédées en couleur, manquantes en fantôme avec « Presser ». */
 export function TrackGrid({ tracks, onPress }) {
-  const { owned, isAdmin } = useGame();
-  const { t } = useI18n();
+  const { owned } = useGame();
   const openCard = useCardModal();
   return (
     <div className="card-grid">
       {tracks.map((tr) => {
         const mine = owned.get(tr.id);
-        const cost = isAdmin ? 0 : pressCost(tr.rarity);
         return (
           <div key={tr.id} className="card-cell">
             <Card trackId={tr.id} variant={mine?.holo ? 'holo' : 'std'} ghost={!mine} count={mine ? mine.std + mine.holo : 0}
               onClick={() => openCard(tr.id)} />
-            {!mine && cost != null && onPress && (
-              <button type="button" className={`press-btn${isAdmin ? ' press-btn--free' : ''}`} onClick={() => onPress(tr.id)}>
-                <Icon name="press" size={14} />
-                {/* Sur un écran étroit, le libellé se raccourcit mais le prix reste lisible. */}
-                <span className="press-btn__label">{t('album.press')} ·</span>
-                <span className="press-btn__cost">{isAdmin ? t('album.pressFreeShort') : <span className="mono">{cost}</span>}</span>
-              </button>
-            )}
+            {/* « Presser · N » (P1-D) : même rendu, coût réel (promo pressable après un album de l'artiste complété). */}
+            {!mine && onPress && <PressButton track={tr} onPress={onPress} />}
           </div>
         );
       })}
@@ -268,12 +277,110 @@ function AlbumSkeleton() {
   );
 }
 
+/**
+ * « Presser les N manquantes » : toutes les cartes manquantes de l'album, pressées une par une (POST
+ * /collection/press, le serveur vérifie le prix et les royalties de chacune), dans l'ordre de l'album ; s'arrête à la
+ * première erreur (royalties épuisées…). L'admin presse gratuitement.
+ */
+function PressAllDialog({ open, tracks, onClose, onDone }) {
+  const { t, num, error } = useI18n();
+  const { user, applyState, isAdmin } = useGame();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const total = isAdmin ? 0 : tracks.reduce((n, tr) => n + (pressCost(tr.rarity) ?? 0), 0);
+  const missing = Math.max(0, total - (user?.royalties || 0));
+  const confirm = async () => {
+    setBusy(true);
+    let done = 0;
+    const achievements = [];
+    let last = null;
+    try {
+      for (const tr of tracks) {
+        last = await post('/collection/press', { trackId: tr.id });
+        done += 1;
+        achievements.push(...(last.achievements || []));
+      }
+      toast(t('studio.album.pressAllDone', { n: done }), 'success');
+    } catch (err) {
+      toast(t('studio.album.pressAllPartial', { n: done, error: error(err.code) }), 'error');
+    } finally {
+      if (last?.state) applyState(last.state);
+      if (done) sound.reveal(tracks[done - 1]?.rarity);
+      setBusy(false);
+      onDone?.(achievements);
+      onClose();
+    }
+  };
+  return (
+    <Modal open={open} onClose={busy ? undefined : onClose} title={t('studio.album.pressAllTitle')} className="modal--narrow">
+      <div className="press st-pressall">
+        <p>{isAdmin ? t('studio.album.pressAllFree', { n: tracks.length }) : t('studio.album.pressAllBody', { n: tracks.length, cost: num(total) })}</p>
+        {missing > 0 && <p className="form-error">{t('studio.album.pressAllMissing', { n: num(missing) })}</p>}
+        <div className="press__actions">
+          <button type="button" className="btn btn--ghost" onClick={onClose} disabled={busy}>{t('common.cancel')}</button>
+          <button type="button" className="btn btn--primary" onClick={confirm} disabled={busy || missing > 0} data-autofocus data-press-all-confirm="">
+            {busy ? <Spinner /> : <Icon name="press" />} {t('album.press')} · {isAdmin ? t('album.pressFree') : <><RoyaltyIcon size={14} /> <span className="mono">{num(total)}</span></>}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/** Actions de l'en-tête : Presser les manquantes · Rechercher (liste d'envies) · Ajouter à une liste · Partager. */
+function AlbumActions({ album, missing, complete, onPressAll }) {
+  const { t, num } = useI18n();
+  const { isAdmin } = useGame();
+  const cost = isAdmin ? 0 : missing.reduce((n, tr) => n + (pressCost(tr.rarity) ?? 0), 0);
+  return (
+    <div className="st-album-actions" role="group" aria-label={t('studio.album.actions')}>
+      {missing.length > 0 && (
+        <button type="button" className="btn btn--ghost btn--sm" onClick={onPressAll} data-press-all={missing.length}>
+          <Icon name="press" size={16} /> {t('studio.album.pressMissing', { n: missing.length })}
+          <span className="st-album-actions__cost">· {isAdmin ? t('album.pressFreeShort') : <><RoyaltyIcon size={13} /> <span className="mono">{num(cost)}</span></>}</span>
+        </button>
+      )}
+      <WishlistToggle albumId={album.id} />
+      <AddToListButton item={{ type: 'album', id: album.id }} />
+      {complete && (
+        <span className="st-album-share">
+          <ShareButton path={`/album/${encodeURIComponent(album.id)}`} title={t('studio.album.shareTitle', { title: album.title })} item={{ type: 'album', id: album.id }} />
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Statistiques de l'album : complété par N joueurs, nombre de notes, moyenne, moyenne des amis. */
+function AlbumStats({ albumId, ratings }) {
+  const { t, num } = useI18n();
+  // Même adresse que la ligne de complétion (CompletionLine) : une seule requête pour les deux (fetchShared).
+  const { data } = useApi(`/albums/${encodeURIComponent(albumId)}/completion`, { keep: false });
+  const summary = ratings?.summary;
+  const scores = (ratings?.friends?.scores || []).map((s) => s.score).filter((s) => Number.isFinite(s));
+  const friendsAvg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+  const none = <span className="muted">{t('studio.album.statNone')}</span>;
+  return (
+    <section className="section st-album-stats" aria-labelledby="st-album-stats-title" data-album="stats">
+      <header className="section__head"><h2 id="st-album-stats-title">{t('studio.album.stats')}</h2></header>
+      <dl className="profile-stats st-album-stats__grid">
+        <div><dt>{t('studio.album.statCompleted')}</dt><dd>{data ? <span className="mono">{t('studio.album.statCompletedValue', { n: num(data.completedBy) })}</span> : none}</dd></div>
+        <div><dt>{t('studio.album.statRatings')}</dt><dd className="mono">{summary ? num(summary.count || 0) : '…'}</dd></div>
+        <div><dt>{t('studio.album.statAverage')}</dt><dd>{summary?.count ? <RatingValue value={summary.average} average size={15} /> : none}</dd></div>
+        <div><dt>{t('studio.album.statFriends')}</dt><dd>{friendsAvg != null ? <RatingValue value={friendsAvg} average size={15} /> : none}</dd></div>
+      </dl>
+    </section>
+  );
+}
+
 function AlbumView({ id }) {
-  const { t, date } = useI18n();
-  const { achievements, owned, ratings, albumProgress } = useGame();
+  const { t } = useI18n();
+  const { achievements, owned, ratings, albumProgress, isAdmin } = useGame();
   const [pressing, setPressing] = useState(null);
+  const [pressAll, setPressAll] = useState(false);
   const [celebrate, setCelebrate] = useState([]);
-  const [view, setView] = useState(() => storage.get('albummania.albumView') || 'cards');
+  // Vue par défaut : la tracklist (PLAN.md 2.5) ; le choix du joueur est gardé.
+  const [view, setView] = useState(() => storage.get('albummania.albumView') || 'tracklist');
   const [turntable, setTurntable] = useState(null);
   const booster = useBoosterFlow();
   const detail = useAlbumDetail(id);
@@ -322,13 +429,16 @@ function AlbumView({ id }) {
   const palette = album.art?.palette || [];
   const genre = album.genre ? t(`genre.${album.genre}`) : null;
   const eyebrow = [album.code, genre && genre !== `genre.${album.genre}` ? genre : null, album.year].filter(Boolean).join(' · ');
+  const mastered = achievements.has(`artist:${album.artistId}`);
+  // Cartes manquantes pressables (cartes d'album : barème de shared/rules.js), dans l'ordre de l'album.
+  const missing = tracks ? tracks.filter((tr) => !owned.has(tr.id) && (isAdmin || pressCost(tr.rarity) != null)) : [];
   const chooseView = (v) => {
     setView(v);
     storage.set('albummania.albumView', v);
   };
 
   return (
-    <div className="album-page" style={{ '--album-c0': palette[0], '--album-c1': palette[1] }}>
+    <div className="album-page st-album" style={{ '--album-c0': palette[0], '--album-c1': palette[1] }}>
       <Link to="/collection" className="back-link"><Icon name="back" /> {t('album.back')}</Link>
       <header className={`album-head${doneAt ? ' album-head--vinyl' : ''}`}>
         {doneAt ? (
@@ -343,7 +453,10 @@ function AlbumView({ id }) {
         <div className="album-head__info">
           {eyebrow && <span className="eyebrow mono">{eyebrow}</span>}
           <h1>{album.title}</h1>
-          <Link to={`/artist/${encodeURIComponent(album.artistId)}`} className="album-head__artist">{album.artist}</Link>
+          <span className="st-album-artist">
+            <Link to={`/artist/${encodeURIComponent(album.artistId)}`} className="album-head__artist">{album.artist}</Link>
+            {mastered && <span className="master-tag"><Icon name="star" size={12} /> {t('studio.album.mastered')}</span>}
+          </span>
           {summary?.count > 0 && (
             <a href="#critiques" className="album-head__score">
               <RatingValue value={summary.average} average size={16} />
@@ -354,18 +467,17 @@ function AlbumView({ id }) {
             <Progress value={ownedCount} max={total} color={palette[1]} size="lg" />
             <span className="mono">{ownedCount}/{total}</span>
           </div>
-          {doneAt ? (
-            <p className="gold-note">
-              <Icon name="disc" /> {t('album.completedOn', { date: date(doneAt) })}
-              {edition === 'holo' && <span className="edition-tag edition-tag--holo">{t('vinyl.holo')}</span>}
-            </p>
-          ) : (
+          {/* Ligne de complétion (P1-D) : « Complété le … · Pressage n° … » puis « Complété par N joueurs · N amis ». */}
+          <CompletionLine albumId={id} />
+          {doneAt && edition === 'holo' && <span className="edition-tag edition-tag--holo">{t('vinyl.holo')}</span>}
+          {!doneAt && (
             <div className="reward-box">
               <span className="label">{t('album.reward')}</span>
               <p>{t('album.rewardBody', { r: reward.royalties, x: reward.xp })}</p>
               <p className="small muted">{t('album.pressHint')}</p>
             </div>
           )}
+          <AlbumActions album={album} missing={missing} complete={!!doneAt} onPressAll={() => setPressAll(true)} />
           <ListenPanel kind="album" item={album} />
         </div>
       </header>
@@ -374,7 +486,7 @@ function AlbumView({ id }) {
 
       <div className="toolbar">
         <div className="seg" role="group" aria-label={t('album.view')}>
-          {[['cards', t('album.viewCards')], ['tracklist', t('album.viewTracklist')]].map(([v, label]) => (
+          {[['tracklist', t('album.viewTracklist')], ['cards', t('album.viewCards')]].map(([v, label]) => (
             <button key={v} type="button" className={`seg__btn seg__btn--wide${view === v ? ' is-on' : ''}`} aria-pressed={view === v} onClick={() => chooseView(v)}>{label}</button>
           ))}
         </div>
@@ -398,7 +510,16 @@ function AlbumView({ id }) {
 
       <RatingsSection type="album" id={id} ratingsApi={ratingsApi} />
 
+      <div className="st-album-block" data-album="discussions"><Discussions itemType="album" itemId={id} /></div>
+      <AlbumStats albumId={id} ratings={ratingsApi.data} />
+      <div className="st-album-block" data-album="similar"><SimilarAlbums albumId={id} /></div>
+      <div className="st-around" data-album="around">
+        <AlbumRankings albumId={id} />
+        <AlbumListsBlock albumId={id} />
+      </div>
+
       <PressDialog trackId={pressing} onClose={() => setPressing(null)} onDone={(res) => setCelebrate(res.achievements || [])} />
+      <PressAllDialog open={pressAll} tracks={missing} onClose={() => setPressAll(false)} onDone={(list) => setCelebrate(list)} />
       <Celebration achievements={celebrate} onClose={() => setCelebrate([])} />
       <TurntableModal vinyl={turntable} onClose={() => setTurntable(null)} />
       {booster.overlay}

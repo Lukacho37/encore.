@@ -1,4 +1,4 @@
-// Table des routes du site (PLAN.md 2.1), posée par K0 ; appartient ensuite à P0-D (P1-B en P1).
+// Table des routes du site (PLAN.md 2.1), posée par K0 ; appartient ensuite à P0-D (P1-B en P1 : onglets /studio/:tab).
 // Chaque route : { path, page, name?, guest?, eager?, redirect? }
 //   page     : nom du fichier dans pages/ (sans .jsx) ; name : export nommé à utiliser (défaut : export par défaut) ;
 //   guest    : absent → joueurs connectés seulement ; true → tout le monde ; 'only' → visiteurs non connectés
@@ -40,6 +40,8 @@ export const ROUTES = [
   { path: '/track/:id', page: 'TrackPage' },
   { path: '/artist/:id', page: 'ArtistPage' },
   { path: '/studio', page: 'Profile' },
+  // Onglets de son propre Studio (P1-B) : /studio/reviews, /studio/lists… (mêmes onglets que /u/:username/:tab).
+  { path: '/studio/:tab', page: 'Profile' },
   { path: '/profile', redirect: '/studio' },
   { path: '/u/:username', page: 'Profile' },
   { path: '/u/:username/nine', page: 'GridEditor' },

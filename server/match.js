@@ -66,10 +66,10 @@ export function init(deps) {
   // ----- profil de goûts ----------------------------------------------------------------------------
 
   /**
-   * Artiste, genre et décennie de chaque album actif, gardés 10 min : un profil lit ses notes et sa progression par
+   * Artiste, genre et décennie de chaque album actif, gardés 30 min (35 ms pour 20 000 albums) : un profil lit ses notes et sa progression par
    * la clé primaire du joueur, sans jointure (5 000 albums commencés pour le plus gros joueur de la base peuplée).
    */
-  const metaCache = lru({ max: 1, ttlMs: TEN_MIN });
+  const metaCache = lru({ max: 1, ttlMs: 3 * TEN_MIN });
   const albumMeta = () => metaCache.wrap('all', () => {
     const map = new Map();
     for (const r of db.prepare("SELECT id, artist_id, genre, year FROM cat_albums WHERE status = 'active'").all()) {

@@ -3,6 +3,8 @@
 // commun dont dépendent les autres morceaux, dont les feuilles sont donc liées après elle. Les feuilles des pages et
 // des chantiers précisent ainsi app.css à spécificité égale, en développement comme en production.
 import '../styles/app.css';
+// Cadres d'avatar (P1-B) : l'avatar est partout, sa feuille part avec lui, juste après app.css.
+import '../styles/studio.css';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import CoverArt from './CoverArt.jsx';
@@ -139,19 +141,33 @@ export function avatarColor(user) {
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
+/** Cadres d'avatar dessinés par studio.css (cosmétiques de niveau, shared/cosmetics.js) ; un autre cadre (badge,
+ * événement) prend l'anneau neutre. */
+const FRAMES = new Set(['ivoire', 'neon', 'or', 'holo']);
+
 /**
  * Photo de profil : initiale sur la couleur du joueur, ou pochette d'un album complété (« album:<id> »).
  * Décision du propriétaire (DECISION-DESIGN.md, point 5) : c'est la vraie pochette de l'album ; le visuel généré ne
  * sert que de repli (pochette indisponible ou retirée par l'admin), comme partout ailleurs. L'album vient du
  * catalogue du site (les réponses qui citent un joueur l'apportent) ; sinon il est chargé par lots et l'initiale
  * s'affiche en attendant.
+ * `frame` (P1-B, PLAN.md 6.6) : cadre cosmétique choisi par le joueur, dessiné en anneau autour de l'avatar (jamais sur
+ * la pochette) ; par défaut celui du résumé du joueur (`user.frame`, ou `user.cosmetics.frame` pour soi), `null` pour
+ * n'en dessiner aucun. L'anneau déborde de la boîte (ombre portée) : la mise en page ne bouge pas.
  */
-export function Avatar({ user, size = 40, className = '' }) {
+export function Avatar({ user, size = 40, className = '', frame }) {
   const albumId = user?.avatar?.startsWith('album:') ? user.avatar.slice(6) : null;
   const album = useAlbum(albumId);
+  const chosen = frame !== undefined ? frame : user?.frame ?? user?.cosmetics?.frame ?? null;
   const style = { width: size, height: size, fontSize: size * 0.44, '--ac': avatarColor(user) };
+  let framed = '';
+  if (chosen) {
+    framed = ` st-frame st-frame--${FRAMES.has(chosen) ? chosen : 'other'}`;
+    // Épaisseur de l'anneau selon la taille : 2 px pour les petites pastilles, jusqu'à 5 px en tête du Studio.
+    style['--st-ring'] = `${Math.max(2, Math.min(5, Math.round(size / 24)))}px`;
+  }
   return (
-    <span className={`avatar ${className}`} style={style} aria-hidden="true">
+    <span className={`avatar ${className}${framed}`} style={style} aria-hidden="true">
       {album?.art ? <CoverArt art={{ ...album.art, seed: album.art.seed || album.id }} sizes={`${size}px`} /> : <span>{(user?.username || '?')[0].toUpperCase()}</span>}
     </span>
   );

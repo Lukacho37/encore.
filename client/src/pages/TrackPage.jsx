@@ -1,9 +1,10 @@
-// Page morceau /track/:id — chantier P0-C (PLAN.md 2.5, 4.1.3). L'identifiant contient « : » (discovery:01) et
-// arrive encodé dans l'adresse. Ordre : en-tête (pochette, surtitre, titre, artiste · album, rareté, carte possédée,
-// note de la communauté, « Noter »), ma carte (ou la carte fantôme + « Presser · N ») et qui la possède, l'écoute
-// (ListenPanel : liens officiels + lecteur Deezer chargé au clic), mes notes et critiques, celles des amis puis de la
-// communauté, et les autres morceaux de l'album (ou les promos de l'artiste). Identifiant inconnu : « Cette face
-// n'existe pas » (NotFound).
+// Page morceau /track/:id — chantier P0-C (PLAN.md 2.5, 4.1.3), blocs P1 posés par P1-B. L'identifiant contient « : »
+// (discovery:01) et arrive encodé dans l'adresse. Ordre : en-tête (pochette, surtitre, titre, artiste · album, rareté,
+// carte possédée, note de la communauté, « Noter », « Ajouter à une liste »), ma carte (ou la carte fantôme +
+// « Presser · N », coût réel de P1-D ; « Vernir » de P2-D, rien avant P2) et qui la possède, l'écoute (ListenPanel :
+// liens officiels + lecteur Deezer chargé au clic), mes notes et critiques, celles des amis puis de la communauté, les
+// discussions (P1-A), « Meilleur morceau de l'album ? » (duels de P1-F), et les autres morceaux de l'album (ou les
+// promos de l'artiste). Identifiant inconnu : « Cette face n'existe pas » (NotFound).
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useGame } from '../state/GameContext.jsx';
@@ -18,10 +19,16 @@ import { Avatar, Icon, Progress, RoyaltyIcon, useToast } from '../components/ui.
 import { RatingValue, RatingsSection, itemPath, useItemRatings } from '../components/Rating.jsx';
 import { MissingState, PressDialog, Tracklist } from './AlbumPage.jsx';
 import NotFound from './NotFound.jsx';
-import { RARITY, SHOWCASE_SLOTS, pressCost } from '@shared/rules.js';
+import { pageExists } from '../routes.jsx';
+import { RARITY, SHOWCASE_SLOTS } from '@shared/rules.js';
 import { post } from '../api.js';
+import { usePressCost } from '../components/game/press.js';
+import { VernirButton } from '../components/game/VernirButton.jsx';
+import { AddToListButton } from '../components/lists/AddToList.jsx';
+import { Discussions } from '../components/social/Discussions.jsx';
 import '../styles/album.css';
 import '../styles/track.css';
+import '../styles/studio.css';
 
 const pad = (n) => String(n ?? 0).padStart(2, '0');
 
@@ -70,14 +77,17 @@ function MyCard({ page, onPress }) {
     ? { std: page.mine.std?.count || 0, holo: page.mine.holo?.count || 0, at: Math.min(page.mine.std?.firstAt ?? Infinity, page.mine.holo?.firstAt ?? Infinity) }
     : null;
   const rarity = RARITY[track.rarity] ? track.rarity : 'common';
-  const cost = isAdmin ? 0 : pressCost(rarity);
+  // Coût réel (P1-D) : une promo se presse une fois un album de son artiste complété ; null = pas pressable.
+  const press = usePressCost(track);
+  const cost = press.cost;
+  const slotsMax = user?.slots?.showcase ?? SHOWCASE_SLOTS;
   const showcase = user?.showcase || [];
   const pinned = showcase.includes(track.id);
   const friends = owners.friends || [];
 
   const togglePin = async () => {
     let slots = [...showcase];
-    while (slots.length < SHOWCASE_SLOTS) slots.push(null);
+    while (slots.length < slotsMax) slots.push(null);
     if (pinned) slots = slots.map((x) => (x === track.id ? null : x));
     else {
       const free = slots.indexOf(null);
@@ -159,12 +169,14 @@ function MyCard({ page, onPress }) {
             <Icon name="press" /> {t('album.press')} · {isAdmin ? t('album.pressFreeShort') : <><RoyaltyIcon size={14} /> <span className="mono">{cost}</span></>}
           </button>
         )}
-        {!mine && cost == null && <p className="small muted">{t('track.mine.promoHint')}</p>}
+        {!mine && cost == null && !press.loading && <p className="small muted">{t('track.mine.promoHint')}</p>}
         {mine && (
           <button type="button" className="btn btn--ghost" onClick={togglePin} disabled={busy}>
             {pinned ? t('card.unpin') : t('card.pin')}
           </button>
         )}
+        {/* « Vernir » (édition holo, P2-D) : rien avant P2. */}
+        {mine && <VernirButton trackId={track.id} />}
       </div>
     </section>
   );
@@ -266,6 +278,7 @@ function TrackView({ id }) {
           </div>
           <div className="trk-head__actions">
             <a href="#ma-note" className="btn btn--primary"><Icon name="star" /> {rated ? t('track.rateAgain') : t('track.rate')}</a>
+            <AddToListButton item={{ type: 'track', id: track.id }} />
             {listen && (
               <a href={listen.href} target="_blank" rel="noreferrer noopener" className="btn btn--ghost">
                 {t('track.listenOn', { p: listen.name })} <Icon name="external" size={16} />
@@ -287,6 +300,21 @@ function TrackView({ id }) {
       </div>
 
       <RatingsSection type="track" id={track.id} ratingsApi={ratingsApi} />
+
+      <div className="st-album-block" data-track="discussions"><Discussions itemType="track" itemId={track.id} /></div>
+
+      {album && siblings.length > 1 && pageExists('Battles') && (
+        <section className="panel st-battle-cta" data-track="battle" aria-labelledby="st-track-battle">
+          <span className="st-battle-cta__icon" aria-hidden="true"><Icon name="trophy" size={22} /></span>
+          <div className="st-battle-cta__text">
+            <h2 className="panel__title" id="st-track-battle">{t('studio.track.battle')}</h2>
+            <p className="small muted">{t('studio.track.battleBody', { album: album.title })}</p>
+          </div>
+          <Link to={`/battles?category=${encodeURIComponent(`album_tracks:${album.id}`)}`} className="btn btn--ghost btn--sm">
+            <Icon name="trophy" size={16} /> {t('studio.track.battleCta')}
+          </Link>
+        </section>
+      )}
 
       {siblings.length > 1 && (
         <section className="section trk-siblings">

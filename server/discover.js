@@ -76,8 +76,11 @@ export function init(deps) {
     .map((r) => ({ id: r.id, artistId: r.artist_id, b: bayes(r.sum, r.count) }))
     .sort((a, b) => b.b - a.b || a.id.localeCompare(b.id)).slice(0, 300));
 
+  // Index (item_type, created_at) imposé : le planificateur préfère sinon parcourir toutes les notes d'albums pour le
+  // GROUP BY (50 ms sur la base peuplée même quand la semaine est vide) ; ici le coût suit le nombre de notes récentes.
   const trendingList = () => globalCache.wrap('trending', () => withArtists(q(`SELECT item_id AS id, COUNT(*) AS n FROM ratings
-      WHERE item_type = 'album' AND created_at >= ? GROUP BY item_id ORDER BY n DESC, item_id LIMIT 200`).all(Date.now() - 7 * DAY).map((r) => r.id)));
+      INDEXED BY ratings_item_time WHERE item_type = 'album' AND created_at >= ? GROUP BY item_id ORDER BY n DESC, item_id LIMIT 200`)
+    .all(Date.now() - 7 * DAY).map((r) => r.id)));
 
   const newList = () => globalCache.wrap('new', () => q(`SELECT id, artist_id, fans FROM cat_albums WHERE status = 'active' AND created_at >= ?
       ORDER BY created_at DESC LIMIT 2000`).all(Date.now() - 30 * DAY)
@@ -248,8 +251,11 @@ export function init(deps) {
       || q(`SELECT li.item_id FROM lists l JOIN list_items li ON li.list_id = l.id WHERE l.user_id = ? AND l.kind = 'grid9'
         ORDER BY li.position LIMIT 1`).get(userId)?.item_id;
     if (seed && catalog.album(seed)) {
-      add('because', 'similar', similarOf(seed), {
+      // Albums proches, puis (catalogue clairsemé autour de la graine) les meilleurs albums de son genre.
+      const seedGenre = catalog.album(seed).genre;
+      add('because', 'similar', [...similarOf(seed), ...(seedGenre ? genreList(seedGenre) : [])], {
         titleKey: 'discover.sections.because', titleVars: { albumId: seed }, reason: { key: 'discover.reasons.because', vars: { albumId: seed } },
+        exclude: (id) => id === seed || notMine(id),
       });
     } else if (v.favorites.artist?.length) {
       const artistId = v.favorites.artist[0];
@@ -370,8 +376,17 @@ export function init(deps) {
     });
   }
 
-  /** GET /discover */
-  const page = (userId) => entryOf(Number(userId)).payload;
+  /**
+   * GET /discover. La page reste 10 min en cache, mais les avatars d'amis sont refiltrés à chaque réponse : un joueur
+   * bloqué entre-temps (dans un sens ou dans l'autre) disparaît tout de suite (son avis sort au prochain calcul).
+   */
+  function page(userId) {
+    const id = Number(userId);
+    const payload = entryOf(id).payload;
+    const hidden = hiddenOf(id);
+    if (!hidden.size || !payload.sections.some((s) => s.users?.some((u) => hidden.has(u.id)))) return payload;
+    return { ...payload, sections: payload.sections.map((s) => (s.users ? { ...s, users: s.users.filter((u) => !hidden.has(u.id)) } : s)) };
+  }
 
   /** GET /discover/:sectionId?cursor= → { items, nextCursor, progress, catalog } */
   function more(userId, sectionId, rawCursor) {

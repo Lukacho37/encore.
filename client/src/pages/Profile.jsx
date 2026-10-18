@@ -1,27 +1,42 @@
+// Studio d'un joueur (/studio, /u/:pseudo, /u/:pseudo/:onglet) — P0 restylé, refait par P1-B (PLAN.md 2.5, 4.2.3).
+// En-tête (StudioHeader : avatar et son cadre, bio, niveau, amis, actions), onglets Vue d'ensemble · Critiques ·
+// Listes · Vinyles · Badges · Posts, et la vue d'ensemble en blocs (StudioBlocks) que le joueur masque et réordonne
+// dans l'éditeur (StudioEditor : bio, confidentialité, favoris, vinyle mis en avant, listes épinglées, cosmétiques).
+// Données : GET /api/users/:pseudo (le serveur applique la confidentialité : `access: 'header'` = en-tête seulement).
+// Pour son propre Studio, la collection (vitrine, vinylthèque, chiffres, maîtrises) vient de l'état du jeu, à jour
+// sans attendre ; les réglages (bio, blocs, favoris…) viennent du serveur. La photo de profil (pochette d'un album
+// complété, vraie pochette : DESIGN-OVERRIDE point 5) et le choix des cartes exposées restent ceux d'avant.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
-import { get, post, del } from '../api.js';
+import { Link, NavLink, useParams } from 'react-router';
+import { get, post } from '../api.js';
 import { useGame } from '../state/GameContext.jsx';
 import { useI18n } from '../i18n/index.jsx';
-import { apiPath, registerCatalog, useAlbums, useArtists } from '../state/catalog.js';
+import { apiPath, registerCatalog, useAlbums, useApi } from '../state/catalog.js';
 import Card, { RarityGem } from '../components/Card.jsx';
 import CoverArt from '../components/CoverArt.jsx';
-import { useCardModal } from '../components/CardModal.jsx';
-import { Avatar, ConfirmButton, Icon, Modal, Progress, Spinner, useToast } from '../components/ui.jsx';
+import { Avatar, Icon, Modal, Spinner, useToast } from '../components/ui.jsx';
+import { EmptyState, ErrorBox as LoadError } from '../components/feedback.jsx';
 import { AVATAR_COLORS, RARITIES, SHOWCASE_SLOTS } from '@shared/rules.js';
-import { VinylShelf, isHoloComplete } from '../components/Vinyl.jsx';
-import { RatedItemLink, RatingHistogram, RatingValue, ReviewList } from '../components/Rating.jsx';
+import { isHoloComplete } from '../components/Vinyl.jsx';
+import { StudioHeader } from '../components/studio/StudioHeader.jsx';
+import { StudioBlocks, tabPath } from '../components/studio/StudioBlocks.jsx';
+import { StudioEditor } from '../components/studio/StudioEditor.jsx';
+import { ReviewsTab, VinylsTab } from '../components/studio/StudioTabs.jsx';
+import { STUDIO_TABS, blocksOf } from '../components/studio/blocks.js';
+import { UserLists } from '../components/lists/UserLists.jsx';
+import { UserPosts } from '../components/social/UserPosts.jsx';
+import { BadgeGrid } from '../components/play/slots.jsx';
 import '../styles/profile.css';
+import '../styles/studio.css';
 
 // Le catalogue compte des dizaines de milliers d'albums : le profil ne parcourt jamais tout le catalogue.
 // Les choix (cartes du Studio, pochettes) se font par pages, avec une recherche envoyée au serveur.
 
-const VINYLS_MAX = 120; // vinyles exposés sur l'étagère (les plus récents), comme le profil public
-const SHELF_PREVIEW = 13; // vinyles visibles avant « Voir N vinyles de plus » (avec 2 prochains : 3 étagères de 5)
-const MASTERS_SHOWN = 6; // maîtrises affichées avant « +N autres »
+const VINYLS_MAX = 120; // vinyles de son étagère pris dans l'état du jeu (les plus récents), comme le Studio d'un autre
 const CARDS_PAGE = 36; // cartes par page dans le choix du Studio
 const COVERS_PAGE = 36; // pochettes par page dans le choix de la photo
 const SOON_MAX = 8; // albums presque complets proposés (verrouillés) dans le choix de la photo
+const enc = encodeURIComponent;
 
 const registerTracks = (list) => registerCatalog({ tracks: list });
 const registerAlbums = (list) => registerCatalog({ albums: list });
@@ -321,7 +336,7 @@ function ShowcasePicker({ slot, onClose }) {
 
   const pick = async (trackId) => {
     if (busy) return;
-    const slots = Array.from({ length: SHOWCASE_SLOTS }, (_, i) => current[i] || null);
+    const slots = Array.from({ length: user.slots?.showcase ?? SHOWCASE_SLOTS }, (_, i) => current[i] || null);
     slots[slot] = trackId;
     setBusy(true);
     try {
@@ -389,201 +404,11 @@ function ShowcasePicker({ slot, onClose }) {
   );
 }
 
-// ----- en-tête et amis ---------------------------------------------------------------------
-
-function FriendAction({ profile, onChange }) {
-  const { t, error } = useI18n();
-  const { refresh } = useGame();
-  const toast = useToast();
-  const [busy, setBusy] = useState(false);
-  const run = async (fn) => {
-    setBusy(true);
-    try {
-      await fn();
-      await onChange();
-      refresh(); // pastille des demandes d'amis en attente
-    } catch (err) {
-      toast(error(err.code), 'error');
-    } finally {
-      setBusy(false);
-    }
-  };
-  switch (profile.friendship) {
-    case 'none':
-      return <button type="button" className="btn btn--primary" disabled={busy} onClick={() => run(() => post('/friends/request', { username: profile.username }))}><Icon name="plus" /> {t('profile.add')}</button>;
-    case 'outgoing':
-      return (
-        <span className="friend-state">
-          <span className="chip">{t('profile.pending')}</span>
-          <button type="button" className="btn btn--ghost btn--sm" disabled={busy} onClick={() => run(() => post(`/friends/${profile.requestId}/decline`))}>{t('friends.cancel')}</button>
-        </span>
-      );
-    case 'incoming':
-      return <button type="button" className="btn btn--primary" disabled={busy} onClick={() => run(() => post(`/friends/${profile.requestId}/accept`))}>{t('profile.accept')}</button>;
-    case 'friends':
-      return (
-        <span className="friend-state">
-          <span className="chip chip--new"><Icon name="check" size={14} /> {t('profile.friends')}</span>
-          <ConfirmButton className="btn btn--ghost btn--sm" confirmLabel={t('friends.removeConfirm', { name: profile.username })}
-            onConfirm={() => run(() => del(`/friends/${profile.id}`))}>{t('friends.remove')}</ConfirmButton>
-        </span>
-      );
-    default:
-      return null;
-  }
-}
-
-/** Artistes maîtrisés : les premiers, puis « +N autres » pour tout voir. */
-function Masters({ ids }) {
-  const { t } = useI18n();
-  const [open, setOpen] = useState(false);
-  const shown = useMemo(() => (open ? ids : ids.slice(0, MASTERS_SHOWN)), [ids, open]);
-  const artists = useArtists(shown);
-  if (!ids.length) return null;
-  return (
-    <div className="masters">
-      {shown.map((id, i) => (
-        <Link key={id} to={`/artist/${encodeURIComponent(id)}`} className="master-tag pf-master">
-          <Icon name="star" size={12} /> {artists[i] ? t('artist.master', { name: artists[i].name }) : '…'}
-        </Link>
-      ))}
-      {ids.length > MASTERS_SHOWN && (
-        <button type="button" className="link-btn small pf-masters__toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
-          {open ? t('profile.mastersLess') : t('profile.mastersMore', { n: ids.length - MASTERS_SHOWN })}
-        </button>
-      )}
-    </div>
-  );
-}
-
-// ----- notes & critiques -------------------------------------------------------------------
-
-function RatingsSection({ username, isSelf, refreshKey }) {
-  const { t } = useI18n();
-  const [data, setData] = useState(null);
-  useEffect(() => {
-    let alive = true;
-    // Les fiches des albums et morceaux cités arrivent avec la réponse (champ catalog, enregistré par api.js).
-    get(`/users/${encodeURIComponent(username)}/ratings`)
-      .then((d) => {
-        if (alive) setData(d);
-      })
-      .catch(() => {
-        if (alive) setData(null);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [username, refreshKey]);
-  if (!data?.stats) return null;
-  const s = data.stats;
-  const topAlbums = data.topAlbums || [];
-  const topTracks = data.topTracks || [];
-  const reviews = data.reviews || [];
-  return (
-    <section className="ratings-profile">
-      <header className="studio__head"><h2>{t('ratingsProfile.title')}</h2></header>
-      {s.count === 0 ? (
-        <p className="empty">{isSelf ? t('ratingsProfile.emptySelf') : t('ratingsProfile.emptyOther', { name: username })}</p>
-      ) : (
-        <div className="ratings-profile__grid">
-          <div className="panel ratings-profile__stats">
-            <dl className="mini-stats">
-              <div><dt>{t('ratingsProfile.statRatings')}</dt><dd className="mono">{s.count}</dd></div>
-              <div><dt>{t('ratingsProfile.statAlbums')}</dt><dd className="mono">{s.albums}</dd></div>
-              <div><dt>{t('ratingsProfile.statReviews')}</dt><dd className="mono">{s.reviews}</dd></div>
-              <div><dt>{t('ratingsProfile.statAverage')}</dt><dd><RatingValue value={s.average} average size={13} /></dd></div>
-            </dl>
-            <RatingHistogram distribution={s.distribution} />
-          </div>
-          {(topAlbums.length > 0 || topTracks.length > 0) && (
-            <div className="ratings-profile__top">
-              {topAlbums.length > 0 && (
-                <>
-                  <h3 className="studio__label">{t('ratingsProfile.favAlbums')}</h3>
-                  <div className="top-albums">
-                    {topAlbums.map((r) => (
-                      <RatedItemLink key={r.id} type="album" id={r.id} className="top-album" coverClassName="top-album__cover" titleClassName="top-album__title">
-                        <RatingValue value={r.score} size={12} />
-                      </RatedItemLink>
-                    ))}
-                  </div>
-                </>
-              )}
-              {topTracks.length > 0 && (
-                <>
-                  <h3 className="studio__label">{t('ratingsProfile.favTracks')}</h3>
-                  <ol className="top-tracks">
-                    {topTracks.map((r) => (
-                      <li key={r.id}>
-                        <RatedItemLink type="track" id={r.id} className="top-tracks__item" coverClassName="top-tracks__cover" titleClassName="top-tracks__title">
-                          <RatingValue value={r.score} size={11} />
-                        </RatedItemLink>
-                      </li>
-                    ))}
-                  </ol>
-                </>
-              )}
-            </div>
-          )}
-          {reviews.length > 0 && (
-            <div className="ratings-profile__reviews">
-              <h3 className="studio__label">{t('ratingsProfile.recent')}</h3>
-              <ReviewList reviews={reviews} renderItem={(r) => (
-                <RatedItemLink type={r.type} id={r.id} className="review__author" coverClassName="review__cover" titleClassName="review__name" />
-              )} />
-            </div>
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
-// ----- vinylthèque -------------------------------------------------------------------------
-
-/** Étagère du profil : les vinyles les plus récents, puis toute l'étagère (120 au plus) à la demande. */
-function ProfileShelf({ profile, isSelf }) {
-  const { t } = useI18n();
-  const [open, setOpen] = useState(false);
-  const all = profile.vinyls || [];
-  // Nombre total de vinyles : le profil n'envoie que les plus récents.
-  const count = Math.max(all.length, profile.vinylCount ?? profile.stats?.albumsCompleted ?? 0);
-  const foldable = all.length > SHELF_PREVIEW;
-  const vinyls = foldable && !open ? all.slice(-SHELF_PREVIEW) : all;
-  const upcoming = (profile.upcoming || []).slice(0, all.length ? 2 : 3);
-  return (
-    <>
-      <VinylShelf
-        vinyls={vinyls}
-        count={count}
-        upcoming={upcoming}
-        mine={isSelf}
-        title={isSelf ? t('vinyl.shelf') : t('vinyl.shelfOther', { name: profile.username })}
-        emptyText={isSelf ? t('vinyl.emptySelf') : t('vinyl.emptyOther')}
-      />
-      {(foldable || count > all.length) && (
-        <div className="pf-shelf-foot">
-          {foldable && (
-            <button type="button" className="btn btn--ghost btn--sm" onClick={() => setOpen(!open)} aria-expanded={open}>
-              <Icon name={open ? 'close' : 'plus'} size={16} />
-              {open ? t('profile.shelfLess') : t('profile.shelfMore', { n: all.length - SHELF_PREVIEW })}
-            </button>
-          )}
-          {count > all.length && (!foldable || open) && (
-            <p className="small muted">{t('profile.shelfCapped', { shown: all.length, n: count })}</p>
-          )}
-        </div>
-      )}
-    </>
-  );
-}
-
-// ----- profil ------------------------------------------------------------------------------
+// ----- profil ------------------------------------------------------------------------------------
 
 /**
- * Profil du joueur connecté, construit à partir de l'état local (statistiques calculées par le serveur),
- * sous la même forme que le profil public renvoyé par GET /users/:username.
+ * Partie « collection » de son propre Studio, construite à partir de l'état local (statistiques calculées par le
+ * serveur), sous la même forme que le Studio renvoyé par GET /users/:username : à jour dès qu'une carte arrive.
  */
 function useOwnProfile() {
   const { user, stats, achievements, owned } = useGame();
@@ -602,15 +427,14 @@ function useOwnProfile() {
     const upcoming = Object.entries(albums).filter(([, p]) => p.pct < 1)
       .sort((a, b) => b[1].pct - a[1].pct || b[1].owned - a[1].owned).slice(0, 3)
       .map(([albumId, progress]) => ({ albumId, progress }));
+    const slots = user.slots?.showcase ?? SHOWCASE_SLOTS;
     return {
-      self: true,
       id: user.id,
       username: user.username,
       avatar: user.avatar,
       avatarColor: user.avatarColor,
       level: user.level,
       createdAt: user.createdAt,
-      role: user.role,
       stats: {
         unique: stats.total.owned,
         total: stats.total.total,
@@ -621,83 +445,108 @@ function useOwnProfile() {
         promos: stats.promos.owned,
         promosTotal: stats.promos.total,
       },
-      showcase: Array.from({ length: SHOWCASE_SLOTS }, (_, i) => {
+      showcase: Array.from({ length: slots }, (_, i) => {
         const id = user.showcase?.[i];
         const mine = id && owned.get(id);
         return mine ? { trackId: id, variant: mine.holo ? 'holo' : 'std' } : null;
       }),
+      cosmetics: user.cosmetics || {},
       vinyls,
       vinylCount: done.length,
       masteredArtists,
       upcoming,
+      friendship: 'self',
     };
   }, [user, stats, achievements, owned]);
 }
 
-/** Profil public d'un autre joueur : { profile, status: 'loading' | 'ready' | 'notFound' | 'error', reload, retry }. */
-function useOtherProfile(username, skip) {
-  const [state, setState] = useState({ key: null, profile: null, status: 'loading' });
-  const ticket = useRef(0);
-  const load = useCallback(async () => {
-    if (skip) return;
-    const id = ++ticket.current;
-    try {
-      // Vinyles, maîtrises et cartes exposées arrivent avec leurs fiches (champ catalog, enregistré par api.js).
-      const profile = await get(`/users/${encodeURIComponent(username)}`);
-      if (id === ticket.current) setState({ key: username, profile, status: 'ready' });
-    } catch (err) {
-      if (id === ticket.current) setState((s) => ({ ...s, key: username, status: err?.status === 404 ? 'notFound' : 'error' }));
-    }
-  }, [username, skip]);
-  useEffect(() => {
-    load();
-  }, [load]);
-  // Autre joueur demandé : on n'affiche pas le profil précédent pendant le chargement.
-  const fresh = state.key === username;
-  return {
-    profile: fresh ? state.profile : null,
-    status: fresh ? state.status : 'loading',
-    reload: load,
-    retry: () => {
-      setState({ key: null, profile: null, status: 'loading' });
-      load();
-    },
-  };
+/** Onglets du Studio (liens : l'onglet se garde dans l'adresse, retour arrière compris). */
+function StudioTabsNav({ base, current }) {
+  const { t } = useI18n();
+  return (
+    <nav className="tabs st-tabs" aria-label={t('studio.tabs.label')}>
+      {STUDIO_TABS.map((id) => (
+        <NavLink key={id} to={tabPath(base, id)} end className={`tabs__tab${current === id ? ' active' : ''}`}
+          aria-current={current === id ? 'page' : undefined} data-studio-tab-link={id}>
+          {t(`studio.tabs.${id}`)}
+        </NavLink>
+      ))}
+    </nav>
+  );
+}
+
+/** Studio « amis » ou « privé » d'un autre : l'en-tête, puis ce message (la demande d'ami est dans l'en-tête). */
+function Restricted({ profile }) {
+  const { t } = useI18n();
+  const friendsOnly = profile.user?.visibility === 'friends';
+  return (
+    <div className="st-restricted" data-studio-restricted={profile.user?.visibility || 'private'}>
+      <EmptyState icon="lock" title={friendsOnly ? t('studio.restricted.friendsTitle') : t('studio.restricted.privateTitle')}
+        body={friendsOnly ? t('studio.restricted.friendsBody', { name: profile.username }) : t('studio.restricted.privateBody', { name: profile.username })} />
+    </div>
+  );
+}
+
+/** Squelette du Studio le temps du premier chargement (même gabarit que l'en-tête et les blocs). */
+function StudioSkeleton() {
+  return (
+    <div className="profile st-studio" aria-busy="true">
+      <section className="profile-head st-head st-head--skel"><span className="st-skel st-skel--avatar" /><span className="st-skel st-skel--lines" /></section>
+      <div className="st-blocks"><span className="st-skel st-skel--block" /><span className="st-skel st-skel--block" /></div>
+    </div>
+  );
 }
 
 export default function Profile() {
-  const { username } = useParams();
-  const { user, applyState, ratings } = useGame();
-  const { t, date, error, num } = useI18n();
-  const navigate = useNavigate();
-  const openCard = useCardModal();
+  const { username, tab: rawTab } = useParams();
+  const { user, applyState } = useGame();
+  const { t, error } = useI18n();
   const toast = useToast();
   const own = useOwnProfile();
-  // Change dès qu'une de mes notes change : la section « Notes & critiques » se recharge alors.
-  const ratingsSignature = useMemo(() => [...ratings].map(([k, v]) => `${k}=${v}`).join('|'), [ratings]);
   const isSelf = !username || username.toLowerCase() === user.username.toLowerCase();
-  const other = useOtherProfile(username, isSelf);
+  const name = isSelf ? user.username : username;
+  const base = username ? `/u/${enc(username)}` : '/studio';
+  const tab = STUDIO_TABS.includes(rawTab) ? rawTab : 'overview';
+  const remote = useApi(`/users/${enc(name)}`, { keep: false });
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [slot, setSlot] = useState(null);
+  const [editor, setEditor] = useState(null); // onglet ouvert de l'éditeur, ou null
   const closeAvatar = useCallback(() => setAvatarOpen(false), []);
   const closeSlot = useCallback(() => setSlot(null), []);
+  const closeEditor = useCallback(() => setEditor(null), []);
+  const { reload } = remote;
+  // Studio d'un autre joueur : on ne garde pas les données du précédent pendant le chargement.
+  const data = remote.data && remote.data.username?.toLowerCase() === name.toLowerCase() ? remote.data : null;
 
-  if (!isSelf && other.status === 'notFound') {
-    return <div className="empty-page"><p>{error('user_not_found')}</p><Link to="/friends" className="btn btn--ghost">{t('nav.friends')}</Link></div>;
-  }
-  if (!isSelf && other.status === 'error') {
+  // Un blocage depuis le menu ⋯ (en-tête) : le Studio est relu (il n'existe plus pour nous).
+  useEffect(() => {
+    const onBlocks = () => reload();
+    window.addEventListener('albummania:blocks', onBlocks);
+    return () => window.removeEventListener('albummania:blocks', onBlocks);
+  }, [reload]);
+
+  const notFound = remote.error && (remote.error.status === 404 || remote.error.code === 'user_not_found');
+  if (!isSelf && notFound) {
     return (
-      <div className="empty-page" role="alert">
-        <p>{t('profile.loadError')}</p>
-        <button type="button" className="btn btn--ghost" onClick={other.retry}>{t('profile.retry')}</button>
+      <div className="empty-page">
+        <p>{error('user_not_found')}</p>
+        <Link to="/friends" className="btn btn--ghost">{t('nav.friends')}</Link>
       </div>
     );
   }
-  const profile = isSelf ? own : other.profile;
-  if (!profile) return <div className="boot boot--inline"><Spinner /></div>;
+  if (!isSelf && remote.error) {
+    return <div className="empty-page"><LoadError error={remote.error} onRetry={reload} /></div>;
+  }
+  if (!isSelf && !data) return <StudioSkeleton />;
+
+  // Son Studio : la collection vient de l'état du jeu, les réglages du serveur (vides le temps de les lire).
+  const profile = isSelf
+    ? { ...(data || {}), ...own, user: { ...(data?.user || {}), id: user.id, username: user.username }, access: 'full', relation: 'self' }
+    : data;
+  const blocks = blocksOf(profile.blocks);
 
   const removeFromShowcase = async (i) => {
-    const slots = Array.from({ length: SHOWCASE_SLOTS }, (_, k) => user.showcase?.[k] || null);
+    const slots = Array.from({ length: user.slots?.showcase ?? SHOWCASE_SLOTS }, (_, k) => user.showcase?.[k] || null);
     slots[i] = null;
     try {
       const res = await post('/profile/showcase', { slots });
@@ -707,87 +556,32 @@ export default function Profile() {
     }
   };
 
-  const lvl = profile.level;
-  const s = profile.stats || {};
-  const showcase = Array.from({ length: SHOWCASE_SLOTS }, (_, i) => profile.showcase?.[i] || null);
-  const stat = (value, total) => (
-    <dd className="mono">{num(value ?? 0)}{total != null && <small>/{num(total)}</small>}</dd>
-  );
+  const restricted = profile.access === 'header';
+  let body;
+  if (restricted) body = <Restricted profile={profile} />;
+  else if (tab === 'overview') {
+    body = isSelf && !data && !remote.error ? (
+      <div className="st-blocks" aria-busy="true"><span className="st-skel st-skel--block" /><span className="st-skel st-skel--block" /></div>
+    ) : (
+      <StudioBlocks profile={profile} isSelf={isSelf} blocks={blocks} base={base} onEdit={(which) => setEditor(which || 'profile')}
+        onPickSlot={setSlot} onRemoveSlot={removeFromShowcase} />
+    );
+  } else if (tab === 'reviews') body = <ReviewsTab username={profile.username} isSelf={isSelf} />;
+  else if (tab === 'lists') body = <div className="st-tab" data-studio-tab="lists"><UserLists username={profile.username} editable={isSelf} /></div>;
+  else if (tab === 'vinyls') body = <VinylsTab profile={profile} isSelf={isSelf} />;
+  else if (tab === 'badges') body = <div className="st-tab" data-studio-tab="badges"><BadgeGrid username={profile.username} /></div>;
+  else if (tab === 'posts') body = <div className="st-tab" data-studio-tab="posts"><UserPosts username={profile.username} /></div>;
 
   return (
-    <div className="profile">
-      <section className="profile-head">
-        <div className="profile-head__avatar">
-          <Avatar user={profile} size={120} />
-          {isSelf && (
-            <button type="button" className="profile-head__edit" onClick={() => setAvatarOpen(true)} aria-label={t('profile.edit')} title={t('profile.edit')}>
-              <Icon name="edit" size={16} />
-            </button>
-          )}
-        </div>
-        <div className="profile-head__info">
-          <h1>
-            {profile.username}
-            {profile.role === 'admin' && <span className="role-tag">{t('profile.admin')}</span>}
-          </h1>
-          <div className="level-line">
-            <span className="level-chip mono">{t('profile.level', { n: lvl.level })}</span>
-            <Progress value={lvl.xp - lvl.floor} max={lvl.next - lvl.floor} color="var(--cue)" size="sm" />
-            <span className="small muted">{t('profile.xpToNext', { n: lvl.next - lvl.xp, l: lvl.level + 1 })}</span>
-          </div>
-          <p className="muted small">{t('profile.memberSince', { date: date(profile.createdAt) })}</p>
-          <Masters key={profile.username} ids={profile.masteredArtists || []} />
-          {!isSelf && <FriendAction profile={profile} onChange={other.reload} />}
-        </div>
-        <dl className="profile-stats">
-          <div><dt>{t('profile.stats.unique')}</dt>{stat(s.unique, s.total)}</div>
-          <div><dt>{t('profile.stats.albums')}</dt>{stat(s.albumsCompleted, s.albumsTotal)}</div>
-          <div><dt>{t('profile.stats.artists')}</dt>{stat(s.artistsMastered, s.artistsTotal)}</div>
-          <div><dt>{t('profile.stats.promos')}</dt>{stat(s.promos, s.promosTotal)}</div>
-        </dl>
-      </section>
-
-      <ProfileShelf key={profile.username} profile={profile} isSelf={isSelf} />
-
-      <section className="studio">
-        <header className="studio__head">
-          <h2>{isSelf ? t('studio.title') : t('studio.titleOther', { name: profile.username })}</h2>
-        </header>
-
-        <div className="studio__desk">
-          <div className="studio__desk-head">
-            <h3 className="studio__label">{isSelf ? t('studio.selection') : t('studio.selectionOther')}</h3>
-            {isSelf && <p className="small muted">{t('studio.selectionHint')}</p>}
-          </div>
-          <div className="showcase">
-            {showcase.map((item, i) => (
-              item ? (
-                <div key={i} className="showcase__slot">
-                  <Card trackId={item.trackId} variant={item.variant} onClick={() => openCard(item.trackId)} />
-                  {isSelf && <button type="button" className="showcase__remove" onClick={() => removeFromShowcase(i)} aria-label={t('studio.remove')}><Icon name="close" size={14} /></button>}
-                </div>
-              ) : isSelf ? (
-                <button key={i} type="button" className="showcase__empty" onClick={() => setSlot(i)}>
-                  <Icon name="plus" size={22} />
-                  <span>{t('studio.add')}</span>
-                </button>
-              ) : (
-                <div key={i} className="showcase__empty showcase__empty--static"><span>{t('studio.empty')}</span></div>
-              )
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <RatingsSection username={profile.username} isSelf={isSelf} refreshKey={isSelf ? ratingsSignature : profile.id} />
-
+    <div className="profile st-studio" data-studio={profile.username} data-access={profile.access}>
+      <StudioHeader profile={profile} isSelf={isSelf} onEdit={() => setEditor('profile')} onEditPhoto={() => setAvatarOpen(true)} onChange={reload} />
+      {!restricted && <StudioTabsNav base={base} current={tab} />}
+      {body}
       {isSelf && (
         <>
           {avatarOpen && <AvatarPicker onClose={closeAvatar} />}
           {slot !== null && <ShowcasePicker slot={slot} onClose={closeSlot} />}
-          <div className="profile-actions">
-            <button type="button" className="btn btn--ghost" onClick={() => navigate('/friends')}><Icon name="users" /> {t('nav.friends')}</button>
-          </div>
+          <StudioEditor open={editor !== null} tab={editor || 'profile'} onClose={closeEditor} onSaved={reload} />
         </>
       )}
     </div>

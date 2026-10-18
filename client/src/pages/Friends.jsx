@@ -1,24 +1,32 @@
-// Page Amis : ajouter un membre, demandes reçues, amis, demandes envoyées.
+// Page Amis : ajouter un membre, puis les onglets Amis · Demandes (reçues et envoyées, avec leur nombre) ·
+// Suggestions (P1-B, PLAN.md 2.5 « Friends »).
 // P0-E (PLAN.md 2.5) : la recherche de membres passe par la recherche globale limitée aux membres (SearchCombobox,
 // pseudo partiel, fautes de frappe tolérées, membres bloqués jamais proposés) au lieu du pseudo exact ; Entrée sans
 // suggestion choisie envoie la demande au pseudo tapé, comme avant. Menu ⋯ Signaler / Bloquer (SafetyMenu, P0-F) sur
-// chaque ligne.
+// chaque ligne, et le pourcentage Taste Match (MatchFigure, P1-E) sur chaque ami. L'onglet se garde dans l'adresse
+// (?tab=requests…) ; sans onglet demandé, les demandes reçues en attente passent devant.
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { get, post, del } from '../api.js';
 import { useGame } from '../state/GameContext.jsx';
 import { useI18n } from '../i18n/index.jsx';
 import { Avatar, ConfirmButton, Icon, Progress, Spinner, useToast } from '../components/ui.jsx';
 import { SafetyMenu } from '../components/safety/SafetyMenu.jsx';
 import { SearchCombobox } from '../components/search/SearchCombobox.jsx';
+import { MatchFigure } from '../components/match/MatchFigure.jsx';
+import { SuggestedFriends } from '../components/match/HomeCards.jsx';
+import { EmptyState } from '../components/feedback.jsx';
 import '../styles/profile.css';
 import '../styles/search.css';
+import '../styles/studio.css';
 
-function FriendRow({ entry, children }) {
+const TABS = ['friends', 'requests', 'suggestions'];
+
+function FriendRow({ entry, children, match = false }) {
   const { t } = useI18n();
   const u = entry.user;
   return (
-    <li className="friend">
+    <li className="friend st-friend">
       <Link to={`/u/${u.username}`} className="friend__who">
         <Avatar user={u} size={44} />
         <span className="friend__text">
@@ -30,6 +38,7 @@ function FriendRow({ entry, children }) {
           <Progress value={u.unique} max={u.total} color="var(--cue)" size="xs" />
         </span>
       </Link>
+      {match && <span className="st-friend__match"><MatchFigure username={u.username} /></span>}
       <span className="friend__actions">
         {children}
         <SafetyMenu target={{ type: 'user', id: u.id }} user={u} />
@@ -78,6 +87,9 @@ export default function Friends() {
   const { t, error } = useI18n();
   const { refresh } = useGame();
   const toast = useToast();
+  const [params, setParams] = useSearchParams();
+  const asked = TABS.includes(params.get('tab')) ? params.get('tab') : null;
+  const chooseTab = (id) => setParams(id === 'friends' ? {} : { tab: id }, { replace: true });
   const [data, setData] = useState(null);
   const [failed, setFailed] = useState(false);
   const [username, setUsername] = useState('');
@@ -106,6 +118,9 @@ export default function Friends() {
     window.addEventListener('albummania:blocks', onBlocks);
     return () => window.removeEventListener('albummania:blocks', onBlocks);
   }, [load]);
+
+  // Sans onglet demandé : les demandes reçues en attente passent devant, sinon les amis.
+  const tab = asked || (data?.incoming?.length ? 'requests' : 'friends');
 
   const apply = async (promise) => {
     try {
@@ -172,46 +187,83 @@ export default function Friends() {
         </div>
       ) : !data ? <Spinner /> : (
         <>
-          {data.incoming.length > 0 && (
-            <section className="section">
-              <header className="section__head"><h2>{t('friends.incoming')} <span className="count-badge">{data.incoming.length}</span></h2></header>
-              <ul className="friend-list">
-                {data.incoming.map((e) => (
-                  <FriendRow key={e.requestId} entry={e}>
-                    <button type="button" className="btn btn--primary btn--sm" onClick={() => apply(post(`/friends/${e.requestId}/accept`))}>{t('friends.accept')}</button>
-                    <button type="button" className="btn btn--ghost btn--sm" onClick={() => apply(post(`/friends/${e.requestId}/decline`))}>{t('friends.decline')}</button>
-                  </FriendRow>
-                ))}
-              </ul>
+          <nav className="tabs st-friends-tabs" aria-label={t('friends.tabs.label')}>
+            {TABS.map((id) => (
+              <button key={id} type="button" className={`tabs__tab${tab === id ? ' active' : ''}`} aria-current={tab === id ? 'page' : undefined}
+                onClick={() => chooseTab(id)} data-friends-tab={id}>
+                {t(`friends.tabs.${id}`)}
+                {id === 'friends' && <span className="muted mono st-friends-tabs__n">{data.friends.length}</span>}
+                {id === 'requests' && data.incoming.length > 0 && <span className="count-badge">{data.incoming.length}</span>}
+              </button>
+            ))}
+          </nav>
+
+          {tab === 'friends' && (
+            <section className="section st-friends-panel" data-friends-panel="friends">
+              {data.friends.length === 0 ? (
+                <EmptyState icon="users" title={t('friends.emptyTitle')} body={t('friends.emptyBody')}
+                  action={{ label: t('friends.seeSuggestions'), onClick: () => chooseTab('suggestions'), primary: false }} />
+              ) : (
+                <ul className="friend-list">
+                  {data.friends.map((e) => (
+                    <FriendRow key={e.requestId} entry={e} match>
+                      <Link to={`/u/${e.user.username}`} className="btn btn--ghost btn--sm">{t('friends.view')}</Link>
+                      <ConfirmButton className="btn btn--ghost btn--sm btn--quiet" confirmLabel={t('friends.removeConfirm', { name: e.user.username })}
+                        onConfirm={() => apply(del(`/friends/${e.user.id}`))}>{t('friends.remove')}</ConfirmButton>
+                    </FriendRow>
+                  ))}
+                </ul>
+              )}
             </section>
           )}
 
-          <section className="section">
-            <header className="section__head"><h2>{t('friends.list')} <span className="muted mono">{data.friends.length}</span></h2></header>
-            {data.friends.length === 0 ? <p className="empty">{t('friends.empty')}</p> : (
-              <ul className="friend-list">
-                {data.friends.map((e) => (
-                  <FriendRow key={e.requestId} entry={e}>
-                    <Link to={`/u/${e.user.username}`} className="btn btn--ghost btn--sm">{t('friends.view')}</Link>
-                    <ConfirmButton className="btn btn--ghost btn--sm btn--quiet" confirmLabel={t('friends.removeConfirm', { name: e.user.username })}
-                      onConfirm={() => apply(del(`/friends/${e.user.id}`))}>{t('friends.remove')}</ConfirmButton>
-                  </FriendRow>
-                ))}
-              </ul>
-            )}
-          </section>
+          {tab === 'requests' && (
+            <div className="st-friends-panel" data-friends-panel="requests">
+              {data.incoming.length === 0 && data.outgoing.length === 0 && (
+                <EmptyState icon="mail" title={t('friends.requestsEmpty')} body={t('friends.requestsEmptyBody')} />
+              )}
+              {data.incoming.length > 0 && (
+                <section className="section">
+                  <header className="section__head"><h2>{t('friends.incoming')} <span className="count-badge">{data.incoming.length}</span></h2></header>
+                  <ul className="friend-list">
+                    {data.incoming.map((e) => (
+                      <FriendRow key={e.requestId} entry={e}>
+                        <button type="button" className="btn btn--primary btn--sm" onClick={() => apply(post(`/friends/${e.requestId}/accept`))}>{t('friends.accept')}</button>
+                        <button type="button" className="btn btn--ghost btn--sm" onClick={() => apply(post(`/friends/${e.requestId}/decline`))}>{t('friends.decline')}</button>
+                      </FriendRow>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              {data.outgoing.length > 0 && (
+                <section className="section">
+                  <header className="section__head"><h2>{t('friends.outgoing')}</h2></header>
+                  <ul className="friend-list">
+                    {data.outgoing.map((e) => (
+                      <FriendRow key={e.requestId} entry={e}>
+                        <span className="chip">{t('profile.pending')}</span>
+                        <button type="button" className="btn btn--ghost btn--sm" onClick={() => apply(post(`/friends/${e.requestId}/decline`))}>{t('friends.cancel')}</button>
+                      </FriendRow>
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </div>
+          )}
 
-          {data.outgoing.length > 0 && (
-            <section className="section">
-              <header className="section__head"><h2>{t('friends.outgoing')}</h2></header>
-              <ul className="friend-list">
-                {data.outgoing.map((e) => (
-                  <FriendRow key={e.requestId} entry={e}>
-                    <span className="chip">{t('profile.pending')}</span>
-                    <button type="button" className="btn btn--ghost btn--sm" onClick={() => apply(post(`/friends/${e.requestId}/decline`))}>{t('friends.cancel')}</button>
-                  </FriendRow>
-                ))}
-              </ul>
+          {tab === 'suggestions' && (
+            <section className="section st-friends-panel" data-friends-panel="suggestions">
+              <header className="section__head st-friends-suggest__head">
+                <div>
+                  <h2>{t('friends.suggestionsTitle')}</h2>
+                  <p className="small muted">{t('friends.suggestionsHint')}</p>
+                </div>
+              </header>
+              {/* Suggestions de P1-E ; tant qu'elles ne rendent rien, l'état vide ci-dessous s'affiche (studio.css). */}
+              <div className="st-suggest"><SuggestedFriends limit={12} /></div>
+              <div className="st-suggest-empty">
+                <EmptyState icon="users" title={t('friends.suggestionsEmpty')} body={t('friends.suggestionsEmptyBody')} />
+              </div>
             </section>
           )}
         </>

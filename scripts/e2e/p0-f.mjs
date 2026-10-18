@@ -20,7 +20,7 @@ import crypto from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import {
   ROOT, BASE as INITIAL_BASE, OUT, VIEWPORTS, PASSWORD, ADMIN, run, shot, fail, finish, setBase, startStack,
-  checkNoHorizontalScroll, launch, routeFonts, ignoredConsole,
+  checkNoHorizontalScroll, launch, routeFonts, ignoredConsole, homeAfterWelcome,
 } from './lib.mjs';
 
 let stack = null;
@@ -387,7 +387,8 @@ if (fs.existsSync(demoFile)) {
       await page.waitForSelector('.field__ok');
       await page.click('button[type=submit]');
       await page.click('.demo-mail .btn');
-      await page.waitForSelector('.hero');
+      // P1 : un compte neuf arrive une fois sur /welcome (premiers pas) ; on revient à l'accueil de la démo.
+      await homeAfterWelcome(page, { url: `file://${demoFile}`, navigate: false });
       // Admin de la démo : le rôle est posé dans la sauvegarde (le code de déblocage n'est pas public).
       await page.evaluate(() => {
         const key = 'albummania.demo.v1';

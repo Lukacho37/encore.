@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   ROOT, BASE as INITIAL_BASE, OUT, VIEWPORTS, PASSWORD, run, shot, signupViaApi, fail, finish, apiCall,
-  setBase, startStack, checkNoHorizontalScroll, launch, routeFonts, ignoredConsole,
+  setBase, startStack, checkNoHorizontalScroll, launch, routeFonts, ignoredConsole, homeAfterWelcome,
 } from './lib.mjs';
 
 let stack = null;
@@ -59,8 +59,8 @@ await run('desktop', VIEWPORTS.desktop, async (page) => {
   await signupViaApi(page, friend.email, friend.username);
   await apiCall(page, 'POST', '/auth/logout', {});
   await signupViaApi(page, player.email, player.username);
-  await page.goto(`${BASE}/`);
-  await page.waitForSelector('.hero');
+  // P1 : un compte neuf passe une fois par session par /welcome (premiers pas) avant l'accueil.
+  await homeAfterWelcome(page);
   const input = page.locator('#gs-top-input');
   expect(await input.isVisible(), '[desktop] champ de recherche absent de la barre du haut');
   expect((await input.getAttribute('placeholder'))?.startsWith('Album, morceau'), '[desktop] texte d’exemple du champ');
@@ -208,8 +208,7 @@ await run('desktop', VIEWPORTS.desktop, async (page) => {
 
 await run('phone', VIEWPORTS.phone, async (page) => {
   await page.request.post(`${BASE}/api/auth/login`, { headers: { 'X-AlbumMania': '1', 'Content-Type': 'application/json' }, data: { identifier: player.username, password: PASSWORD } });
-  await page.goto(`${BASE}/`);
-  await page.waitForSelector('.hero');
+  await homeAfterWelcome(page);
   expect(!(await page.locator('#gs-top-input').isVisible()), '[phone] champ en ligne visible sur téléphone');
   await page.click('.search-trigger');
   await page.waitForSelector('.search-sheet');
@@ -295,7 +294,8 @@ if (fs.existsSync(demoFile)) {
       for (const box of await page.locator('.auth__form input[type=checkbox]').all()) if (!(await box.isChecked())) await box.check();
       await page.click('button[type=submit]');
       await page.click('.demo-mail .btn');
-      await page.waitForSelector('.hero');
+      // P1 : un compte neuf arrive une fois sur /welcome (premiers pas) ; on revient à l'accueil de la démo.
+      await homeAfterWelcome(page, { url: `file://${demoFile}`, navigate: false });
       if (name === 'desktop') {
         await page.click('#gs-top-input');
         await page.keyboard.type('stromea');

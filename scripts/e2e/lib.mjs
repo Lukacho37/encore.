@@ -130,13 +130,39 @@ export async function signupViaApi(page, email, username, { password = PASSWORD 
   return (await verify.json()).user;
 }
 
+/**
+ * Ouvre l'accueil d'un compte connecté. P1 : un compte qui n'a pas fait ses premiers pas est d'abord mené une fois par
+ * session (onglet) sur /welcome ; on revient alors à l'accueil, où la redirection n'a plus lieu.
+ * `url` : adresse de l'accueil (la démo autonome passe son fichier) ; `navigate: false` quand la page y va déjà
+ * (lien de confirmation de l'inscription, par exemple).
+ */
+export async function homeAfterWelcome(page, { url = `${BASE}/`, timeout = 30_000, navigate = true } = {}) {
+  if (navigate) await page.goto(url);
+  await page.waitForSelector('.hero, [data-onboarding]', { timeout });
+  if (!(await page.locator('.hero').count())) {
+    await page.goto(url);
+    await page.waitForSelector('.hero', { timeout });
+  }
+}
+
 /** Connexion par le formulaire ; finit sur l'accueil (ou la page demandée avant la connexion). */
 export async function login(page, identifier, { password = PASSWORD, expect = '.hero' } = {}) {
   await page.goto(`${BASE}/login`);
   await page.fill('#login-id', identifier);
   await page.fill('#login-pw', password);
   await page.click('button[type=submit]');
-  if (expect) await page.waitForSelector(expect);
+  if (!expect) return;
+  if (expect !== '.hero') {
+    await page.waitForSelector(expect);
+    return;
+  }
+  // P1 : un compte qui n'a pas fait ses premiers pas est accueilli une fois par session sur /welcome ; on revient à
+  // l'accueil (la redirection n'a plus lieu dans cet onglet).
+  await page.waitForSelector('.hero, [data-onboarding]');
+  if (!(await page.locator('.hero').count())) {
+    await page.goto(`${BASE}/`);
+    await page.waitForSelector('.hero');
+  }
 }
 
 /** Connexion du compte admin (ADMIN_EMAILS=luka@example.com), créé à la première utilisation. */

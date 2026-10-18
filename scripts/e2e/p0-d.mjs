@@ -18,8 +18,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import {
-  ROOT, BASE as INITIAL_BASE, OUT, VIEWPORTS, PASSWORD, run, shot, fillSignup, lastMailToken, signupViaApi, fail, finish,
-  setBase, startStack, checkNoHorizontalScroll, launch, routeFonts, ignoredConsole,
+  ROOT, BASE as INITIAL_BASE, OUT, VIEWPORTS, PASSWORD, run, shot, fillSignup, lastMailToken, signupViaApi, apiCall, fail, finish,
+  setBase, startStack, checkNoHorizontalScroll, launch, routeFonts, ignoredConsole, homeAfterWelcome,
 } from './lib.mjs';
 
 let stack = null;
@@ -39,7 +39,8 @@ const { config } = await import('../../server/config.js');
 
 const NAV = [
   { href: '/', fr: 'Boosters', check: '.hero' },
-  { href: '/discover', fr: 'Découvrir', check: '.sh-hub' },
+  // P1 (P1-E) : Découvrir est reconstruit (sections personnalisées, tuiles, puis « Parcourir » du hub de P0).
+  { href: '/discover', fr: 'Découvrir', check: '[data-discover="page"]' },
   { href: '/collection', fr: 'Collection', check: '.page-head' },
   { href: '/friends', fr: 'Amis', check: '.friends' },
   { href: '/studio', fr: 'Studio', check: '.profile-head' },
@@ -116,10 +117,17 @@ await run('signup', VIEWPORTS.desktop, async (page) => {
   await page.waitForURL('**/check-email');
   const token = await lastMailToken(page, player.email);
   await page.goto(`${BASE}/verify?token=${token}`);
+  // P1 : le compte confirmé arrive sur ses premiers pas (/welcome) ; « Plus tard » mène à l'accueil et l'accueil
+  // n'insiste plus (les parcours suivants se connectent directement sur l'accueil).
+  await page.waitForSelector('[data-onboarding-later]');
+  await page.click('[data-onboarding-later]');
   await page.waitForSelector('.hero');
 });
 await run('signup-api', VIEWPORTS.desktop, async (page) => {
   await signupViaApi(page, other.email, other.username);
+  // Premiers pas passés par l'API (comme « Plus tard ») : la page demandée avant la connexion est rouverte telle quelle.
+  const skipped = await apiCall(page, 'POST', '/onboarding', { skip: true });
+  expect(skipped.status === 200, `[signup-api] premiers pas passés : ${skipped.status}`);
 });
 
 // Retour après la connexion : la page demandée est rouverte ; une destination externe est refusée.
@@ -167,9 +175,10 @@ await run('desktop', VIEWPORTS.desktop, async (page) => {
     await checkNoHorizontalScroll(page, `desktop ${n.href}`);
   }
   await page.click('.topnav a[href="/discover"]');
-  await page.waitForSelector('.sh-hub .album-tile');
-  expect(await page.locator('.sh-hub a[href^="/collection/albums?genre="]').count() > 0, '[desktop] chips Par genre');
-  expect(await page.locator('.sh-hub a[href="/blindtest"]').count() === 1, '[desktop] tuile Blind test dans Découvrir');
+  await page.waitForSelector('[data-discover="page"] .album-tile');
+  await page.waitForSelector('.dc-browse a[href^="/collection/albums?genre="]');
+  expect(await page.locator('.dc-browse a[href^="/collection/albums?genre="]').count() > 0, '[desktop] chips Par genre');
+  expect(await page.locator('.dc-tiles a[href="/blindtest"]').count() === 1, '[desktop] tuile Blind test dans Découvrir');
   await shot(page, 'd-20-discover', { fullPage: true });
   await page.click('.pill--packs');
   await page.waitForSelector('.hero');
@@ -316,10 +325,11 @@ if (fs.existsSync(demoFile)) {
       await page.check('#su-terms');
       await page.click('button[type=submit]');
       await page.click('.demo-mail .btn');
-      await page.waitForSelector('.hero');
+      // P1 : un compte neuf arrive une fois sur /welcome (premiers pas) ; on revient à l'accueil de la démo.
+      await homeAfterWelcome(page, { url: `file://${demoFile}`, navigate: false });
       const nav = name === 'desktop' ? '.topnav' : '.tabbar';
       await page.click(`${nav} a[href="/discover"]`);
-      await page.waitForSelector('.sh-hub .album-tile');
+      await page.waitForSelector('[data-discover="page"] .album-tile');
       await page.click('.account__btn');
       await page.click('.menu a[href="/settings"]');
       await page.waitForSelector('.sh-settings');

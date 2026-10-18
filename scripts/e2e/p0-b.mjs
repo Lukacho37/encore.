@@ -268,6 +268,8 @@ async function main() {
     // ---------- nouveau joueur : le héros de la référence (« N boosters disponibles »), boutons désactivés ----------
     await run(`${v}-player`, viewport, async (page) => {
       await asUser(page, player.username);
+      // P1 : le nouveau joueur passe d'abord une fois par /welcome (premiers pas) ; l'accueil se mesure ensuite.
+      await lib.homeAfterWelcome(page);
       await visit(page, v, '/', '.hero', '10-new-home');
       const hero = await page.evaluate(() => {
         const h = document.querySelector('section.hero#booster');
@@ -482,7 +484,8 @@ async function main() {
         const refused = await page.locator('.form-error').first().textContent({ timeout: 500 }).catch(() => null);
         if (refused) throw new Error(`inscription de démo refusée : « ${refused.trim()} »`);
         await page.click('.demo-mail .btn');
-        await page.waitForSelector('.hero');
+        // P1 : un compte neuf arrive une fois sur /welcome (premiers pas) ; on revient à l'accueil de la démo.
+        await lib.homeAfterWelcome(page, { url: `file://${demoFile}`, navigate: false });
         await settle(page, 600);
         await capture(page, `${v}-90-demo-home`);
         await check(page, `${v}-90-demo-home`);

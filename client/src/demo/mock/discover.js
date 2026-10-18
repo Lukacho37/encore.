@@ -67,6 +67,12 @@ function similarOf(ctx, albumId) {
   }
   for (const a of byPop(ctx, [...ctx.ALBUM.values()].filter((x) => x.artistId === base.artistId))) push(a, 'artist', 3);
   for (const a of byPop(ctx, [...ctx.ALBUM.values()].filter((x) => x.genre === base.genre && decadeOf(x.year) === decadeOf(base.year)))) push(a, 'genre_decade');
+  // Peu d'albums du genre à cette époque : le même genre, l'époque la plus proche d'abord (comme le serveur).
+  if (out.length < 6) {
+    const dist = (y) => (base.year && y ? Math.abs(y - base.year) : 100);
+    const near = byPop(ctx, [...ctx.ALBUM.values()].filter((x) => x.genre === base.genre)).slice(0, 60).sort((a, b) => dist(a.year) - dist(b.year));
+    for (const a of near) push(a, 'genre');
+  }
   return out;
 }
 

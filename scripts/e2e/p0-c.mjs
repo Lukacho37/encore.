@@ -15,7 +15,7 @@ import crypto from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import {
   ROOT, BASE as INITIAL_BASE, OUT, VIEWPORTS, run, shot, signup, login, fail, finish, setBase, startStack,
-  checkNoHorizontalScroll, apiCall, launch, routeFonts, ignoredConsole,
+  checkNoHorizontalScroll, apiCall, launch, routeFonts, ignoredConsole, homeAfterWelcome,
 } from './lib.mjs';
 
 let stack = null;
@@ -217,7 +217,8 @@ await run('desktop', VIEWPORTS.desktop, async (page) => {
   await page.waitForTimeout(300);
   await shot(page, 'd-40-album-reviews');
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.click('.toolbar .seg__btn:nth-child(2)');
+  // P1 (PLAN.md 2.5) : la tracklist est la vue par défaut de la page d'album (Tracklist · Cartes).
+  await page.locator('.toolbar .seg__btn', { hasText: 'Tracklist' }).click();
   await page.waitForSelector('.tracklist a.tracklist__title');
   await shot(page, 'd-41-album-tracklist');
   await page.locator('.tracklist a.tracklist__title').first().click();
@@ -228,7 +229,7 @@ await run('desktop', VIEWPORTS.desktop, async (page) => {
   await page.waitForSelector('.album-head');
 
   // 6. Fiche d'une carte : un seul titre, « Voir la page du morceau ».
-  await page.click('.toolbar .seg__btn:nth-child(1)');
+  await page.locator('.toolbar .seg__btn', { hasText: 'Cartes' }).click();
   await page.locator('.card-grid .card').nth(2).click();
   await page.waitForSelector('.card-detail');
   await page.waitForTimeout(300);
@@ -309,6 +310,8 @@ await run('phone', VIEWPORTS.phone, async (page) => {
   await page.waitForSelector('.album-ratings .trk-group--friends .review');
   await shot(page, 'm-40-album-full', { fullPage: true });
   await checkNoHorizontalScroll(page, 'phone album');
+  // P1 : la tracklist est la vue par défaut ; les cartes sont à un clic.
+  await page.locator('.toolbar .seg__btn', { hasText: 'Cartes' }).click();
   await page.locator('.card-grid .card').first().click();
   await page.waitForSelector('.card-detail');
   await page.waitForTimeout(300);
@@ -357,12 +360,13 @@ if (fs.existsSync(demoFile)) {
         }, `democ_${name}`);
         await page.goto(`file://${demoFile}`);
       }
-      await page.waitForSelector('.hero');
+      // P1 : un compte neuf arrive une fois sur /welcome (premiers pas) ; on revient à l'accueil de la démo.
+      await homeAfterWelcome(page, { url: `file://${demoFile}`, navigate: false });
       await page.locator('a[href="/collection"]:visible').first().click();
       await page.waitForSelector('.album-grid a.album-tile');
       await page.locator('.album-grid a.album-tile').first().click();
       await page.waitForSelector('.album-head');
-      await page.click('.toolbar .seg__btn:nth-child(2)');
+      await page.locator('.toolbar .seg__btn', { hasText: 'Tracklist' }).click();
       await page.locator('.tracklist a.tracklist__title').nth(2).click();
       await page.waitForSelector('.track-head');
       await page.waitForSelector('#critiques .review-editor');

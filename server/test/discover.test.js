@@ -158,7 +158,7 @@ test('GET /albums/:id/similar : co-notes, artiste, genre et décennie ; album in
   assert.equal(r.status, 200, JSON.stringify(r.body));
   const { items, catalog } = r.body;
   assert.ok(items.length >= 3 && items.length <= 12);
-  assert.ok(items.every((x) => ['corated', 'artist', 'genre_decade'].includes(x.reason)));
+  assert.ok(items.every((x) => ['corated', 'artist', 'genre_decade', 'genre'].includes(x.reason)));
   assert.ok(!items.some((x) => x.id === base.id));
   assert.ok(items.some((x) => x.id === other.id && x.reason === 'corated'), 'aimé par les mêmes amateurs');
   assert.ok(items.every((x) => catalog.albums.some((a) => a.id === x.id)));

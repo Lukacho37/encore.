@@ -64,7 +64,7 @@ export default {
       browse: 'Explorer le catalogue',
       similar: {
         title: 'Albums similaires',
-        reasons: { corated: 'Aimé par les mêmes joueurs', artist: 'Du même artiste', genre_decade: 'Même genre, même époque' },
+        reasons: { corated: 'Aimé par les mêmes joueurs', artist: 'Du même artiste', genre_decade: 'Même genre, même époque', genre: 'Même genre' },
       },
     },
     match: {
@@ -295,7 +295,7 @@ export default {
       browse: 'Browse the catalogue',
       similar: {
         title: 'Similar albums',
-        reasons: { corated: 'Loved by the same players', artist: 'Same artist', genre_decade: 'Same genre, same era' },
+        reasons: { corated: 'Loved by the same players', artist: 'Same artist', genre_decade: 'Same genre, same era', genre: 'Same genre' },
       },
     },
     match: {

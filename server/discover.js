@@ -20,7 +20,7 @@
 // Tuiles : Battles · Classements · Listes · Mes 9 albums · Blind test. Coûts : listes globales (cultes, tendances,
 // nouveautés, par genre, par décennie, populaires) gardées 10 min ; la page d'un joueur 10 min (server/lru.js),
 // oubliée quand il note, obtient des cartes ou change « Mes 9 albums ». GET /discover/:sectionId?cursor= → page suivante.
-// GET /albums/:id/similar → { items: [{ id, reason: 'corated' | 'artist' | 'genre_decade' }], catalog } (1 h par album).
+// GET /albums/:id/similar → { items: [{ id, reason: 'corated' | 'artist' | 'genre_decade' | 'genre' }], catalog } (1 h par album).
 // API interne (deps.discover) : similar(albumId), forget(userId).
 import { bayes } from '../shared/match.js';
 
@@ -39,6 +39,7 @@ const DAY = 86_400_000;
 const TEN_MIN = 10 * 60_000;
 /** Albums proches : au plus, notes 8+ récentes lues pour les co-notes, amateurs en commun nécessaires. */
 const SIMILAR_MAX = 12;
+const SIMILAR_MIN = 6; // en dessous, le même genre à l'époque la plus proche complète l'étagère
 const CORATERS = 200;
 const CORATED_MIN = 3;
 
@@ -150,6 +151,15 @@ export function init(deps) {
           ORDER BY fans DESC LIMIT 60`).all(base.genre, d, d + 9, albumId)) {
           push(r.id, r.artist_id, 'genre_decade');
         }
+      }
+      // Genre peu fourni à cette époque (Kind of Blue seul jazz des années 50…) : le même genre, les époques les plus
+      // proches d'abord, parmi ses 60 albums les plus suivis (index cat_albums_genre, jamais tout le catalogue).
+      if (out.length < SIMILAR_MIN && base.genre) {
+        const near = q(`SELECT id, artist_id, year FROM cat_albums WHERE genre = ? AND status = 'active' AND id <> ?
+          ORDER BY fans DESC LIMIT 60`).all(base.genre, albumId);
+        const dist = (y) => (base.year && y ? Math.abs(y - base.year) : 100);
+        near.sort((a, b) => dist(a.year) - dist(b.year));
+        for (const r of near) push(r.id, r.artist_id, 'genre');
       }
       return out;
     });

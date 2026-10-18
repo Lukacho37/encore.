@@ -22,6 +22,8 @@ import { MentionCard } from './MentionCard.jsx';
 import { PostCard } from './PostCard.jsx';
 import { ReviewCard } from './ReviewCard.jsx';
 import { itemHref, timeAgo, userHref, useOnBlocked } from './util.js';
+import { parseBadgeKey } from '@shared/badges.js';
+import { medalName } from '../play/common.jsx';
 import '../../styles/social.css';
 
 export const FEED_TABS = ['friends', 'foryou', 'community'];
@@ -195,12 +197,16 @@ function ListActivity({ item, onChange }) {
 function BadgeActivity({ item }) {
   const { t } = useI18n();
   const tier = item.data?.tier;
+  const tierLabel = tier ? t(`feed.tiers.${tier}`) : t('feed.badge');
+  // Nom de la médaille (« Explorateur des années 90 ») lu dans sa clé badge:<famille>[:<variante>]:<palier> (P1-F).
+  const parsed = item.object?.type === 'badge' ? parseBadgeKey(item.object.id) : null;
+  const name = parsed ? medalName(t, { id: parsed.family, variant: parsed.variant }) : null;
   return (
     <article className="post so-act" data-feed="badge">
       <ActivityHead item={item} headline={item.data?.first ? t('feed.badgeFirst') : t('feed.badge')} />
       <Link to={`${userHref(item.actor)}/badges`} className="so-badge">
         <span className="so-badge__icon" aria-hidden="true"><Icon name="trophy" size={18} /></span>
-        <span>{tier ? t(`feed.tiers.${tier}`) : t('feed.badge')}</span>
+        <span>{name ? <><b>{name}</b> · {tierLabel}</> : tierLabel}</span>
         <span className="so-badge__go">{t('feed.seeBadges')}</span>
       </Link>
     </article>

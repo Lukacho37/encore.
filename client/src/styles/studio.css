@@ -734,9 +734,11 @@
   margin-top: var(--s-20);
 }
 
-/* Lignes plus larges que celles d'avant : le Taste Match et les actions tiennent à côté du nom. */
+/* Une colonne de lignes larges (comme la page des notifications) : le niveau et la progression tiennent sur une ligne
+   à côté du Taste Match et des actions, au lieu de se replier sous le nom. */
 .st-friends-panel .friend-list {
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr));
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 820px;
 }
 
 .st-friend .st-friend__match {

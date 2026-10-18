@@ -12,9 +12,10 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import {
   ROOT, BASE as INITIAL_BASE, VIEWPORTS, PASSWORD, run, shot, signup, login, fail, finish, setBase, startStack,
-  checkNoHorizontalScroll, signupViaApi, apiCall,
+  checkNoHorizontalScroll, signupViaApi, apiCall, homeAfterWelcome,
 } from './lib.mjs';
 import { hashPassword } from '../../server/security.js';
+import { levelFromXp, levelRewards } from '../../shared/rules.js';
 
 const DIR = '/tmp/am-p0-a';
 const SOURCE = process.env.PERF_DB || process.env.FIXTURE;
@@ -152,14 +153,17 @@ async function visitProfile(page, label, username, file, { minVinyls = 0 } = {})
   const profile = r.body || {};
   if (r.status !== 200) fail(`[${label}] GET /api${wanted} : ${r.status}`);
   if (profile.role !== undefined) fail(`[${label}] le profil de ${username} expose encore role`);
-  if ((profile.vinyls?.length ?? 0) < minVinyls) fail(`[${label}] vinylthèque de ${username} : ${profile.vinyls?.length} vinyles`);
+  // P1 (Studio, P1-B) : le profil envoie les 24 premiers vinyles et leur nombre (vinylCount) ; la suite se lit page par
+  // page (GET /api/users/:username/vinyls).
+  const vinylCount = profile.vinylCount ?? profile.vinyls?.length ?? 0;
+  if (vinylCount < minVinyls) fail(`[${label}] vinylthèque de ${username} : ${vinylCount} vinyles`);
   if (ms > 300) fail(`[${label}] profil de ${username} en ${ms} ms`);
   await page.goto(`${BASE}/u/${encodeURIComponent(username)}`);
   await page.waitForSelector('.profile-head', { timeout: 30_000 });
   await page.waitForTimeout(800);
   await shot(page, file);
   if (label.startsWith('phone')) await checkNoHorizontalScroll(page, `${label} /u/${username}`);
-  report.push(`${label} : profil de ${username} ${JSON.stringify(profile).length} o en ${ms} ms (${profile.vinyls?.length ?? 0} vinyles)`);
+  report.push(`${label} : profil de ${username} ${JSON.stringify(profile).length} o en ${ms} ms (${vinylCount} vinyles, ${profile.vinyls?.length ?? 0} envoyés)`);
 }
 
 async function heavyFlow(page, label, prefix) {
@@ -241,9 +245,11 @@ if (fs.existsSync(demoFile)) {
       await page.click('.summary__actions .btn--ghost');
       await page.waitForSelector('.hero');
       const after = await heroCount(page);
-      if (after !== before - 1) fail(`[demo-${name}] héros : ${before} puis ${after}`);
       const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('albummania.demo.v1')));
       const u = stored.users.find((x) => x.id === 1);
+      // P1 (P1-D, PLAN.md 6.6) : un niveau gagné avec ce booster rend des boosters (+1 par niveau).
+      const bonus = levelRewards(levelFromXp(0).level, levelFromXp(u.xp || 0).level).boosters || 0;
+      if (after !== before - 1 + bonus) fail(`[demo-${name}] héros : ${before} puis ${after} (+${bonus} de niveau)`);
       if (u.termsVersion == null || !u.prefs || u.onboardedAt == null) fail(`[demo-${name}] sauvegarde d'avant P0 non complétée`);
       if (Object.keys(stored.cards['1'] || {}).length === 0) fail(`[demo-${name}] cartes du booster absentes de la sauvegarde`);
       await page.locator('a[href="/collection"]:visible').first().click();
@@ -270,7 +276,8 @@ if (fs.existsSync(demoFile)) {
       await page.waitForSelector('.field__ok');
       await page.click('button[type=submit]');
       await page.click('.demo-mail .btn');
-      await page.waitForSelector('.hero');
+      // P1 : un compte neuf arrive une fois sur /welcome (premiers pas) ; on revient à l'accueil de la démo.
+      await homeAfterWelcome(page, { url: `file://${demoFile}`, navigate: false });
       report.push(`démo ${name} : inscription avec la case CGU / 15 ans`);
     });
   }

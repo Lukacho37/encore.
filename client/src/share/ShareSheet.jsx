@@ -15,6 +15,7 @@ import { useI18n } from '../i18n/index.jsx';
 import { useApi } from '../state/catalog.js';
 import { useCovers } from '../state/CoversContext.jsx';
 import { FORMATS, renderImage } from './renderImage.js';
+import { hostSave } from './hostSave.js';
 import '../styles/lists.css';
 
 const FORMAT_KEYS = ['portrait', 'square', 'story'];
@@ -75,11 +76,14 @@ export function ShareSheet({ spec, title, onClose: rawClose, controls = true, fi
   const file = useMemo(() => (result ? new File([result.blob], name, { type: 'image/png' }) : null), [result, name]);
   const [w, h] = FORMATS[format];
 
-  const download = () => {
+  const download = async () => {
     if (!result) return;
-    // Démo : le bac à sable bloque les téléchargements ; l'image s'affiche en grand pour l'enregistrer.
+    // Démo : le bac à sable bloque les téléchargements classiques. Le lecteur de claude.ai propose d'enregistrer le
+    // fichier ; sans lui, l'image s'affiche en grand pour l'enregistrer (appui long ou clic droit).
     if (__DEMO__) {
-      setSaving(true);
+      const saved = await hostSave(name, result.blob);
+      if (saved === 'saved') toast(t('share.downloaded'));
+      else if (!saved) setSaving(true);
       return;
     }
     const a = document.createElement('a');

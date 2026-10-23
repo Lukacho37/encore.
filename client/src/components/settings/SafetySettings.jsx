@@ -17,6 +17,7 @@ import { Avatar, Icon, Modal, Spinner, useToast } from '../ui.jsx';
 import { ErrorBox } from '../feedback.jsx';
 import { setBlocked } from '../safety/SafetyMenu.jsx';
 import { AppealDialog, useItemTitle } from '../safety/NotificationRow.jsx';
+import { hostSave } from '../../share/hostSave.js';
 import '../../styles/safety.css';
 
 /** Lecture d'une adresse de l'API : { data, error, reload, setData }. */
@@ -231,9 +232,10 @@ function AccountSecurity() {
 
 // ---------- export ----------
 
-/** Fait télécharger un objet JSON sous ce nom de fichier. */
-function download(data, filename) {
+/** Fait télécharger un objet JSON sous ce nom de fichier (dans la démo publiée : par le lecteur de claude.ai). */
+async function download(data, filename) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  if (__DEMO__ && await hostSave(filename, blob)) return;
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -255,7 +257,7 @@ function ExportData() {
     try {
       const data = await get('/account/export');
       const day = new Date().toISOString().slice(0, 10);
-      download(data, `albummania-${String(user?.username || 'export').replace(/[^\w.-]/g, '_')}-${day}.json`);
+      await download(data, `albummania-${String(user?.username || 'export').replace(/[^\w.-]/g, '_')}-${day}.json`);
       toast(t('account.exported'), 'success');
     } catch (ex) {
       toast(ex.code === 'quota_exceeded' ? t('account.exportQuota') : error(ex.code), 'error');

@@ -264,7 +264,11 @@ export function init(deps) {
       services.refreshRatingStats(type, id);
       return row.id;
     });
-    if (existing?.review && !text) removedReview(ratingId);
+    if (existing?.review && !text) {
+      // Une critique du jour effacée compte encore dans le quota du jour (on compte les critiques écrites).
+      deps.quota.removed?.('reviews', [{ userId: user.id, createdAt: existing.review_at }]);
+      removedReview(ratingId);
+    }
     deps.bus.emit('rating.saved', {
       userId: user.id, ratingId, itemType: type, itemId: id, score, isNew: !existing, hasReview: !!text, reviewChanged: changed,
     });
@@ -285,10 +289,11 @@ export function init(deps) {
   function unrate(userId, type, rawId) {
     const id = checkItem(type, rawId);
     const existing = atomic(() => {
-      const row = q('SELECT id, review FROM ratings WHERE user_id = ? AND item_type = ? AND item_id = ?').get(userId, type, id);
+      const row = q('SELECT id, review, review_at FROM ratings WHERE user_id = ? AND item_type = ? AND item_id = ?').get(userId, type, id);
       if (!row) return null;
       q('DELETE FROM ratings WHERE id = ?').run(row.id);
       services.refreshRatingStats(type, id);
+      if (row.review) deps.quota.removed?.('reviews', [{ userId, createdAt: row.review_at }]);
       return row;
     });
     if (!existing) return null;
@@ -320,7 +325,7 @@ export function init(deps) {
 
   /** Joueur affiché (vérifié, pas bloqué dans un sens ou dans l'autre), sinon 404 user_not_found. */
   function targetUser(viewerId, username) {
-    const target = q('SELECT id, username FROM users WHERE username = ? AND email_verified_at IS NOT NULL').get(String(username || ''));
+    const target = q('SELECT id, username, profile_visibility FROM users WHERE username = ? AND email_verified_at IS NOT NULL').get(String(username || ''));
     if (!target || (target.id !== viewerId && access().isBlocked?.(viewerId, target.id))) throw new deps.HttpError(404, 'user_not_found');
     return target;
   }
@@ -342,10 +347,19 @@ export function init(deps) {
   /**
    * Journal de notes d'un joueur (GET /api/users/:username/ratings) : agrégats SQL et listes bornées, jamais tout
    * l'historique. `reviews` reste une liste (10 critiques) pour la page profil actuelle ; la suite se lit avec
-   * `reviewsCursor` sur GET /api/users/:username/reviews.
+   * `reviewsCursor` sur GET /api/users/:username/reviews. Studio « amis » vu par un non-ami, ou « privé » vu par un
+   * autre (PLAN.md 7.2) : `restricted: true`, ni chiffres ni notes ; seules ses critiques restent (contributions
+   * publiées, lisibles quelle que soit la confidentialité du Studio, comme sur la page d'un album).
    */
   function userRatings(viewerId, username) {
     const target = targetUser(viewerId, username);
+    if (target.id !== viewerId && (deps.studio?.accessOf?.(viewerId, target) ?? 'header') !== 'full') {
+      const reviews = userReviewPage(viewerId, target, null);
+      return {
+        restricted: true, stats: null, topAlbums: [], topTracks: [], recent: [],
+        reviews: reviews.items, reviewsCursor: reviews.nextCursor, catalog: itemRefs(reviews.items),
+      };
+    }
     const agg = q(`SELECT COUNT(*) AS n, SUM(r.score) AS s, SUM(r.item_type = 'album') AS albums,
         SUM(r.review IS NOT NULL) AS reviews, ${DIST_SQL}
       FROM ratings r WHERE r.user_id = ? AND ${IN_CATALOG}`).get(target.id);
@@ -374,13 +388,17 @@ export function init(deps) {
     return result;
   }
 
-  /** Dernières notes des amis (accueil, en attendant le fil de P1-A) : même forme qu'avant, plus `ratingId`. */
+  /**
+   * Dernières notes des amis (accueil, en attendant le fil de P1-A) : même forme qu'avant, plus `ratingId`. Un ami au
+   * Studio privé n'y figure pas (ses notes sont à lui seul, PLAN.md 7.2).
+   */
   function friendsFeed(userId) {
     const viewer = viewerOf(userId);
     const ids = [...viewer.friends];
     if (!ids.length) return { items: [], catalog: deps.refs() };
-    const rows = q(`SELECT ${ENTRY_COLS}, r.user_id, r.hidden_at FROM ratings r
-      WHERE r.user_id IN (SELECT value FROM json_each(?)) AND ${IN_CATALOG} ORDER BY r.updated_at DESC LIMIT 20`).all(json(ids));
+    const rows = q(`SELECT ${ENTRY_COLS}, r.user_id, r.hidden_at FROM ratings r JOIN users u ON u.id = r.user_id
+      WHERE r.user_id IN (SELECT value FROM json_each(?)) AND u.profile_visibility <> 'private' AND ${IN_CATALOG}
+      ORDER BY r.updated_at DESC LIMIT 20`).all(json(ids));
     const users = services.userSummaries(rows.map((r) => r.user_id), userId, { hidden: viewer.hidden });
     const items = rows.filter((r) => users.has(r.user_id)).map((r) => ({
       ...entryOf(r), user: users.get(r.user_id), review: r.hidden_at ? null : r.review,

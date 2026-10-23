@@ -84,6 +84,8 @@ export function init(deps) {
         FROM friendships f JOIN users o ON o.id = CASE WHEN f.requester_id = ? THEN f.addressee_id ELSE f.requester_id END
         WHERE f.requester_id = ? OR f.addressee_id = ? ORDER BY f.created_at`, userId, userId, userId, userId),
       blocks: all('SELECT o.username, b.created_at AS createdAt FROM blocks b JOIN users o ON o.id = b.blocked_id WHERE b.blocker_id = ? ORDER BY b.created_at', userId),
+      // Favoris du profil musical (accueil, Studio) : artistes, morceaux et genres choisis.
+      favorites: all('SELECT kind, item_id AS itemId, position, created_at AS createdAt FROM user_favorites WHERE user_id = ? ORDER BY kind, position', userId),
       lists: all(`SELECT l.id, l.kind, l.title, l.description, l.ranked, l.visibility, l.created_at AS createdAt, l.updated_at AS updatedAt,
           (SELECT json_group_array(json_object('position', i.position, 'itemType', i.item_type, 'itemId', i.item_id, 'note', i.note, 'addedAt', i.added_at))
              FROM (SELECT * FROM list_items WHERE list_id = l.id ORDER BY position) i) AS items

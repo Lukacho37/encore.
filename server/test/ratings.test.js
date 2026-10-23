@@ -324,6 +324,39 @@ test('journal d’un joueur : agrégats, listes bornées, critiques paginées ; 
   assert.ok(feed.items.every((f) => (f.type === 'album' ? feed.catalog.albums : feed.catalog.tracks).some((x) => x.id === f.id)));
 });
 
+test('journal d’un Studio fermé : ni chiffres ni notes pour les autres, ses critiques seules ; fil des amis sans Studio privé', async () => {
+  const me = await signupVerified(app, { username: 'notes_prive' });
+  const friend = await signupVerified(app, { username: 'notes_prive_ami' });
+  const stranger = await signupVerified(app, { username: 'notes_prive_inconnu' });
+  befriend(me.user.id, friend.user.id);
+  deps.ratings.rate(me.user.id, 'album', 'discovery', 2, null);
+  deps.ratings.rate(me.user.id, 'album', 'thriller', 10, 'Un sommet, du premier au dernier titre.');
+  const journal = async (who) => (await api(app.base, who.cookie, 'GET', '/users/notes_prive/ratings')).body;
+  const closed = (body) => {
+    assert.equal(body.restricted, true);
+    assert.equal(body.stats, null);
+    assert.deepEqual([body.topAlbums, body.topTracks, body.recent], [[], [], []]);
+    assert.ok(!JSON.stringify(body).includes('"score":2'), 'une note sans critique ne fuit pas');
+    assert.deepEqual(body.reviews.map((r) => r.id), ['thriller'], 'la critique publiée reste lisible');
+  };
+
+  for (const visibility of ['private', 'friends']) {
+    assert.equal((await api(app.base, me.cookie, 'PUT', '/me/profile', { visibility })).status, 200);
+    closed(await journal(stranger));
+    const own = await journal(me);
+    assert.equal(own.restricted, undefined);
+    assert.equal(own.stats.count, 2, 'le joueur voit tout son journal');
+  }
+  // « amis » : l'ami voit tout ; « privé » : l'ami aussi est tenu à l'écart, et le fil des amis l'ignore.
+  assert.equal((await journal(friend)).stats.count, 2);
+  assert.ok((await api(app.base, friend.cookie, 'GET', '/ratings/feed')).body.items.some((f) => f.user.username === 'notes_prive'));
+  await api(app.base, me.cookie, 'PUT', '/me/profile', { visibility: 'private' });
+  closed(await journal(friend));
+  assert.ok(!(await api(app.base, friend.cookie, 'GET', '/ratings/feed')).body.items.some((f) => f.user.username === 'notes_prive'));
+  await api(app.base, me.cookie, 'PUT', '/me/profile', { visibility: 'public' });
+  assert.equal((await journal(stranger)).stats.count, 2);
+});
+
 test('index : les critiques d’un élément passent par l’index partiel ratings_item_reviews', () => {
   const plan = (sql, ...args) => db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...args).map((r) => r.detail).join(' | ');
   const community = plan(`SELECT id FROM ratings WHERE item_type = ? AND item_id = ? AND review IS NOT NULL AND hidden_at IS NULL

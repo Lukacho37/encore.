@@ -260,6 +260,15 @@ export const routes = [
     const viewer = ctx.me();
     ensure(ctx.db);
     const target = targetOf(ctx, viewer, params[0]);
+    // Studio fermé (« amis » vu par un non-ami, « privé » vu par un autre) : ses critiques seules, comme le serveur.
+    const privacy = target.profileVisibility || 'public';
+    if (target.id !== viewer.id && privacy !== 'public' && !(privacy === 'friends' && viewerOf(ctx, viewer.id).friends.has(target.id))) {
+      const page = userReviewPage(ctx, viewer.id, target, null);
+      return {
+        restricted: true, stats: null, topAlbums: [], topTracks: [], recent: [],
+        reviews: page.items, reviewsCursor: page.nextCursor, catalog: itemRefs(ctx, page.items),
+      };
+    }
     const rows = ctx.db.ratings.filter((r) => r.userId === target.id && itemExists(ctx, r.type, r.id)).sort(byRecent);
     const albums = rows.filter((r) => r.type === 'album');
     const distribution = Array(11).fill(0);

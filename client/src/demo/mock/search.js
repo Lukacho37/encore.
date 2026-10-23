@@ -52,6 +52,9 @@ function socialIndex(ctx, viewerId) {
   for (const l of Array.isArray(db.lists) ? db.lists : []) {
     const owner = summaries.get(l.userId);
     if (!owner || l.visibility !== 'public' || l.hiddenAt || !['list', 'grid9'].includes(l.kind || 'list')) continue;
+    // Une grille « Mes 9 albums » n'est cherchable que si le Studio de son joueur est public (comme le serveur).
+    const u = l.kind === 'grid9' ? ctx.userById(l.userId) : null;
+    if (u && (u.profileVisibility || u.privacy || 'public') !== 'public') continue;
     docs.push({ kind: 'list', ref: String(l.id), folded: normalize(l.title), words: [...words(l.title), ...words(owner.username)], weight: listWeight(l.likeCount || 0), list: l, owner });
   }
   return docs;

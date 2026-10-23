@@ -145,7 +145,9 @@ export function createLimits({ isTest = false } = {}) {
 
 /**
  * Plafonds quotidiens (PLAN.md 4.0) : chaque quota compte les lignes de sa table source depuis minuit, heure de Paris,
- * avec un COUNT(*) indexé et borné. Ils survivent donc aux redémarrages et ne dérivent jamais.
+ * avec un COUNT(*) indexé et borné. Ils survivent donc aux redémarrages et ne dérivent jamais. Une ligne du jour
+ * supprimée (post, commentaire, liste, critique effacés) compte encore jusqu'à minuit : `quota.removed` la note dans
+ * kv (quota:<kind>:<joueur> = { day, n }), sinon écrire puis supprimer contournerait le plafond.
  * `sql` : requête de comptage (paramètres : joueur, début du jour, plafond + 1 pour borner le parcours).
  */
 export const QUOTAS = {
@@ -162,7 +164,8 @@ export const QUOTAS = {
 /**
  * Quotas quotidiens persistants : `deps.quota(userId, kind)` à appeler AVANT d'écrire la nouvelle ligne ; lève
  * 429 { error: 'quota_exceeded', kind, resetAt } quand le plafond du jour est atteint. `quota.count(userId, kind)`
- * et `quota.remaining(userId, kind)` pour l'affichage ; `limits` remplace des plafonds (tests).
+ * et `quota.remaining(userId, kind)` pour l'affichage ; `quota.removed(kind, rows)` après une suppression ; `limits`
+ * remplace des plafonds (tests).
  */
 export function createQuota(db, { limits = {}, now = Date.now } = {}) {
   const statements = new Map();
@@ -175,15 +178,46 @@ export function createQuota(db, { limits = {}, now = Date.now } = {}) {
     if (!statements.has(kind)) statements.set(kind, db.prepare(QUOTAS[kind].sql));
     return statements.get(kind);
   };
+  const prepared = (sql) => {
+    if (!statements.has(sql)) statements.set(sql, db.prepare(sql));
+    return statements.get(sql);
+  };
+  /** Lignes du jour comptées par `kind` puis supprimées (kv), 0 la veille. */
+  function removedToday(userId, kind) {
+    let saved = null;
+    try {
+      saved = JSON.parse(prepared('SELECT value FROM kv WHERE key = ?').get(`quota:${kind}:${userId}`)?.value ?? 'null');
+    } catch {
+      saved = null;
+    }
+    return saved?.day === dayStart(now()) && Number.isInteger(saved.n) ? saved.n : 0;
+  }
   function count(userId, kind) {
     const { max } = spec(kind);
-    return stmt(kind).get(userId, dayStart(now()), max + 1).n;
+    return stmt(kind).get(userId, dayStart(now()), max + 1).n + removedToday(userId, kind);
+  }
+  /**
+   * Lignes comptées par `kind` qui viennent d'être supprimées (dans la transaction de l'appelant) : celles écrites
+   * aujourd'hui comptent encore jusqu'à minuit. `rows` : [{ userId, createdAt }] (les plus anciennes sont ignorées).
+   */
+  function removed(kind, rows) {
+    spec(kind);
+    const day = dayStart(now());
+    const per = new Map();
+    for (const r of rows || []) {
+      if (r && Number.isInteger(r.userId) && r.createdAt >= day) per.set(r.userId, (per.get(r.userId) || 0) + 1);
+    }
+    for (const [userId, n] of per) {
+      prepared('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+        .run(`quota:${kind}:${userId}`, JSON.stringify({ day, n: removedToday(userId, kind) + n }));
+    }
   }
   function quota(userId, kind) {
     const { max } = spec(kind);
     if (count(userId, kind) >= max) throw new HttpError(429, 'quota_exceeded', { kind, max, resetAt: nextDayStart(now()) });
   }
   quota.count = count;
+  quota.removed = removed;
   quota.remaining = (userId, kind) => Math.max(0, spec(kind).max - count(userId, kind));
   quota.limit = (kind) => spec(kind).max;
   return quota;

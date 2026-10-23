@@ -434,6 +434,12 @@ test('Pressage n° : rangs distincts sous des complétions simultanées ; compl�
   assert.deepEqual(done.friends.map((f) => f.username), ['press_1']);
   assert.equal(done.mine.rank, ranks[0]);
   assert.equal(typeof done.mine.days, 'number');
+  // Un ami au Studio privé n'apparaît pas (ses albums complétés sont à lui) ; le total, anonyme, reste.
+  db.prepare("UPDATE users SET profile_visibility = 'private' WHERE id = ?").run(players[1].user.id);
+  const closed = (await api(app.base, viewer.cookie, 'GET', '/albums/exodus/completion')).body;
+  assert.deepEqual([closed.friends, closed.friendsCount, closed.completedBy], [[], 0, before + 6]);
+  db.prepare("UPDATE users SET profile_visibility = 'friends' WHERE id = ?").run(players[1].user.id);
+  assert.deepEqual((await api(app.base, viewer.cookie, 'GET', '/albums/exodus/completion')).body.friends.map((f) => f.username), ['press_1']);
   // Un ami bloqué n'apparaît plus.
   await api(app.base, players[1].cookie, 'PUT', `/blocks/${viewer.user.id}`);
   assert.deepEqual((await api(app.base, viewer.cookie, 'GET', '/albums/exodus/completion')).body.friends, []);

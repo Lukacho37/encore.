@@ -52,6 +52,9 @@ function exportData(ctx, u) {
       username: nameOf(f.requester === u.id ? f.addressee : f.requester),
     })),
     blocks: list('blocks').filter((b) => b.blocker === u.id).map((b) => ({ username: nameOf(b.blocked), createdAt: b.createdAt })),
+    // Favoris du profil musical (accueil, Studio), comme le serveur.
+    favorites: ['artist', 'genre', 'track'].flatMap((kind) => (Array.isArray(db.favorites?.[u.id]?.[kind]) ? db.favorites[u.id][kind] : [])
+      .map((itemId, position) => ({ kind, itemId, position }))),
     lists: list('lists').filter((l) => l.userId === u.id),
     posts: list('posts').filter((p) => p.userId === u.id),
     comments: list('comments').filter((c) => c.userId === u.id),

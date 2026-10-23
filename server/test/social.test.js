@@ -78,6 +78,51 @@ test('post en double refusé 24 h (409), quota quotidien (429), politique des li
   assert.equal(r.body.kind, 'posts');
 });
 
+test('quotas : on compte les créations du jour, supprimer ne rend rien (posts, commentaires, fils supprimés, listes, critiques)', async () => {
+  const me = await player();
+  const left = (kind) => deps.quota.remaining(me.user.id, kind);
+  // Posts : écrire puis supprimer 20 fois épuise le quota du jour.
+  for (let i = 0; i < 20; i++) {
+    const p = await call(me, 'POST', '/posts', { body: `Écrit puis retiré ${i}` });
+    assert.equal(p.status, 201, JSON.stringify(p.body));
+    assert.equal((await call(me, 'DELETE', `/posts/${p.body.post.id}`)).status, 200);
+  }
+  const over = await call(me, 'POST', '/posts', { body: 'Un de trop' });
+  assert.equal(over.status, 429);
+  assert.equal(over.body.kind, 'posts');
+
+  // Commentaires : supprimés un à un, ou partis avec le fil (post d'un autre supprimé) : ils comptent encore.
+  const host = await player();
+  const thread = (await call(host, 'POST', '/posts', { body: 'Un fil' })).body.post.id;
+  const before = left('comments');
+  const c = await call(me, 'POST', '/comments', { targetType: 'post', targetId: thread, body: 'Premier' });
+  assert.equal(c.status, 201, JSON.stringify(c.body));
+  assert.equal((await call(me, 'DELETE', `/comments/${c.body.comment.id}`)).status, 200);
+  for (let i = 0; i < 3; i++) await call(me, 'POST', '/comments', { targetType: 'post', targetId: thread, body: `Encore ${i}` });
+  assert.equal((await call(host, 'DELETE', `/posts/${thread}`)).status, 200);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM comments WHERE user_id = ?').get(me.user.id).n, 0);
+  assert.equal(left('comments'), before - 4);
+  // D'hier : rien ne compte plus.
+  const old = await call(host, 'POST', '/posts', { body: 'Un fil ancien' });
+  const oc = (await call(me, 'POST', '/comments', { targetType: 'post', targetId: old.body.post.id, body: 'Vieux' })).body.comment.id;
+  db.prepare('UPDATE comments SET created_at = created_at - 2 * 86400000 WHERE id = ?').run(oc);
+  const atOld = left('comments');
+  await call(me, 'DELETE', `/comments/${oc}`);
+  assert.equal(left('comments'), atOld);
+
+  // Listes et critiques : même règle.
+  const lists = left('lists');
+  const l = await call(me, 'POST', '/lists', { title: 'Éphémère' });
+  await call(me, 'DELETE', `/lists/${l.body.list.id}`);
+  assert.equal(left('lists'), lists - 1);
+  const reviews = left('reviews');
+  await call(me, 'PUT', '/ratings/album/discovery', { score: 8, review: 'Une critique qui ne restera pas.' });
+  await call(me, 'PUT', '/ratings/album/discovery', { score: 8, review: '' });
+  await call(me, 'PUT', '/ratings/album/thriller', { score: 9, review: 'Celle-ci non plus, retirée avec sa note.' });
+  await call(me, 'DELETE', '/ratings/album/thriller');
+  assert.equal(left('reviews'), reviews - 2);
+});
+
 test('matrice de visibilité : public, amis seulement, masqué par la modération, blocages dans les deux sens', async () => {
   const author = await player();
   const friend = await player();

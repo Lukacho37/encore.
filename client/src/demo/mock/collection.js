@@ -108,7 +108,8 @@ function completion(ctx, u, albumId) {
     .map(([uid, list]) => ({ uid: Number(uid), at: list[key] })).sort((a, b) => a.at - b.at || a.uid - b.uid);
   const hidden = hiddenIds(ctx.db, u.id);
   const friends = friendIds(ctx.db, u.id);
-  const friendRows = done.filter((r) => friends.has(r.uid) && !hidden.has(r.uid));
+  // Un ami au Studio privé garde ses albums complétés pour lui (comme le serveur).
+  const friendRows = done.filter((r) => friends.has(r.uid) && !hidden.has(r.uid) && ctx.userById(r.uid)?.profileVisibility !== 'private');
   const summaries = ctx.summaries(friendRows.slice(0, 8).map((r) => r.uid));
   const friendList = friendRows.slice(0, 8).map((r) => summaries.get(r.uid)).filter(Boolean);
   const at = ctx.collection.achOf(u.id)[key];

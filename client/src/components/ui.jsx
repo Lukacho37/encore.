@@ -187,6 +187,38 @@ export function Progress({ value, max, color, label, size = 'md' }) {
 
 // ---------- modale -----------------------------------------------------------
 
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), '
+  + 'textarea:not([disabled]), iframe, [contenteditable="true"], [tabindex]';
+
+/**
+ * Élément atteint par Tab : affiché, hors tabindex négatif (focus itinérant) ; d'un groupe de boutons radio, seulement
+ * celui qui est coché (ou le premier).
+ */
+function tabbable(el, box) {
+  if (el.tabIndex < 0 || !el.getClientRects().length) return false;
+  if (el.type !== 'radio' || el.checked || !el.name) return true;
+  const group = [...box.querySelectorAll('input[type="radio"]')].filter((r) => r.name === el.name);
+  return !group.some((r) => r.checked) && group[0] === el;
+}
+
+/** Tab et Maj+Tab tournent dans `box` (dialogue aria-modal) : le focus ne part jamais vers la page cachée derrière. */
+function trapTab(e, box) {
+  // Seule la modale du dessus (la dernière ouverte) garde le focus.
+  if (!box || [...document.querySelectorAll('[aria-modal="true"]')].pop() !== box) return;
+  const items = [...box.querySelectorAll(FOCUSABLE)].filter((el) => tabbable(el, box));
+  if (!items.length) {
+    e.preventDefault();
+    return;
+  }
+  const first = items[0];
+  const last = items[items.length - 1];
+  const inside = box.contains(document.activeElement);
+  if (e.shiftKey ? (!inside || document.activeElement === first) : (!inside || document.activeElement === last)) {
+    e.preventDefault();
+    (e.shiftKey ? last : first).focus();
+  }
+}
+
 export function Modal({ open, onClose, title, children, className = '', labelledBy }) {
   const ref = useRef(null);
   const { t } = useI18n();
@@ -199,6 +231,8 @@ export function Modal({ open, onClose, title, children, className = '', labelled
         e.preventDefault();
         e.stopPropagation();
         onClose?.();
+      } else if (e.key === 'Tab') {
+        trapTab(e, ref.current);
       }
     };
     document.addEventListener('keydown', onKey);

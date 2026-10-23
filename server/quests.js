@@ -132,7 +132,9 @@ export function init(deps) {
       AND hidden_at IS NULL LIMIT ?)`, u, s, e, l),
     comment: (u, _p, s, e, l) => n(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM comments WHERE user_id = ? AND created_at >= ? AND created_at < ?
       AND hidden_at IS NULL AND deleted_at IS NULL LIMIT ?)`, u, s, e, l),
-    onboarded: (u) => n('SELECT COUNT(*) AS n FROM users WHERE id = ? AND onboarded_at IS NOT NULL', u),
+    // « Termine ton profil musical » : au moins un genre ou un artiste favori (accueil suivi, ou Studio) ; passer l'accueil
+    // (skip) ne le remplit pas.
+    onboarded: (u) => n("SELECT EXISTS (SELECT 1 FROM user_favorites WHERE user_id = ? AND kind IN ('genre', 'artist')) AS n", u),
     add_friend: (u) => n(`SELECT (EXISTS (SELECT 1 FROM friendships WHERE requester_id = ? AND status = 'accepted')
       OR EXISTS (SELECT 1 FROM friendships WHERE addressee_id = ? AND status = 'accepted')) AS n`, u, u),
   };

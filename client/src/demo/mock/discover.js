@@ -152,11 +152,12 @@ function build(ctx, uid) {
     }
   }
 
-  // 2. Très apprécié par tes amis.
+  // 2. Très apprécié par tes amis (un ami au Studio privé garde ses notes pour lui).
   if (viewer.friends.size) {
     const byAlbum = new Map();
+    const open = new Set([...viewer.friends].filter((id) => ctx.userById(id)?.profileVisibility !== 'private'));
     for (const r of db.ratings) {
-      if (r.type !== 'album' || r.score < 8 || !viewer.friends.has(r.userId) || !ALBUM.has(r.id)) continue;
+      if (r.type !== 'album' || r.score < 8 || !open.has(r.userId) || !ALBUM.has(r.id)) continue;
       const e = byAlbum.get(r.id) || { n: 0, sum: 0, users: [] };
       e.n += 1;
       e.sum += r.score;

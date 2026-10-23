@@ -113,6 +113,16 @@ export function init(deps) {
     return false;
   }
 
+  /**
+   * Studio de `owner` ({ id, profile_visibility }) ouvert à `viewer` (PLAN.md 7.2 ; blocages vérifiés avant) ; la grille
+   * « Mes 9 albums » en fait partie et le suit.
+   */
+  function studioOpen(viewer, owner) {
+    if (owner.id === viewer.id) return true;
+    const privacy = owner.profile_visibility || 'public';
+    return privacy === 'public' || (privacy === 'friends' && viewer.friends.has(owner.id));
+  }
+
   // ----- références du catalogue d'une réponse ----------------------------------------------------
 
   /** Collecteur des albums, morceaux et artistes cités ; build() → `catalog` (deps.refs, une fois). */
@@ -156,7 +166,9 @@ export function init(deps) {
     } else if (type === 'review') {
       row = q('SELECT id, user_id, item_type, item_id, hidden_at FROM ratings WHERE id = ? AND review IS NOT NULL').get(id);
     } else if (type === 'list') {
-      row = q("SELECT id, user_id, kind, visibility, hidden_at FROM lists WHERE id = ? AND kind <> 'wishlist'").get(id);
+      row = q(`SELECT l.id, l.user_id, l.kind, l.visibility, l.hidden_at, u.profile_visibility FROM lists l JOIN users u ON u.id = l.user_id
+        WHERE l.id = ? AND l.kind <> 'wishlist'`).get(id);
+      if (row?.kind === 'grid9' && !studioOpen(viewer, { id: row.user_id, profile_visibility: row.profile_visibility })) row = null;
       visibility = row?.visibility;
     } else if (type === 'comment') {
       row = q('SELECT id, user_id, target_type, target_id, parent_id, deleted_at, hidden_at FROM comments WHERE id = ?').get(id);
@@ -199,9 +211,11 @@ export function init(deps) {
     const out = new Map();
     const wanted = [...new Set(ids.map(Number))].filter((x) => Number.isInteger(x) && x > 0);
     if (!wanted.length) return out;
-    const rows = q(`SELECT id, user_id, kind, title, visibility, ranked, item_count, like_count, comment_count, updated_at, hidden_at
-      FROM lists WHERE id IN (SELECT value FROM json_each(?)) AND kind <> 'wishlist'`).all(json(wanted))
-      .filter((r) => canRead(viewer, r.user_id, r.visibility) && (!r.hidden_at || r.user_id === viewer.id));
+    const rows = q(`SELECT l.id, l.user_id, l.kind, l.title, l.visibility, l.ranked, l.item_count, l.like_count, l.comment_count, l.updated_at,
+        l.hidden_at, u.profile_visibility
+      FROM lists l JOIN users u ON u.id = l.user_id WHERE l.id IN (SELECT value FROM json_each(?)) AND l.kind <> 'wishlist'`).all(json(wanted))
+      .filter((r) => canRead(viewer, r.user_id, r.visibility) && (!r.hidden_at || r.user_id === viewer.id)
+        && (r.kind !== 'grid9' || studioOpen(viewer, { id: r.user_id, profile_visibility: r.profile_visibility })));
     if (!rows.length) return out;
     const covers = new Map();
     for (const c of q(`SELECT list_id, item_id FROM (SELECT list_id, item_id, ROW_NUMBER() OVER (PARTITION BY list_id ORDER BY position) AS rn
@@ -428,11 +442,13 @@ export function init(deps) {
   /** DELETE /api/posts/:id (auteur) : supprimé avec tout ce qui s'y accroche (purgeTarget). */
   function deletePost(user, rawId) {
     const id = toId(rawId);
-    const row = id && q('SELECT id, user_id FROM posts WHERE id = ?').get(id);
+    const row = id && q('SELECT id, user_id, created_at FROM posts WHERE id = ?').get(id);
     if (!row || row.user_id !== user.id) throw notFound();
     atomic(() => {
       deps.moderation?.purgeTarget?.('post', id);
       q('DELETE FROM posts WHERE id = ?').run(id);
+      // Un post du jour supprimé compte encore dans le quota du jour (on compte les créations).
+      deps.quota.removed?.('posts', [{ userId: row.user_id, createdAt: row.created_at }]);
     });
     deps.bus.emit('content.removed', { targetType: 'post', targetId: id, by: 'author' });
     return { ok: true };
@@ -455,8 +471,7 @@ export function init(deps) {
     const target = targetUser(viewer, username);
     const self = target.id === viewer.id;
     const friend = !self && viewer.friends.has(target.id);
-    const privacy = target.profile_visibility || 'public';
-    if (!self && (privacy === 'private' || (privacy === 'friends' && !friend))) return { items: [], nextCursor: null, restricted: true, catalog: deps.refs() };
+    if (!studioOpen(viewer, target)) return { items: [], nextCursor: null, restricted: true, catalog: deps.refs() };
     const { limit } = paging.pageOf(query, { def: PAGE });
     const after = keyset(query.cursor);
     const filter = self ? '' : friend ? ' AND hidden_at IS NULL' : " AND hidden_at IS NULL AND visibility = 'public'";
@@ -709,11 +724,16 @@ export function init(deps) {
         q('UPDATE comments SET deleted_at = ?, body = ?, edited_at = NULL, like_count = 0, hidden_at = NULL WHERE id = ?').run(Date.now(), DELETED_BODY, id);
       } else {
         q('DELETE FROM comments WHERE id = ?').run(id);
+        const gone = [{ userId: row.user_id, createdAt: row.created_at }];
         if (row.parent_id) {
           q('UPDATE comments SET reply_count = MAX(reply_count - 1, 0) WHERE id = ?').run(row.parent_id);
           // Commentaire de tête déjà supprimé dont la dernière réponse part : il disparaît aussi.
-          q('DELETE FROM comments WHERE id = ? AND deleted_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM comments WHERE parent_id = ?)').run(row.parent_id, row.parent_id);
+          const parent = q(`DELETE FROM comments WHERE id = ? AND deleted_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM comments WHERE parent_id = ?)
+            RETURNING user_id, created_at`).get(row.parent_id, row.parent_id);
+          if (parent) gone.push({ userId: parent.user_id, createdAt: parent.created_at });
         }
+        // Un commentaire du jour supprimé compte encore dans le quota du jour de son auteur.
+        deps.quota.removed?.('comments', gone);
       }
       q(`UPDATE ${TABLES[row.target_type]} SET comment_count = MAX(comment_count - 1, 0) WHERE id = ?`).run(row.target_id);
       // Notifications de ce commentaire (réponse, mention, « J'aime ») : leur cible est le fil, le commentaire est dans data.

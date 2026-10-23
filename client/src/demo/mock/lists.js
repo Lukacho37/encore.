@@ -82,8 +82,12 @@ function studioOpen(viewer, target) {
   return privacy === 'friends' && viewer.friends.has(target.id);
 }
 
-/** Liste lisible par `viewer` : visibilité, blocages, masquée par la modération (lue par son auteur seulement). */
-const readable = (viewer) => (l) => l.kind !== 'wishlist' && canRead(viewer, l.userId, l.visibility) && (!l.hiddenAt || l.userId === viewer.id);
+/**
+ * Liste lisible par `viewer` : visibilité, blocages, masquée par la modération (lue par son auteur seulement) ; la grille
+ * « Mes 9 albums » suit en plus le Studio de son joueur (comme le serveur).
+ */
+const readable = (ctx, viewer) => (l) => l.kind !== 'wishlist' && canRead(viewer, l.userId, l.visibility) && (!l.hiddenAt || l.userId === viewer.id)
+  && (l.kind !== 'grid9' || studioOpen(viewer, ctx.userById(l.userId) || { id: l.userId }));
 
 /** Collecteur des éléments cités (champ `catalog`). */
 function collector(ctx) {
@@ -117,7 +121,7 @@ function coversOf(ctx, l) {
 
 /** Lignes → ListSummary lisibles par `viewer` (auteurs en un appel, « J'aime » du joueur). */
 function summarize(ctx, viewer, rows, refs = null) {
-  const kept = rows.filter((l) => l && readable(viewer)(l));
+  const kept = rows.filter((l) => l && readable(ctx, viewer)(l));
   const users = ctx.summaries(kept.map((l) => l.userId));
   refs?.users(users.values());
   const liked = new Set((ctx.db.likes || []).filter((x) => x.userId === viewer.id && x.targetType === 'list').map((x) => x.targetId));
@@ -139,7 +143,7 @@ function summarize(ctx, viewer, rows, refs = null) {
 /** Liste lisible par `viewer`, sinon 404 (jamais 403 : rien ne fuit). */
 function readList(ctx, viewer, rawId) {
   const l = ctx.db.lists.find((x) => x.id === toId(rawId));
-  if (!l || !readable(viewer)(l)) ctx.fail(404, 'not_found');
+  if (!l || !readable(ctx, viewer)(l)) ctx.fail(404, 'not_found');
   return l;
 }
 
@@ -488,7 +492,7 @@ export const routes = [
     // des amis en tête de la première page.
     const rows = db.lists.filter((l) => !l.hiddenAt && ['list', 'grid9'].includes(l.kind) && l.items.some((it) => it.type === 'album' && it.id === albumId)
       && (l.kind === 'list' || l.userId === viewer.id || privacyOf(ctx.userById(l.userId)) === 'public')
-      && readable(viewer)(l)).sort((a, b) => b.id - a.id);
+      && readable(ctx, viewer)(l)).sort((a, b) => b.id - a.id);
     const top = after ? [] : rows.filter((l) => viewer.friends.has(l.userId)).slice(0, ALBUM_FRIENDS);
     const topIds = new Set(top.map((l) => l.id));
     const rest = rows.filter((l) => !topIds.has(l.id) && (!after || l.id < after[0]));
@@ -518,7 +522,7 @@ export const routes = [
     const empty = { list: null, title: GRID_TITLES[target.lang] || GRID_TITLES.fr, slots: Array(GRID_SLOTS).fill(null) };
     if (!studioOpen(viewer, target)) return { ...empty, user, restricted: true, catalog: refs.build() };
     const l = gridOf(ctx.db, target.id);
-    if (!l || !readable(viewer)(l)) return { ...empty, user, catalog: refs.build() };
+    if (!l || !readable(ctx, viewer)(l)) return { ...empty, user, catalog: refs.build() };
     return { ...gridView(ctx, viewer, target, l, refs), user };
   }],
 ];

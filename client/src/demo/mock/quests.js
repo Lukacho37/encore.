@@ -110,7 +110,11 @@ const COUNTERS = {
     .reduce((n, l) => n + (l.items || []).filter((it) => inWin(it.addedAt, w)).length, 0),
   post: (ctx, u, _p, w) => (ctx.db.posts || []).filter((p) => p.userId === u.id && !p.hiddenAt && inWin(p.createdAt, w)).length,
   comment: (ctx, u, _p, w) => (ctx.db.comments || []).filter((c) => c.userId === u.id && !c.hiddenAt && !c.deletedAt && inWin(c.createdAt, w)).length,
-  onboarded: (ctx, u) => (u.onboardedAt != null ? 1 : 0),
+  // Profil musical rempli (un genre ou un artiste favori), pas seulement l'accueil passé.
+  onboarded: (ctx, u) => {
+    const f = ctx.db.favorites?.[u.id] || {};
+    return (Array.isArray(f.genre) && f.genre.length) || (Array.isArray(f.artist) && f.artist.length) ? 1 : 0;
+  },
   add_friend: (ctx, u) => (ctx.db.friendships.some((f) => f.status === 'accepted' && (f.requester === u.id || f.addressee === u.id)) ? 1 : 0),
 };
 

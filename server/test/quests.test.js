@@ -113,8 +113,14 @@ test('GET /api/quests : 3 + 3 quêtes tirées et gardées, Premiers pas, bornes 
   const again = await call(me, 'GET', '/quests');
   assert.deepEqual(again.body.daily.slots.map((s) => s.id), daily.slots.map((s) => s.id));
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM user_quests WHERE user_id = ?').get(me.user.id).n, 3 + 3 + FIRST_STEPS.length);
-  // La quête « Termine ton profil » des Premiers pas est faite dès l'inscription vérifiée si l'onboarding est fait.
-  db.prepare('UPDATE users SET onboarded_at = ? WHERE id = ?').run(Date.now(), me.user.id);
+  // « Termine ton profil musical » : passer l'accueil ne la termine pas ; un profil rempli (genres favoris) si.
+  assert.equal((await call(me, 'POST', '/onboarding', { skip: true })).status, 200);
+  assert.ok(db.prepare('SELECT onboarded_at FROM users WHERE id = ?').get(me.user.id).onboarded_at);
+  const skipped = await call(me, 'GET', '/quests');
+  assert.equal(skipped.body.firstSteps[0].done, false, 'accueil passé : rien à réclamer');
+  const early = await call(me, 'POST', '/quests/first/0/claim');
+  assert.equal(early.status, 409, JSON.stringify(early.body));
+  assert.equal((await call(me, 'POST', '/onboarding', { genres: ['electro', 'rock', 'pop'] })).status, 200);
   const third = await call(me, 'GET', '/quests');
   assert.equal(third.body.firstSteps[0].done, true);
 });
@@ -344,7 +350,8 @@ test('Premiers pas : réclamables une fois chacun, puis la liste disparaît', as
   const me = await player();
   const other = await player();
   await call(me, 'GET', '/quests');
-  db.prepare('UPDATE users SET onboarded_at = ? WHERE id = ?').run(Date.now(), me.user.id);
+  // Profil musical rempli : un genre favori.
+  db.prepare("INSERT INTO user_favorites (user_id, kind, item_id, position, created_at) VALUES (?, 'genre', 'electro', 0, ?)").run(me.user.id, Date.now());
   const r1 = await call(me, 'POST', '/quests/first/0/claim');
   assert.equal(r1.status, 200, JSON.stringify(r1.body));
   assert.deepEqual(r1.body.reward, { royalties: 30, xp: 20 });

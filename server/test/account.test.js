@@ -13,8 +13,8 @@ const call = (who, method, path, body) => api(app.base, typeof who === 'string' 
 let counter = 0;
 const player = (prefix = 'a') => signupVerified(app, { username: `${prefix}${++counter}_acc` });
 
-const SECTIONS = ['profile', 'settings', 'cards', 'achievements', 'ratings', 'friendships', 'blocks', 'lists', 'posts', 'comments', 'likes',
-  'battleVotes', 'quests', 'notifications', 'reportsMade', 'moderationDecisions'];
+const SECTIONS = ['profile', 'settings', 'cards', 'achievements', 'ratings', 'friendships', 'blocks', 'favorites', 'lists', 'posts', 'comments',
+  'likes', 'battleVotes', 'quests', 'notifications', 'reportsMade', 'moderationDecisions'];
 
 test('export : toutes les sections, pièce jointe nommée, 3 exports par jour', async () => {
   const me = await player('exp');
@@ -22,6 +22,7 @@ test('export : toutes les sections, pièce jointe nommée, 3 exports par jour', 
   await call(me, 'POST', '/packs/open', { count: 1 });
   await call(me, 'PUT', '/ratings/album/discovery', { score: 9, review: 'Mon export contient ceci' });
   await call(me, 'POST', '/friends/request', { username: friend.username });
+  assert.equal((await call(me, 'PUT', '/me/favorites/genre', { ids: ['electro', 'jazz'] })).status, 200);
   const r = await call(me, 'GET', '/account/export');
   assert.equal(r.status, 200);
   assert.match(r.headers.get('content-disposition'), new RegExp(`attachment; filename="albummania-${me.username}-\\d{4}-\\d{2}-\\d{2}\\.json"`));
@@ -32,6 +33,7 @@ test('export : toutes les sections, pièce jointe nommée, 3 exports par jour', 
   assert.equal(r.body.ratings.find((x) => x.itemId === 'discovery').review, 'Mon export contient ceci');
   assert.equal(r.body.friendships[0].username, friend.username);
   assert.equal(r.body.friendships[0].direction, 'sent');
+  assert.deepEqual(r.body.favorites.map((f) => [f.kind, f.itemId, f.position]), [['genre', 'electro', 0], ['genre', 'jazz', 1]], 'favoris du profil musical');
   assert.equal((await call(me, 'GET', '/account/export')).status, 200);
   assert.equal((await call(me, 'GET', '/account/export')).status, 200);
   const fourth = await call(me, 'GET', '/account/export');

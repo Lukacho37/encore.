@@ -270,8 +270,11 @@ export function init(deps) {
     const id = Number(rawId);
     atomic(() => {
       if (Number.isInteger(id) && ['post', 'review', 'list'].includes(type)) {
-        const commentIds = q('SELECT id FROM comments WHERE target_type = ? AND target_id = ?').all(type, id).map((r) => r.id);
+        const comments = q('SELECT id, user_id, created_at FROM comments WHERE target_type = ? AND target_id = ?').all(type, id);
+        const commentIds = comments.map((r) => r.id);
         if (commentIds.length) {
+          // Les commentaires du jour qui partent avec leur fil comptent encore dans le quota du jour de leurs auteurs.
+          deps.quota?.removed?.('comments', comments.map((r) => ({ userId: r.user_id, createdAt: r.created_at })));
           const list = json(commentIds);
           q("DELETE FROM likes WHERE target_type = 'comment' AND target_id IN (SELECT value FROM json_each(?))").run(list);
           q("DELETE FROM notifications WHERE target_type = 'comment' AND target_id IN (SELECT CAST(value AS TEXT) FROM json_each(?))").run(list);

@@ -4,6 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startApp, signupVerified, api } from './helpers.js';
+import { LIST_MAX_ITEMS, NOTE_MAX } from '../lists.js';
 
 const app = await startApp();
 test.after(() => app.close());
@@ -169,6 +170,26 @@ test('250 éléments au plus, remplacement de toutes les positions, notes gardé
   assert.equal((await call(me, 'PATCH', `/lists/${list}`, { title: '' })).body.error, 'title_required');
 });
 
+test('une liste pleine s’enregistre d’un bloc : 250 éléments avec des notes de 280 caractères (sans 413)', async () => {
+  const me = await player();
+  // Le pire cas : 280 caractères de 4 octets chacun en UTF-8, soit ~290 ko pour la liste entière.
+  const note = '🎶'.repeat(NOTE_MAX);
+  const items = tracks.slice(0, LIST_MAX_ITEMS).map((t) => ({ type: 'track', id: t, note }));
+  const created = await make(me, { itemType: 'track', items });
+  assert.equal(created.status, 201, JSON.stringify(created.body).slice(0, 200));
+  assert.equal(created.body.list.itemCount, LIST_MAX_ITEMS);
+  // L'éditeur renvoie toute la liste dans un nouvel ordre, notes comprises.
+  const id = created.body.list.id;
+  const reordered = await call(me, 'PUT', `/lists/${id}/items`, { items: [...items].reverse() });
+  assert.equal(reordered.status, 200, JSON.stringify(reordered.body).slice(0, 200));
+  assert.equal(positions(id)[0].item_id, items[LIST_MAX_ITEMS - 1].id);
+  assert.equal(positions(id)[0].note, note);
+  // Au-delà, et sur les autres routes (32 ko), la limite reste.
+  assert.equal((await call(me, 'PUT', `/lists/${id}/items`, { items, pad: 'x'.repeat(400_000) })).body.error, 'payload_too_large');
+  assert.equal((await call(me, 'PATCH', `/lists/${id}`, { title: 'x', pad: 'x'.repeat(40_000) })).body.error, 'payload_too_large');
+  assert.equal((await call(me, 'POST', '/posts', { body: 'x'.repeat(40_000) })).body.error, 'payload_too_large');
+});
+
 test('liste d’envies refusée par les routes génériques ; grille réservée à sa route', async () => {
   const me = await player();
   const other = await player();
@@ -250,6 +271,50 @@ test('« Mes 9 albums » : ligne unique créée à la première sauvegarde, case
   assert.equal(set.slots[3], 'thriller');
   assert.equal(set.slots.length, 9);
   assert.equal(deps.lists.grid9Of(newbie.user.id).row.kind, 'grid9');
+});
+
+test('« Mes 9 albums » suit le Studio : fermé, la grille ne se lit nulle part (adresse, J’aime, commentaires, posts, recherche)', async () => {
+  const me = await player();
+  const friend = await player();
+  const stranger = await player();
+  befriend(me, friend);
+  await call(me, 'PUT', '/me/grid9', { title: 'Ma grille zorglub', slots: ['discovery', 'thriller'] });
+  const id = db.prepare("SELECT id FROM lists WHERE user_id = ? AND kind = 'grid9'").get(me.user.id).id;
+  const suggest = async (who) => JSON.stringify((await call(who, 'GET', '/search/suggest?q=zorglub&scope=list')).body).includes('Ma grille zorglub');
+  assert.ok(searchDoc(id), 'Studio public : la grille est indexée');
+  assert.equal(await suggest(stranger), true);
+
+  const setPrivacy = (visibility) => call(me, 'PUT', '/me/profile', { visibility });
+  assert.equal((await setPrivacy('private')).status, 200);
+  assert.ok(!searchDoc(id), 'Studio privé : la grille sort de l’index');
+  assert.equal(await suggest(stranger), false);
+  for (const who of [stranger, friend]) {
+    assert.equal((await call(who, 'GET', `/lists/${id}`)).status, 404);
+    assert.equal((await call(who, 'PUT', `/likes/list/${id}`)).status, 404);
+    assert.equal((await call(who, 'POST', '/comments', { targetType: 'list', targetId: id, body: 'Belle grille' })).status, 404);
+    assert.equal((await call(who, 'POST', '/posts', { body: 'Regardez', item: { type: 'list', id } })).status, 404);
+    assert.equal(deps.lists.summaries(who.user.id, [id]).size, 0, 'pas de résumé (fil, Studio, posts)');
+    assert.equal(deps.social.listSummaries(who.user.id, [id]).size, 0);
+  }
+  assert.equal((await call(me, 'GET', `/lists/${id}`)).status, 200, 'le joueur lit toujours sa grille');
+
+  // Studio « amis » : les amis la lisent, pas les autres ; la recherche (contenus publics) ne la montre à personne.
+  await setPrivacy('friends');
+  assert.equal((await call(friend, 'GET', `/lists/${id}`)).status, 200);
+  assert.equal((await call(friend, 'PUT', `/likes/list/${id}`)).status, 200);
+  assert.equal((await call(stranger, 'GET', `/lists/${id}`)).status, 404);
+  assert.ok(!searchDoc(id));
+
+  // Studio rouvert : la grille revient partout, l’index compris.
+  await setPrivacy('public');
+  assert.ok(searchDoc(id), 'Studio rouvert : la grille revient dans l’index');
+  assert.equal((await call(stranger, 'GET', `/lists/${id}`)).status, 200);
+  assert.equal((await call(stranger, 'POST', '/comments', { targetType: 'list', targetId: id, body: 'Belle grille' })).status, 201);
+  // Une liste ordinaire publique reste lisible par son adresse quel que soit le Studio (comme une critique).
+  const plain = (await make(me, { title: 'Liste ouverte', items: [{ type: 'album', id: 'discovery' }] })).body.list.id;
+  await setPrivacy('private');
+  assert.equal((await call(stranger, 'GET', `/lists/${plain}`)).status, 200);
+  assert.ok(searchDoc(plain));
 });
 
 test('index de recherche : liste publique indexée, privée, masquée ou supprimée retirée (list.saved, content.removed)', async () => {

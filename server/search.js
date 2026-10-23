@@ -99,7 +99,8 @@ const SOURCES = {
   list: (where = '') => `SELECT CAST(l.id AS TEXT) AS ref, am_norm(l.title) AS folded, NULL AS name, am_norm(u.username) AS context,
       am_lw(l.like_count) AS weight
     FROM lists l JOIN users u ON u.id = l.user_id
-    WHERE l.visibility = 'public' AND l.hidden_at IS NULL AND l.kind IN ${LIST_KINDS} AND u.email_verified_at IS NOT NULL ${where}`,
+    WHERE l.visibility = 'public' AND l.hidden_at IS NULL AND l.kind IN ${LIST_KINDS} AND u.email_verified_at IS NOT NULL
+      AND (l.kind = 'list' OR u.profile_visibility = 'public') ${where}`,
 };
 /** Clé de la ligne source d'un document (upsert d'un seul document relu depuis la base). */
 const SOURCE_KEY = { album: 'al.id', track: 't.id', artist: 'ar.id', user: 'u.id', list: 'l.id' };
@@ -561,11 +562,15 @@ export function createSearchIndex(deps) {
     return rows.map((r) => ({ row: r, user: map.get(Number(r.ref)) })).filter((x) => x.user);
   }
 
-  /** Listes visibles (publiques, non masquées, propriétaire non bloqué), avec les albums de leurs 3 premières pochettes. */
+  /**
+   * Listes visibles (publiques, non masquées, propriétaire non bloqué ; une grille « Mes 9 albums » seulement si le Studio
+   * de son joueur est public), avec les albums de leurs 3 premières pochettes.
+   */
   function hydrateLists(rows, viewerId, hidden) {
     if (!rows.length) return [];
-    const found = new Map(q(`SELECT id, user_id, title, kind, item_count, like_count FROM lists
-      WHERE id IN (SELECT value FROM json_each(?)) AND visibility = 'public' AND hidden_at IS NULL`)
+    const found = new Map(q(`SELECT l.id, l.user_id, l.title, l.kind, l.item_count, l.like_count FROM lists l JOIN users u ON u.id = l.user_id
+      WHERE l.id IN (SELECT value FROM json_each(?)) AND l.visibility = 'public' AND l.hidden_at IS NULL
+      AND (l.kind = 'list' OR u.profile_visibility = 'public')`)
       .all(JSON.stringify(rows.map((r) => Number(r.ref)))).map((l) => [l.id, l]));
     if (!found.size) return [];
     const owners = deps.services.userSummaries([...found.values()].map((l) => l.user_id), viewerId, { hidden });

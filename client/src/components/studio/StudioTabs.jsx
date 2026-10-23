@@ -29,6 +29,8 @@ function RatingsSummary({ username, isSelf }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature]);
   if (error) return <ErrorBox error={error} onRetry={reload} />;
+  // Studio fermé (le serveur ne renvoie alors ni chiffres ni notes) : rien à résumer.
+  if (data?.restricted) return null;
   if (!data?.stats) return <div className="rows" aria-busy="true"><Skeleton kind="row" count={3} /></div>;
   const s = data.stats;
   const topAlbums = data.topAlbums || [];

@@ -104,6 +104,7 @@ function readTarget(ctx, viewer, type, rawId) {
     row = db.ratings.find((r) => r.rid === id && r.review);
   } else if (type === 'list') {
     row = lists(db).find((l) => l.id === id && l.kind !== 'wishlist');
+    if (row?.kind === 'grid9' && !gridOpen(ctx, viewer, row.userId)) row = null;
     visibility = row?.visibility || 'public';
   } else if (type === 'comment') {
     row = db.comments.find((c) => c.id === id && !c.deletedAt);
@@ -160,11 +161,19 @@ export function reviewsByIds(ctx, viewer, ids) {
   return out;
 }
 
+/** Grille « Mes 9 albums » de `ownerId` lisible par `viewer` : elle suit le Studio de son joueur (comme le serveur). */
+function gridOpen(ctx, viewer, ownerId) {
+  if (ownerId === viewer.id) return true;
+  const u = ctx.userById(ownerId);
+  const privacy = u?.profileVisibility || u?.privacy || 'public';
+  return privacy === 'public' || (privacy === 'friends' && viewer.friends.has(ownerId));
+}
+
 /** Résumés de listes (ListSummary) lisibles par `viewer` : Map id → résumé. */
 export function listSummaries(ctx, viewer, ids, refs = null) {
   const wanted = new Set(ids);
   const rows = lists(ctx.db).filter((l) => wanted.has(l.id) && l.kind !== 'wishlist' && canRead(viewer, l.userId, l.visibility || 'public')
-    && (!l.hiddenAt || l.userId === viewer.id));
+    && (!l.hiddenAt || l.userId === viewer.id) && (l.kind !== 'grid9' || gridOpen(ctx, viewer, l.userId)));
   const users = ctx.summaries(rows.map((l) => l.userId));
   const liked = likedAmong(ctx.db, viewer.id, 'list', rows.map((l) => l.id));
   const out = new Map();

@@ -429,6 +429,16 @@ if (FOCUS.has('desktop')) await session('desktop', VIEWPORTS.desktop, nina, asyn
   if (focusedSlot !== '2') fail(`[desktop] le focus ne suit pas la case déplacée (${focusedSlot})`);
   // Remplacer / retirer : la case 9 ouvre la recherche avec « Retirer ».
   await page.locator('.ls-nine [data-slot="8"] .ls-nine__hit').click();
+  // Piège du focus : Tab et Maj+Tab tournent dans la fenêtre (aria-modal), la page cachée derrière n'est jamais atteinte.
+  await page.locator('.ls-picker__current button').waitFor();
+  for (const key of ['Tab', 'Shift+Tab']) {
+    const trail = [];
+    for (let i = 0; i < 25; i++) {
+      await page.keyboard.press(key);
+      trail.push(await page.evaluate(() => (document.activeElement?.closest('[role="dialog"][aria-modal="true"]') ? 'D' : 'X')));
+    }
+    if (trail.includes('X')) fail(`[desktop] ${key} sort de la recherche « Mes 9 albums » : ${trail.join('')}`);
+  }
   await page.locator('.ls-picker__current button').click();
   await page.locator('.ls-nine .nine__slot--empty[data-slot="8"]').waitFor();
   if (await page.locator('[data-generate]').isEnabled()) fail('[desktop] « Générer l’image » actif avec une case vide');

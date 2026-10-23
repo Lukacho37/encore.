@@ -18,6 +18,7 @@ import * as validate from './validate.js';
 import * as paging from './paging.js';
 import * as periods from '../shared/periods.js';
 import { MODULES } from './modules.js';
+import { LIST_MAX_ITEMS, NOTE_MAX } from './lists.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -102,6 +103,12 @@ export function createApp({ dbFile, db: openedDb } = {}) {
     if (req.path.startsWith('/api/')) res.set('Cache-Control', 'no-store');
     next();
   });
+  // Une liste s'enregistre d'un bloc (POST /lists, PUT /lists/:id/items) : 250 éléments avec chacun une note de 280
+  // caractères (4 octets au plus en UTF-8) dépassent 32 ko ; ces deux routes ont la place qu'il faut, pas plus. Le
+  // corps déjà lu, l'analyseur général ne le relit pas.
+  const listJson = express.json({ limit: LIST_MAX_ITEMS * (NOTE_MAX * 4 + 128) + 8 * 1024 });
+  app.post('/api/lists', listJson);
+  app.put('/api/lists/:id/items', listJson);
   app.use(express.json({ limit: '32kb' }));
   // Requête sans corps JSON (pas de Content-Type) : un objet vide, pour une erreur de validation plutôt qu'une 500.
   app.use((req, _res, next) => {

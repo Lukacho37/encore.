@@ -16,7 +16,8 @@
 //   200 listes au plus à la création, politique des liens (deps.access.linkPolicy) sur le titre, la description et les
 //   notes ; les éléments existent au catalogue (404 unknown_item) et ne se répètent pas (409 already_in_list) ;
 // - le Studio « amis » ou « privé » d'un joueur cache ses listes et sa grille aux autres dans son Studio
-//   (`restricted: true`) ; une liste publique reste lisible par son adresse, comme une critique.
+//   (`restricted: true`) ; une liste publique reste lisible par son adresse, comme une critique. La grille, elle, fait
+//   partie du Studio : fermé, elle ne se lit nulle part (adresse, résumés, « J'aime », commentaires, posts, recherche).
 // Toutes les listes sont paginées par curseur (deps.paging), sans parcours du catalogue.
 // Événements : list.saved { listId, userId, kind, visibility, itemCount } après chaque écriture (search.js indexe ou
 // retire la liste, feed.js l'ajoute au fil) ; content.removed à la suppression (purgeTarget avant). Une liste masquée par
@@ -101,6 +102,17 @@ export function init(deps) {
     return privacy === 'friends' && viewer.friends.has(target.id);
   }
 
+  /**
+   * Joueurs parmi `ownerIds` dont le Studio est fermé à `viewer` (une requête). Leur grille « Mes 9 albums » suit leur
+   * Studio partout (adresse, résumés, recherche) : elle n'est lisible que là où le Studio l'est.
+   */
+  function closedStudios(viewer, ownerIds) {
+    const others = [...new Set(ownerIds)].filter((id) => id !== viewer.id);
+    if (!others.length) return new Set();
+    return new Set(q("SELECT id, profile_visibility FROM users WHERE id IN (SELECT value FROM json_each(?)) AND profile_visibility <> 'public'")
+      .all(json(others)).filter((u) => !studioOpen(viewer, u)).map((u) => u.id));
+  }
+
   /** Joueur affiché (vérifié, pas bloqué), sinon 404 user_not_found. */
   function targetUser(viewer, username) {
     const target = q('SELECT id, username, lang, profile_visibility FROM users WHERE username = ? AND email_verified_at IS NOT NULL').get(String(username || ''));
@@ -158,11 +170,14 @@ export function init(deps) {
 
   /**
    * Lignes de listes → ListSummary, pour `viewer` : propriétaires, pochettes, « J'aime » en trois requêtes groupées.
-   * Les listes illisibles (visibilité, blocages, masquées) sont retirées. `refs` : collecteur (facultatif).
+   * Les listes illisibles (visibilité, blocages, masquées, grille d'un Studio fermé) sont retirées. `refs` : collecteur
+   * (facultatif).
    */
   function summarize(viewerArg, rows, refs = null) {
     const viewer = viewerOf(viewerArg);
-    const kept = rows.filter((r) => r && r.kind !== 'wishlist' && canRead(viewer, r.user_id, r.visibility) && (!r.hidden_at || r.user_id === viewer.id));
+    const closed = closedStudios(viewer, rows.filter((r) => r?.kind === 'grid9').map((r) => r.user_id));
+    const kept = rows.filter((r) => r && r.kind !== 'wishlist' && canRead(viewer, r.user_id, r.visibility) && (!r.hidden_at || r.user_id === viewer.id)
+      && !(r.kind === 'grid9' && closed.has(r.user_id)));
     if (!kept.length) return [];
     const users = services.userSummaries(kept.map((r) => r.user_id), viewer.id, { hidden: viewer.hidden });
     const covers = coversOf(kept.map((r) => r.id));
@@ -204,7 +219,10 @@ export function init(deps) {
 
   // ----- lecture et droits ----------------------------------------------------------------------
 
-  /** Liste lisible par `viewer`, sinon 404 ; la liste d'envies : 403 use_wishlist_route (propriétaire) ou 404. */
+  /**
+   * Liste lisible par `viewer`, sinon 404 (une grille suit le Studio de son joueur) ; la liste d'envies : 403
+   * use_wishlist_route (propriétaire) ou 404.
+   */
   function readList(viewer, rawId) {
     const id = toId(rawId);
     const row = id && q(`SELECT ${LIST_COLS} FROM lists WHERE id = ?`).get(id);
@@ -215,6 +233,7 @@ export function init(deps) {
     }
     if (!canRead(viewer, row.user_id, row.visibility)) throw notFound();
     if (row.hidden_at && row.user_id !== viewer.id) throw notFound();
+    if (row.kind === 'grid9' && closedStudios(viewer, [row.user_id]).size) throw notFound();
     return row;
   }
 
@@ -521,6 +540,8 @@ export function init(deps) {
     atomic(() => {
       deps.moderation?.purgeTarget?.('list', row.id);
       q('DELETE FROM lists WHERE id = ?').run(row.id);
+      // Une liste du jour supprimée compte encore dans le quota du jour (la grille n'y est jamais comptée).
+      if (row.kind === 'list') deps.quota.removed?.('lists', [{ userId: row.user_id, createdAt: row.created_at }]);
     });
     deps.bus.emit('content.removed', { targetType: 'list', targetId: row.id, by: 'author' });
     return { ok: true };

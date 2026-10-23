@@ -119,6 +119,19 @@ test('« Très apprécié par tes amis » : notes 8+ des amis, avatars, blocages
   assert.deepEqual(friends.users.map((u) => u.username).sort(), [f1.username, f2.username].sort());
   assert.ok(idsOf(friends).every((id) => liked.includes(id)), 'albums notés 8+ par mes amis');
   assert.ok(idsOf(friends).every((id) => !secret.includes(id)), 'jamais les notes d’un joueur bloqué');
+
+  // Studio privé : ses notes restent à lui ; son avatar part tout de suite (page en cache), son avis au calcul suivant.
+  db.prepare("UPDATE users SET profile_visibility = 'private' WHERE id = ?").run(f2.user.id);
+  const cached = sectionOf((await call(me, 'GET', '/discover')).body, 'friends');
+  assert.deepEqual(cached.users.map((u) => u.username), [f1.username]);
+  deps.discover.forget(me.user.id);
+  const fresh = sectionOf((await call(me, 'GET', '/discover')).body, 'friends');
+  assert.equal(fresh.reason.vars.n, 1);
+  assert.deepEqual(fresh.users.map((u) => u.username), [f1.username]);
+  // « amis » : un ami le voit toujours.
+  db.prepare("UPDATE users SET profile_visibility = 'friends' WHERE id = ?").run(f2.user.id);
+  deps.discover.forget(me.user.id);
+  assert.equal(sectionOf((await call(me, 'GET', '/discover')).body, 'friends').reason.vars.n, 2);
 });
 
 test('cache 10 min oublié quand je note ; « Voir plus » par curseur ; section inconnue', async () => {

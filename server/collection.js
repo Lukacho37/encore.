@@ -224,7 +224,8 @@ export function init(deps) {
 
   /**
    * « Complété par 214 joueurs · 3 amis » et le Pressage n° du joueur (page d'album, moment de complétion).
-   * Compte par l'index ach_key ; les amis bloqués dans un sens ou dans l'autre sont écartés.
+   * Compte par l'index ach_key ; les amis bloqués dans un sens ou dans l'autre, ou au Studio privé (ses albums
+   * complétés sont à lui seul, PLAN.md 7.2), sont écartés.
    */
   function completion(viewerId, albumId) {
     const id = idOf(albumId);
@@ -234,8 +235,9 @@ export function init(deps) {
     const hidden = deps.access?.hiddenIds?.(viewerId) ?? new Set();
     const friendIds = [...services.friendIds(viewerId)].filter((f) => !hidden.has(f));
     const rows = friendIds.length
-      ? q(`SELECT user_id FROM achievements WHERE key = ? AND user_id IN (SELECT value FROM json_each(?))
-          ORDER BY created_at LIMIT 200`).all(key, json(friendIds))
+      ? q(`SELECT a.user_id FROM achievements a JOIN users u ON u.id = a.user_id
+          WHERE a.key = ? AND a.user_id IN (SELECT value FROM json_each(?)) AND u.profile_visibility <> 'private'
+          ORDER BY a.created_at LIMIT 200`).all(key, json(friendIds))
       : [];
     const summaries = services.userSummaries(rows.slice(0, 8).map((r) => r.user_id), viewerId, { hidden });
     const friends = rows.slice(0, 8).map((r) => summaries.get(r.user_id)).filter(Boolean);

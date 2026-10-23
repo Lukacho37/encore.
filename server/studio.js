@@ -300,6 +300,11 @@ export function init(deps) {
     }
     q('UPDATE users SET bio = ?, profile_visibility = ? WHERE id = ?').run(bio, visibility, user.id);
     services.forget?.(user.id);
+    if (visibility !== visibilityOf(row)) {
+      // La grille « Mes 9 albums » suit le Studio : la recherche la relit (retirée d'un Studio fermé, remise sinon).
+      const grid = q("SELECT id FROM lists WHERE user_id = ? AND kind = 'grid9'").get(user.id);
+      if (grid) deps.search?.upsert?.('list', String(grid.id));
+    }
     return { profile: { bio, visibility } };
   }
 

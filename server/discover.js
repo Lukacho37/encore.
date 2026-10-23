@@ -56,6 +56,10 @@ export function init(deps) {
   };
   const json = (v) => JSON.stringify(v);
   const hiddenOf = (viewerId) => deps.access?.hiddenIds?.(viewerId) ?? new Set();
+  /** Joueurs au Studio privé parmi `ids` : leurs notes et leurs avatars restent hors de Découvrir (PLAN.md 7.2). */
+  const privateAmong = (ids) => (ids.length
+    ? new Set(q("SELECT id FROM users WHERE id IN (SELECT value FROM json_each(?)) AND profile_visibility = 'private'").all(json(ids)).map((r) => r.id))
+    : new Set());
 
   const globalCache = lru({ max: 200, ttlMs: TEN_MIN });
   const userCache = lru({ max: 2000, ttlMs: TEN_MIN });
@@ -283,8 +287,10 @@ export function init(deps) {
       }
     }
 
-    // 2. Très apprécié par tes amis.
-    const friends = [...services.friendIds(userId)].filter((f) => !hidden.has(f));
+    // 2. Très apprécié par tes amis (un ami au Studio privé garde ses notes pour lui, PLAN.md 7.2).
+    const allFriends = [...services.friendIds(userId)].filter((f) => !hidden.has(f));
+    const closed = privateAmong(allFriends);
+    const friends = allFriends.filter((f) => !closed.has(f));
     if (friends.length) {
       const rows = q(`SELECT item_id AS id, COUNT(*) AS n, AVG(score) AS avg, json_group_array(user_id) AS users FROM ratings
         WHERE user_id IN (SELECT value FROM json_each(?)) AND item_type = 'album' AND score >= 8
@@ -388,14 +394,17 @@ export function init(deps) {
 
   /**
    * GET /discover. La page reste 10 min en cache, mais les avatars d'amis sont refiltrés à chaque réponse : un joueur
-   * bloqué entre-temps (dans un sens ou dans l'autre) disparaît tout de suite (son avis sort au prochain calcul).
+   * bloqué entre-temps (dans un sens ou dans l'autre), ou dont le Studio est passé en privé, disparaît tout de suite
+   * (son avis sort au prochain calcul).
    */
   function page(userId) {
     const id = Number(userId);
     const payload = entryOf(id).payload;
-    const hidden = hiddenOf(id);
-    if (!hidden.size || !payload.sections.some((s) => s.users?.some((u) => hidden.has(u.id)))) return payload;
-    return { ...payload, sections: payload.sections.map((s) => (s.users ? { ...s, users: s.users.filter((u) => !hidden.has(u.id)) } : s)) };
+    const shown = payload.sections.flatMap((s) => (s.users || []).map((u) => u.id));
+    if (!shown.length) return payload;
+    const gone = new Set([...hiddenOf(id), ...privateAmong(shown)]);
+    if (!shown.some((u) => gone.has(u))) return payload;
+    return { ...payload, sections: payload.sections.map((s) => (s.users ? { ...s, users: s.users.filter((u) => !gone.has(u.id)) } : s)) };
   }
 
   /** GET /discover/:sectionId?cursor= → { items, nextCursor, progress, catalog } */

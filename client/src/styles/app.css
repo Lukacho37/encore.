@@ -2050,7 +2050,8 @@ button.card:hover {
   text-align: center;
   color: var(--haze);
   font-size: var(--fs-14);
-  animation: breathe 2.2s ease-in-out infinite;
+  /* Respiration plus douce que `breathe` : le texte garde un contraste d'au moins 4,5:1 à chaque instant. */
+  animation: breathe-hint 2.2s ease-in-out infinite;
 }
 
 .opening--flash-legendary::after,
@@ -4299,6 +4300,16 @@ button.showcase__empty:hover {
   }
   to {
     opacity: 0;
+  }
+}
+
+@keyframes breathe-hint {
+  0%,
+  100% {
+    opacity: 0.78;
+  }
+  50% {
+    opacity: 1;
   }
 }
 

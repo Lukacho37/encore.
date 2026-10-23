@@ -292,6 +292,11 @@ if (FOCUS.has('demo') && fs.existsSync(demoFile)) {
       await page.click('.demo-mail .btn');
       await page.waitForSelector('.hero, [data-onboarding]', { timeout: 20_000 });
       // Trois boosters ouverts depuis le héros (animation passée), pour un passeport et un Rétro qui ont des cartes.
+      // Un compte neuf arrive sur ses premiers pas : l'onglet Boosters ramène à l'accueil.
+      if (!(await page.locator('.hero').count())) {
+        await clickVisible('a[href="/"]');
+        await page.waitForSelector('.hero', { timeout: 15_000 });
+      }
       for (let i = 0; i < 3; i++) {
         const open = page.locator('.hero .btn--primary.btn--xl:not([disabled])');
         if (!(await open.count())) break;

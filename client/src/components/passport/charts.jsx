@@ -181,12 +181,14 @@ export function Columns({ points, color = 'var(--cue)', label, format = (v) => S
           </Tip>
         )}
       </div>
-      <table className="sr-only" id={`${id}-table`}>
-        <caption>{label}</caption>
-        <tbody>
-          {points.map((p) => <tr key={p.key}><th scope="row">{p.label}</th><td>{p.tip ?? format(p.value || 0)}</td></tr>)}
-        </tbody>
-      </table>
+      <div className="sr-only" id={`${id}-table`}>
+        <table>
+          <caption>{label}</caption>
+          <tbody>
+            {points.map((p) => <tr key={p.key}><th scope="row">{p.label}</th><td>{p.tip ?? format(p.value || 0)}</td></tr>)}
+          </tbody>
+        </table>
+      </div>
     </figure>
   );
 }
@@ -260,17 +262,19 @@ export function StackedBars({ rows, legend, label, percent, emptyLabel, classNam
           </div>
         ))}
       </div>
-      <table className="sr-only" id={`${id}-table`}>
-        <caption>{label}</caption>
-        <tbody>
-          {layout.map((row) => (
-            <tr key={row.key}>
-              <th scope="row">{row.label}</th>
-              <td>{row.segs.length ? row.segs.map((s) => `${s.label} ${percent(s.share)}`).join(', ') : emptyLabel}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="sr-only" id={`${id}-table`}>
+        <table>
+          <caption>{label}</caption>
+          <tbody>
+            {layout.map((row) => (
+              <tr key={row.key}>
+                <th scope="row">{row.label}</th>
+                <td>{row.segs.length ? row.segs.map((s) => `${s.label} ${percent(s.share)}`).join(', ') : emptyLabel}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </figure>
   );
 }

@@ -616,7 +616,7 @@ function GroupsTab({ by }) {
   const passport = pageExists('Passport') && (
     <p className="coll-hint" data-passport-link={by}>
       <Icon name="compass" size={16} />
-      <Link to={`/passport#${by === 'genre' ? 'genres' : 'decades'}`} className="link-btn">
+      <Link to="/passport#pp-dist" className="link-btn">
         {t(by === 'genre' ? 'sets.passportGenres' : 'sets.passportDecades')}
       </Link>
     </p>

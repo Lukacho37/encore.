@@ -21,7 +21,7 @@ import { useAlbums } from '../state/catalog.js';
 import { useBoosterFlow } from '../state/boosterFlow.js';
 import { SpecialBoosters } from '../components/game/SpecialBoosters.jsx';
 import { BattleWidget, QuestStrip } from '../components/play/slots.jsx';
-import { EventChip, RetroChip } from '../components/sets/EventChip.jsx';
+import { EventChip } from '../components/sets/EventChip.jsx';
 import { SuggestedFriends, TasteMatchCard } from '../components/match/HomeCards.jsx';
 import { Composer } from '../components/social/Composer.jsx';
 import { FEED_TABS, FeedList, feedItemOfPost, useFeed } from '../components/social/FeedList.jsx';
@@ -33,8 +33,8 @@ import '../styles/social.css';
 // anciens imports (`import { AlbumTile } from './Home.jsx'`) valables.
 export { AlbumTile, AlbumTileSkeleton };
 
-// Pastille du Rétro : celle du passeport (P2-A, components/passport/RetroChip.jsx) quand elle existe, chargée à part ;
-// sinon celle du calendrier des événements (P2-B). Glob vide si le fichier n'existe pas : rien n'est importé.
+// Pastille du Rétro (P2-A, components/passport/RetroChip.jsx), chargée à part (sa feuille de style n'alourdit pas
+// l'accueil) ; montage gardé : glob vide si le fichier n'existe pas, rien n'est importé ni affiché.
 const passportRetro = Object.values(import.meta.glob('../components/passport/RetroChip.jsx'))[0];
 const PassportRetroChip = passportRetro
   ? lazy(() => passportRetro().then((m) => ({ default: m.RetroChip || m.default || (() => null) })))
@@ -45,7 +45,7 @@ function EventRow() {
   return (
     <div className="status-row set-row" data-home="events">
       <EventChip />
-      {PassportRetroChip ? <Suspense fallback={null}><PassportRetroChip /></Suspense> : <RetroChip />}
+      {PassportRetroChip && <Suspense fallback={null}><PassportRetroChip /></Suspense>}
     </div>
   );
 }

@@ -4,6 +4,9 @@
 // des albums complétés et à la lecture pour un coffret créé après coup), coût des lectures.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { startApp, signupVerified, api } from './helpers.js';
 import {
   CODE_SETS, GENERATED_SIZE, generatedId, generatedRule, generatedTitles, isSetId, setBadgeKey, setFrameId, setRewards,
@@ -266,3 +269,44 @@ test('coût : la progression lit set_albums avec des sondes de clé primaire, le
   const ms = (Date.now() - started) / 20;
   assert.ok(ms < 50, `lecture moyenne ${ms} ms`);
 });
+
+// ----- base peuplée -----------------------------------------------------------------------------------------
+
+const PERF_DB = process.env.PERF_DB;
+test('base peuplée (PERF_DB) : coffrets créés au démarrage, lectures du plus gros joueur < 150 ms, joueur typique < 50 ms',
+  { skip: !PERF_DB && 'PERF_DB non défini', timeout: 300_000 }, async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-sets-'));
+    const file = path.join(dir, 'perf.db');
+    try {
+      fs.copyFileSync(PERF_DB, file);
+      const { openDb } = await import('../db.js');
+      const { createApp } = await import('../app.js');
+      const pdb = openDb(file);
+      const { deps: d } = createApp({ db: pdb });
+      const count = pdb.prepare('SELECT COUNT(*) AS n FROM sets').get().n;
+      assert.ok(count >= 50, `${count} coffrets`);
+      const whale = pdb.prepare("SELECT user_id FROM achievements WHERE key >= 'album:' AND key < 'album;' GROUP BY user_id ORDER BY COUNT(*) DESC LIMIT 1").get().user_id;
+      const typical = pdb.prepare('SELECT user_id FROM cards GROUP BY user_id ORDER BY COUNT(*) DESC LIMIT 1 OFFSET 500').get().user_id;
+      const time = (fn) => {
+        const t0 = performance.now();
+        const out = fn();
+        return { out, ms: performance.now() - t0 };
+      };
+      // Première lecture du plus gros joueur : les récompenses de tous ses coffrets sont données d'un coup (une fois).
+      const first = time(() => d.sets.list(whale, {}));
+      assert.ok(first.ms < 150, `première liste (baleine) : ${first.ms.toFixed(0)} ms`);
+      for (const uid of [whale, typical]) {
+        const budget = uid === whale ? 150 : 50;
+        const list = time(() => d.sets.list(uid, {}));
+        const detail = time(() => d.sets.detail(uid, list.out.items[0].id));
+        const event = time(() => d.events.view(uid, 'french-touch'));
+        const quests = time(() => d.quests.list(uid));
+        for (const [what, r] of Object.entries({ list, detail, event, quests })) assert.ok(r.ms < budget, `${what} (${uid}) : ${r.ms.toFixed(1)} ms`);
+        console.log(`  joueur ${uid} : liste ${list.ms.toFixed(1)} ms · coffret ${detail.ms.toFixed(1)} ms · événement ${event.ms.toFixed(1)} ms · quêtes ${quests.ms.toFixed(1)} ms`);
+      }
+      console.log(`  ${count} coffrets · première liste de la baleine ${first.ms.toFixed(0)} ms (${first.out.rewards.length} récompenses)`);
+      pdb.close();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });

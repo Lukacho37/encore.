@@ -78,7 +78,7 @@
 .pp-rarities {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--s-6) var(--s-16);
+  gap: var(--s-8) var(--s-14);
   margin: var(--s-4) 0 0;
   padding: 0;
   list-style: none;
@@ -521,7 +521,14 @@
   display: flex;
   flex-direction: column;
   gap: var(--s-12);
+  width: 100%;
   outline: none;
+}
+
+/* Sur ordinateur, l'image entière tient dans la fenêtre (sa hauteur suit celle de l'écran). */
+@media (min-width: 1021px) {
+  .pp-retro { grid-template-columns: auto minmax(0, 1fr); }
+  .pp-retro__viewer { width: min(440px, max(320px, calc((100dvh - 230px) * 9 / 16))); }
 }
 
 .pp-retro__viewer:focus-visible .pp-slide { box-shadow: var(--ring-focus), var(--shadow-modal); }
@@ -587,12 +594,10 @@
 .pp-slide {
   position: relative;
   container-type: inline-size;
-  display: flex;
-  flex-direction: column;
+  display: block;
   width: 100%;
   aspect-ratio: 9 / 16;
   overflow: hidden;
-  padding: 7cqi 7cqi 5cqi;
   border-radius: var(--rad-lg);
   border: 1px solid var(--line-soft);
   background: var(--grad-hero), var(--ink);
@@ -615,6 +620,14 @@
 }
 
 .pp-slide > * { position: relative; }
+
+/* Contenu de l'image : les marges suivent la largeur de l'image (unités du conteneur .pp-slide). */
+.pp-slide__in {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 7cqi 7cqi 5cqi;
+}
 
 .pp-slide__dots {
   display: grid;
@@ -868,6 +881,8 @@
 }
 
 /* Rétro pas encore ouvert. */
+.pp-fav { align-items: start; }
+
 .pp-locked {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -901,6 +916,114 @@
 
 .pp-retro-chip .quest-chip__dot { background: var(--grad-wordmark); }
 
+.pp-slide__covers--4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2.4cqi;
+}
+
+.pp-slide__covers--4 .pp-slide__cover { border-radius: 1.8cqi; }
+
+.pp-slide__name:hover { color: var(--cue); }
+
+.pp-slide__list a {
+  display: block;
+  min-width: 0;
+  color: var(--paper);
+}
+
+.pp-slide__list a:hover .pp-slide__item-title { color: var(--cue); }
+
+.pp-slide__item > span:last-child { min-width: 0; }
+
+.pp-slide.skeleton { box-shadow: none; }
+
+.pp-locked__aside {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-6);
+}
+
+/* ---------- compléments de la page ---------- */
+
+.stat-block .pp-dd {
+  font: var(--fw-medium) var(--fs-13) / var(--lh-ui) var(--font-body);
+  font-stretch: normal;
+}
+
+.pp-evolution__sentence {
+  color: var(--paper);
+  font-weight: var(--fw-semi);
+}
+
+.pp-album {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+  min-width: 0;
+  color: var(--paper);
+}
+
+.pp-album__cover {
+  display: block;
+  overflow: hidden;
+  aspect-ratio: 1;
+  border-radius: var(--rad-md);
+  background: var(--stage-3);
+  box-shadow: var(--shadow-cover);
+}
+
+.pp-album__cover .cover {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pp-album__title {
+  overflow: hidden;
+  font: var(--fw-title) var(--fs-14) / var(--lh-snug) var(--font-display);
+  font-stretch: var(--fst-title);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-album:hover .pp-album__title { color: var(--cue); }
+
+.pp-album__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-6);
+  min-width: 0;
+  color: var(--haze);
+  font-size: var(--fs-12);
+}
+
+.pp-album__artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-album__score {
+  flex: none;
+  color: var(--gold);
+  font-weight: var(--fw-bold);
+}
+
+.pp-album__meta .mono { flex: none; }
+
+.pp-skel {
+  min-height: 92px;
+  border-radius: var(--rad-md);
+}
+
+.pp-skel--head { min-height: 120px; max-width: 640px; }
+.pp-skel--panel { min-height: 320px; border-radius: var(--rad-lg); }
+
+.pp-mini__fig.skeleton { min-height: 64px; }
+
 /* ---------- tailles d'écran ---------- */
 
 @media (max-width: 1020px) {
@@ -919,7 +1042,8 @@
 
 @media (max-width: 520px) {
   .stat-block--wide { grid-column: 1 / -1; }
-  .pp-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pp-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-10); }
+  .pp-album__meta { flex-direction: column; align-items: flex-start; gap: var(--s-2); }
   .pp-hbars__row { grid-template-columns: minmax(0, 6.5em) minmax(0, 1fr) auto; }
   .pp-mini__figs { grid-template-columns: minmax(0, 1fr); }
   .pp-stack__row { grid-template-columns: 4.6em minmax(0, 1fr); }

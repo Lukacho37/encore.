@@ -2,7 +2,8 @@
 // (i18n/index.jsx) ; une clé d'ici peut aussi préciser une clé existante. Chaque clé existe en FR et en EN
 // (tutoiement, espace fine insécable avant ; : ! ? % et dans « »). Espaces de noms : sets, events. Clés disjointes
 // ajoutées à d'autres espaces : notify.kinds.set_reward et notify.kinds.event_reward (notifications), cosmetics.frame.*
-// (noms des cadres des coffrets et des événements dans l'éditeur du Studio), errors.set_not_found, errors.event_not_found.
+// (noms des cadres des coffrets et des événements dans l'éditeur du Studio), discover.tiles.events et .sets (tuiles de
+// Découvrir), badges.f.set et .event (médailles), errors.set_not_found, errors.event_not_found.
 import { CODE_SETS, GENERATED_DECADES, GENERATED_GENRES, generatedId, generatedTitles } from '@shared/sets.js';
 
 const N = ' ';
@@ -29,6 +30,7 @@ export default {
       generatedTitle: '{genre} · {decade}',
       albums: { one: '{n} album', other: '{n} albums' },
       completed: '{done}/{n} albums complétés',
+      completedWord: { one: 'album complété', other: 'albums complétés' },
       cards: '{owned}/{total} cartes',
       cardsLabel: 'Cartes du coffret',
       badgeAt: 'Badge à {n}',
@@ -102,7 +104,7 @@ export default {
       },
       quests: {
         title: 'Quêtes de l’événement',
-        intro: 'Trois quêtes pendant l’événement ; la progression compte depuis son premier jour.',
+        intro: `Trois quêtes pendant l’événement${N}; la progression compte depuis son premier jour.`,
         locked: 'Dès le début de l’événement',
         over: 'Événement terminé',
         claim: 'Réclamer',
@@ -156,8 +158,6 @@ export default {
         earnedOn: 'Gagné le {date}',
       },
       retro: {
-        chip: 'AlbumMania Rétro {year}',
-        chipLabel: 'ton année en musique',
         open: 'Ouvrir mon Rétro {year}',
       },
     },
@@ -169,6 +169,20 @@ export default {
     },
     cosmetics: {
       frame: { 'french-touch': 'French Touch', 'rock-legends': 'Légendes du rock', ...frameNames('fr', 'Coffret') },
+    },
+    // Pour l'intégration (patchs demandés aux propriétaires de Discover et des badges) : tuiles « Événements » et
+    // « Coffrets » de Découvrir, noms des médailles des coffrets et des événements.
+    discover: {
+      tiles: {
+        events: { title: 'Événements', body: 'Deux semaines autour d’un thème, trois quêtes, un coffret.' },
+        sets: { title: 'Coffrets', body: 'Des albums à compléter, un badge et un cadre à la clé.' },
+      },
+    },
+    badges: {
+      f: {
+        set: { name: 'Coffret complété', goal: 'Compléter les trois quarts d’un coffret' },
+        event: { name: 'Événement réussi', goal: 'Réclamer les 3 quêtes d’un événement' },
+      },
     },
     errors: {
       set_not_found: 'Ce coffret n’existe pas.',
@@ -186,6 +200,7 @@ export default {
       generatedTitle: '{genre} · {decade}',
       albums: { one: '{n} album', other: '{n} albums' },
       completed: '{done}/{n} albums completed',
+      completedWord: { one: 'album completed', other: 'albums completed' },
       cards: '{owned}/{total} cards',
       cardsLabel: 'Box set cards',
       badgeAt: 'Badge at {n}',
@@ -313,8 +328,6 @@ export default {
         earnedOn: 'Earned on {date}',
       },
       retro: {
-        chip: 'AlbumMania Rétro {year}',
-        chipLabel: 'your year in music',
         open: 'Open my Rétro {year}',
       },
     },
@@ -326,6 +339,18 @@ export default {
     },
     cosmetics: {
       frame: { 'french-touch': 'French Touch', 'rock-legends': 'Rock legends', ...frameNames('en', 'Box set') },
+    },
+    discover: {
+      tiles: {
+        events: { title: 'Events', body: 'Two weeks around a theme, three quests, a box set.' },
+        sets: { title: 'Box sets', body: 'Albums to complete, with a badge and a frame to win.' },
+      },
+    },
+    badges: {
+      f: {
+        set: { name: 'Box set completed', goal: 'Complete three quarters of a box set' },
+        event: { name: 'Event cleared', goal: 'Claim all 3 quests of an event' },
+      },
     },
     errors: {
       set_not_found: 'This box set doesn’t exist.',

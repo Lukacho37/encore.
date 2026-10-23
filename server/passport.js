@@ -59,6 +59,8 @@ export const RARE_ORDER = ['legendary', 'promo', 'ultra', 'super', 'rare', 'unco
 /** Une année « légère » : peu de cartes et de notes, aucun vinyle (le site adapte ses phrases). */
 export const THIN_CARDS = 30;
 export const THIN_RATINGS = 5;
+/** Découvertes qu'il faut dans un trimestre pour parler d'évolution des goûts. */
+export const SHIFT_MIN = 5;
 
 const pad = (n) => String(n).padStart(2, '0');
 const tick = () => new Promise((resolve) => setImmediate(resolve));
@@ -160,11 +162,11 @@ export function rankArtists(cards, rated, favorites) {
 }
 
 /**
- * Genre qui a le plus gagné entre le premier et le dernier trimestre qui comptent au moins 3 découvertes :
+ * Genre qui a le plus gagné entre le premier et le dernier trimestre qui comptent au moins SHIFT_MIN découvertes :
  * { genre, from, to, fromKey, toKey } (parts de 0 à 1), ou null (moins de deux trimestres, ou hausse de moins de 10 points).
  */
 export function shiftOf(quarters, genres) {
-  const filled = quarters.filter((qt) => qt.total >= 3);
+  const filled = quarters.filter((qt) => qt.total >= SHIFT_MIN);
   if (filled.length < 2) return null;
   const a = filled[0];
   const b = filled[filled.length - 1];

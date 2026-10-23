@@ -153,7 +153,6 @@
 .set-row:empty { display: none; }
 
 .set-chip { text-decoration: none; }
-.set-chip--retro .quest-chip__dot { background: var(--grad-wordmark); box-shadow: 0 0 10px color-mix(in oklab, var(--r-ultra) 60%, transparent); }
 
 /* ---------- page d'un coffret ---------- */
 

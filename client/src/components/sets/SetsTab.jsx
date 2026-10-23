@@ -8,8 +8,8 @@ import { useI18n } from '../../i18n/index.jsx';
 import { apiPath } from '../../state/catalog.js';
 import { useCursorList } from '../../state/paged.js';
 import { EmptyState, ErrorBox, LoadMore } from '../feedback.jsx';
-import { Icon, useToast } from '../ui.jsx';
-import { SetCard } from './parts.jsx';
+import { Icon } from '../ui.jsx';
+import { SetCard, useSetRewardToast } from './parts.jsx';
 import '../../styles/sets.css';
 
 export const SET_FILTERS = ['all', 'started', 'editorial', 'event', 'generated'];
@@ -18,15 +18,15 @@ const SKELETONS = Array.from({ length: 6 }, (_, i) => <span key={i} className="p
 
 export function SetsTab() {
   const { t, num } = useI18n();
-  const toast = useToast();
+  const announce = useSetRewardToast();
   const [params, setParams] = useSearchParams();
   const kind = SET_FILTERS.includes(params.get('kind')) ? params.get('kind') : 'all';
   const [counts, setCounts] = useState(null);
   const onPage = useCallback((res) => {
     if (res?.counts) setCounts(res.counts);
     // Coffret créé après coup : ce qui est déjà fait est récompensé à la lecture.
-    for (const r of res?.rewards || []) toast(t(`sets.rewardToast.${r.reward}`), 'success');
-  }, [t, toast]);
+    announce(res?.rewards);
+  }, [announce]);
   const list = useCursorList(apiPath('/sets', { kind: kind === 'all' ? null : kind }), { limit: PAGE, onPage });
   const choose = (k) => setParams((prev) => {
     const next = new URLSearchParams(prev);

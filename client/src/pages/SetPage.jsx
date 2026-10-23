@@ -10,8 +10,8 @@ import { useGame } from '../state/GameContext.jsx';
 import { useAlbums, useApi } from '../state/catalog.js';
 import { AlbumTile, AlbumTileSkeleton } from '../components/AlbumTile.jsx';
 import { EmptyState, ErrorBox } from '../components/feedback.jsx';
-import { Avatar, Icon, Progress, useToast } from '../components/ui.jsx';
-import { SetStack, enc, eventTitle, eventWhen, setTitle, useEventDates } from '../components/sets/parts.jsx';
+import { Avatar, Icon, Progress } from '../components/ui.jsx';
+import { SetStack, enc, eventTitle, eventWhen, setTitle, useEventDates, useSetRewardToast } from '../components/sets/parts.jsx';
 import { TIER_REWARDS } from '@shared/badges.js';
 import '../styles/sets.css';
 
@@ -87,11 +87,9 @@ function SetFriends({ friends, set }) {
 export default function SetPage() {
   const { id } = useParams();
   const { t, lang, num } = useI18n();
-  const toast = useToast();
   const dates = useEventDates();
-  const onData = useCallback((res) => {
-    for (const r of res?.rewards || []) toast(t(`sets.rewardToast.${r.reward}`), 'success');
-  }, [t, toast]);
+  const announce = useSetRewardToast();
+  const onData = useCallback((res) => announce(res?.rewards), [announce]);
   const { data, error, reload } = useApi(id ? `/sets/${enc(id)}` : null, { keep: false, onData });
 
   const back = <Link to="/collection/sets" className="back-link"><Icon name="back" /> {t('sets.back')}</Link>;
@@ -134,7 +132,7 @@ export default function SetPage() {
             <span className="set-head__count"><b>{done}</b>/{n}</span>
             <span className="set-head__bar">
               <Progress value={done} max={n} color="var(--gold)" size="lg" label={t('sets.completed', { done, n })} />
-              <span className="small muted">{t('sets.completed', { done, n })}</span>
+              <span className="small muted">{t('sets.completedWord', { n })}</span>
             </span>
           </div>
           {event && (

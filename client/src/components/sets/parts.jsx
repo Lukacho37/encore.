@@ -2,15 +2,33 @@
 // recomposent avec les noms de genre du site), dates d'un événement, carte d'un coffret (pochettes en éventail, vraies
 // pochettes quand elles existent, progression en albums complétés, récompenses). Utilisées par l'onglet Coffrets de la
 // collection, la page d'un coffret et la page d'un événement.
-import { memo } from 'react';
+import { memo, useCallback } from 'react';
 import { Link } from 'react-router';
 import { useI18n } from '../../i18n/index.jsx';
 import { useAlbums } from '../../state/catalog.js';
 import CoverArt from '../CoverArt.jsx';
-import { Icon, Progress } from '../ui.jsx';
+import { Icon, Progress, useToast } from '../ui.jsx';
 import '../../styles/sets.css';
 
 export const enc = encodeURIComponent;
+
+// Récompenses de coffret déjà annoncées pendant la session : une même réponse peut être lue deux fois (relecture,
+// double montage en développement), le message ne s'affiche qu'une fois.
+const announced = new Set();
+
+/** Message « Coffret : badge débloqué ! » pour chaque récompense donnée à la lecture (`rewards` d'une réponse). */
+export function useSetRewardToast() {
+  const { t } = useI18n();
+  const toast = useToast();
+  return useCallback((rewards = []) => {
+    for (const r of rewards) {
+      const key = `${r.setId}:${r.reward}`;
+      if (announced.has(key)) continue;
+      announced.add(key);
+      toast(t(`sets.rewardToast.${r.reward}`), 'success');
+    }
+  }, [t, toast]);
+}
 
 /** Titre d'un coffret dans la langue du site ; un coffret généré : « Électro · Années 1990 ». */
 export function setTitle(t, lang, set) {

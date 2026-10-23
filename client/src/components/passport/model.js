@@ -173,7 +173,7 @@ export function retroSlides({ t, lang, r, username, scale }) {
   moments.spec = items.length ? base({
     title: moments.title,
     tiles: items.slice(0, 4).map((x) => (x.trackId ? { trackId: x.trackId, label: x.label, sub: x.title } : { albumId: x.albumId, label: x.label, sub: x.sub })),
-    blocks: busiest ? [{ kind: 'text', text: `${t('retro.moments.busiest')} : ${busiest}`.replace(' :', lang === 'fr' ? ' :' : ':') }] : [],
+    blocks: busiest ? [{ kind: 'text', text: t('retro.moments.busiestLine', { value: busiest }) }] : [],
   }) : null;
 
   // 5. Mon année en genres : barres des genres, genre et époque de l'année, un album par genre.

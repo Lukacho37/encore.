@@ -1,4 +1,5 @@
-// Module « quests » : quêtes du jour, de la semaine et « Premiers pas » (PLAN.md 4.2.6, 5.6, 6.7). Chantier : P1-F.
+// Module « quests » : quêtes du jour, de la semaine et « Premiers pas » (PLAN.md 4.2.6, 5.6, 6.7). Chantier : P1-F,
+// périodes d'événement : P2-B.
 //
 // Les quêtes d'une période sont tirées à la première lecture de la période (une par catégorie : collectionner, noter,
 // découvrir), avec un générateur graine hash(joueur, période) (shared/quests.js), puis gardées dans user_quests. La
@@ -9,12 +10,21 @@
 // « Bonus du jour » (un booster bonus), les 3 de la semaine un booster thématique du genre favori du joueur ; la ligne
 // du bonus est le slot BONUS_SLOT de la période. Une relance gratuite par jour. Une période finie ne se réclame plus
 // (410 period_over) ; rien d'autre n'expire, aucun jour manqué n'est puni.
-// API interne (deps.quests) : list(userId), claim, reroll, claimBonus, progress(userId, questId, periodKey).
+//
+// Périodes d'événement (P2-B, PLAN.md 6.9) : `e:<slug>`, la fenêtre de l'événement (shared/events.js, heure de Paris,
+// résolue par deps.events.calendar()). Ses 3 quêtes sont fixées par le calendrier (pas de tirage, pas de relance) ;
+// elles se réclament pendant l'événement seulement (410 period_over avant et après). Les 3 réclamées, le bonus de
+// l'événement (POST /quests/bonus/e:<slug>) donne son badge, son cadre et son booster thématique (deps.events). Les
+// métriques acceptent des paramètres en plus : rate_albums { genre, decade }, complete_album { set, genre, decade },
+// battle_votes { event } (votes que le module events a marqués du slug de l'événement).
+// API interne (deps.quests) : list(userId), claim, reroll, claimBonus, progress(userId, questId, periodKey),
+// eventView(userId, slug).
 // Événement : quest.claimed { userId, periodKey, slot } après la validation.
 import {
   BLINDTEST_GOOD, BONUS_REWARDS, BONUS_SLOT, FIRST_KEY, FIRST_STEPS, FREE_REROLLS, QUEST_SLOTS, metricParams, parseQuest,
   rerollQuest, reviewCounts, rewardOf, rollQuests, scopeOfKey,
 } from '../shared/quests.js';
+import { EVENT_SLOTS, eventPeriodKey, parseEventQuest, resolveCalendar, slugOfKey } from '../shared/events.js';
 
 export const name = 'quests';
 
@@ -46,23 +56,48 @@ export function init(deps) {
 
   // ----- périodes -----------------------------------------------------------------------------------------
 
-  /** Fenêtre { start, end } d'une clé de période (« first » : depuis toujours). */
+  /** Calendrier des événements résolu (aperçu compris : deps.events) ; celui du code si le module manque. */
+  const calendar = (now = Date.now()) => deps.events?.calendar?.(now) ?? resolveCalendar({ now });
+  /** Événement d'une clé `e:<slug>` dans le calendrier résolu, ou null. */
+  const eventOfKey = (periodKey, now = Date.now()) => {
+    const slug = slugOfKey(periodKey);
+    return slug ? calendar(now).find((e) => e.slug === slug) || null : null;
+  };
+
+  /** Fenêtre { start, end } d'une clé de période (« first » : depuis toujours ; « e:<slug> » : l'événement). */
   function windowOf(periodKey) {
     if (periodKey === FIRST_KEY) return { start: 0, end: FAR };
+    const ev = eventOfKey(periodKey);
+    if (ev) return { start: ev.start, end: ev.end };
     return periods.periodBounds(periodKey);
   }
 
   /** Clés des périodes en cours : { daily, weekly } avec leurs bornes. */
   const current = (now = Date.now()) => ({ daily: periods.currentPeriod('daily', now), weekly: periods.currentPeriod('weekly', now) });
 
-  /** Portée d'une clé reçue, si elle est en cours ; 400 si elle est illisible, 410 si elle est finie (ou pas commencée). */
+  /**
+   * Portée d'une clé reçue, si elle est en cours ; 400 si elle est illisible (ou un événement inconnu), 410 si elle est
+   * finie (ou pas commencée).
+   */
   function liveScope(periodKey) {
     const scope = scopeOfKey(periodKey);
-    if (!scope || scope === 'event') throw new HttpError(400, 'invalid_input', { field: 'periodKey' });
+    if (!scope) throw new HttpError(400, 'invalid_input', { field: 'periodKey' });
     if (scope === 'first') return scope;
+    if (scope === 'event') {
+      const ev = eventOfKey(periodKey);
+      if (!ev) throw new HttpError(400, 'invalid_input', { field: 'periodKey' });
+      if (ev.status !== 'current') throw new HttpError(410, 'period_over');
+      return scope;
+    }
     if (current()[scope].key !== periodKey) throw new HttpError(410, 'period_over');
     return scope;
   }
+
+  /** Quête d'une ligne de user_quests : celles d'un événement viennent du calendrier, les autres de shared/quests.js. */
+  const parsedOf = (periodKey, questId) => {
+    const slug = slugOfKey(periodKey);
+    return slug ? parseEventQuest(slug, questId) : parseQuest(questId);
+  };
 
   // ----- progression : comptages bornés sur les tables sources -------------------------------------------
 
@@ -97,6 +132,58 @@ export function init(deps) {
     return Math.min(limit, rows.filter((r) => reviewCounts(r.review)).length);
   }
 
+  /** Filtre { genre, decade } sur les albums (cat_albums al), pour les quêtes d'événement. */
+  function albumFilter(params) {
+    const where = [];
+    const args = [];
+    if (params.genre) {
+      where.push('al.genre = ?');
+      args.push(params.genre);
+    }
+    if (params.decade) {
+      where.push('al.year >= ? AND al.year < ?');
+      args.push(params.decade, params.decade + 10);
+    }
+    return { sql: where.length ? ` AND ${where.join(' AND ')}` : '', args };
+  }
+
+  /** Albums notés dans la fenêtre ; filtrés par genre ou décennie (quêtes d'événement). */
+  function rateAlbums(u, p, s, e, l) {
+    const f = albumFilter(p);
+    if (!f.sql) {
+      return n(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM ratings WHERE user_id = ? AND created_at >= ?
+        AND created_at < ? AND item_type = 'album' LIMIT ?)`, u, s, e, l);
+    }
+    return n(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM ratings r JOIN cat_albums al ON al.id = r.item_id
+      WHERE r.user_id = ? AND r.created_at >= ? AND r.created_at < ? AND r.item_type = 'album'${f.sql} LIMIT ?)`, u, s, e, ...f.args, l);
+  }
+
+  /** Albums complétés dans la fenêtre ; d'un coffret (au plus 12 sondes) ou d'un genre, d'une décennie. */
+  function completeAlbum(u, p, s, e, l) {
+    if (p.set) {
+      return n(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM set_albums sa JOIN achievements a ON a.user_id = ? AND a.key = 'album:' || sa.album_id
+        WHERE sa.set_id = ? AND a.created_at >= ? AND a.created_at < ? LIMIT ?)`, u, p.set, s, e, l);
+    }
+    const f = albumFilter(p);
+    if (!f.sql) {
+      return n(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM achievements WHERE user_id = ? AND created_at >= ?
+        AND created_at < ? AND key >= 'album:' AND key < 'album;' LIMIT ?)`, u, s, e, l);
+    }
+    return n(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM achievements a CROSS JOIN cat_albums al
+      WHERE a.user_id = ? AND a.created_at >= ? AND a.created_at < ? AND a.key >= 'album:' AND a.key < 'album;'
+        AND al.id = substr(a.key, 7)${f.sql} LIMIT ?)`, u, s, e, ...f.args, l);
+  }
+
+  /** Votes comptés dans la fenêtre ; ceux d'un événement (battle_votes.event_slug, posé par le module events). */
+  function battleVotes(u, p, s, e, l) {
+    if (p.event) {
+      return n(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM battle_votes WHERE user_id = ? AND created_at >= ?
+        AND created_at < ? AND counted = 1 AND event_slug = ? LIMIT ?)`, u, s, e, p.event, l);
+    }
+    return n(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM battle_votes WHERE user_id = ? AND created_at >= ?
+      AND created_at < ? AND counted = 1 LIMIT ?)`, u, s, e, l);
+  }
+
   const COUNTERS = {
     open_boosters: (u, _p, s, e, l) => n(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM pack_openings WHERE user_id = ? AND created_at >= ?
       AND created_at < ? AND source IN (SELECT value FROM json_each(?)) LIMIT ?)`, u, s, e, json(BOOSTER_SOURCES), l),
@@ -109,17 +196,14 @@ export function init(deps) {
         AND NOT EXISTS (SELECT 1 FROM cat_albums a2 JOIN user_album_progress p2 ON p2.user_id = p.user_id AND p2.album_id = a2.id
           WHERE a2.artist_id = al.artist_id AND p2.first_at < ?)
       LIMIT ?)`, u, s, s, e, s, l),
-    complete_album: (u, _p, s, e, l) => n(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM achievements WHERE user_id = ? AND created_at >= ?
-      AND created_at < ? AND key >= 'album:' AND key < 'album;' LIMIT ?)`, u, s, e, l),
-    rate_albums: (u, _p, s, e, l) => n(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM ratings WHERE user_id = ? AND created_at >= ?
-      AND created_at < ? AND item_type = 'album' LIMIT ?)`, u, s, e, l),
+    complete_album: completeAlbum,
+    rate_albums: rateAlbums,
     rate_tracks: (u, _p, s, e, l) => n(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM ratings WHERE user_id = ? AND created_at >= ?
       AND created_at < ? AND item_type = 'track' LIMIT ?)`, u, s, e, l),
     write_review: (u, _p, s, e, l) => reviews(u, s, e, l),
     rate_genres: (u, _p, s, e, l) => n(`SELECT COUNT(*) AS n FROM (SELECT DISTINCT al.genre FROM ratings r JOIN cat_albums al ON al.id = r.item_id
       WHERE r.user_id = ? AND r.created_at >= ? AND r.created_at < ? AND r.item_type = 'album' AND al.genre IS NOT NULL LIMIT ?)`, u, s, e, l),
-    battle_votes: (u, _p, s, e, l) => n(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM battle_votes WHERE user_id = ? AND created_at >= ?
-      AND created_at < ? AND counted = 1 LIMIT ?)`, u, s, e, l),
+    battle_votes: battleVotes,
     blindtest_play: (u, _p, s, e, l) => n(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM blindtest_games WHERE user_id = ? AND finished_at >= ?
       AND finished_at < ? LIMIT ?)`, u, s, e, l),
     blindtest_score: (u, _p, s, e, l) => n(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM blindtest_games WHERE user_id = ? AND finished_at >= ?
@@ -165,13 +249,17 @@ export function init(deps) {
   const rowsOf = (userId, periodKey) => q(`SELECT slot, quest_id, rerolled, claimed_at, reward, created_at FROM user_quests
     WHERE user_id = ? AND period_key = ? ORDER BY slot`).all(userId, periodKey);
 
-  /** Lignes de la période ; les quêtes manquantes sont tirées et écrites à la première lecture. */
+  /** Lignes de la période ; les quêtes manquantes sont tirées (ou prises au calendrier) et écrites à la première lecture. */
   function ensure(userId, periodKey, scope) {
     const rows = rowsOf(userId, periodKey);
-    const wanted = scope === 'first' ? FIRST_STEPS.length : QUEST_SLOTS;
+    const ev = scope === 'event' ? eventOfKey(periodKey) : null;
+    const wanted = scope === 'first' ? FIRST_STEPS.length : scope === 'event' ? Math.min(EVENT_SLOTS, ev?.quests.length || 0) : QUEST_SLOTS;
     const have = new Set(rows.filter((r) => r.slot < BONUS_SLOT).map((r) => r.slot));
     if (have.size >= wanted) return rows;
-    const rolled = rollQuests(userId, periodKey, scope, scope === 'first' ? {} : contextOf(userId));
+    let rolled;
+    if (scope === 'first') rolled = rollQuests(userId, periodKey, scope, {});
+    else if (scope === 'event') rolled = ev.quests.slice(0, EVENT_SLOTS).map((def, slot) => ({ slot, questId: def.id }));
+    else rolled = rollQuests(userId, periodKey, scope, contextOf(userId));
     const ins = q(`INSERT OR IGNORE INTO user_quests (user_id, period_key, slot, quest_id, rerolled, created_at)
       VALUES (?, ?, ?, ?, 0, ?)`);
     const now = Date.now();
@@ -180,8 +268,8 @@ export function init(deps) {
   }
 
   /** Quest (PLAN.md 4.2.6) d'une ligne de user_quests ; null si la quête n'existe plus. */
-  function questView(userId, row, win) {
-    const parsed = parseQuest(row.quest_id);
+  function questView(userId, row, win, periodKey = null) {
+    const parsed = periodKey ? parsedOf(periodKey, row.quest_id) : parseQuest(row.quest_id);
     if (!parsed) return null;
     const { def, vars } = parsed;
     const claimed = row.claimed_at != null;
@@ -200,7 +288,8 @@ export function init(deps) {
       claimedAt: row.claimed_at ?? null,
       rerolled: !!row.rerolled,
       reward: claimed ? parse(row.reward, rewardOf(def)) : rewardOf(def),
-      vars,
+      // Quête d'événement : ses paramètres (genre, décennie, coffret, événement) servent au titre sur le site.
+      vars: def.scope === 'event' ? { ...(def.params || {}), ...vars } : vars,
     };
   }
 
@@ -227,22 +316,74 @@ export function init(deps) {
     return out;
   }
 
-  /** GET /api/quests : { daily, weekly, firstSteps, serverTime } (au plus 13 comptages bornés). */
+  /**
+   * Quêtes d'un événement : { slug, periodKey, status, startsAt, endsAt, slots, bonus }. En cours : lignes écrites à la
+   * première lecture, progression dans la fenêtre ; à venir : les quêtes du calendrier sans progression (rien n'est
+   * écrit) ; fini : ce qui a été fait pendant l'événement (rien ne se réclame plus).
+   */
+  function eventView(userId, slug) {
+    const periodKey = eventPeriodKey(slug);
+    const ev = eventOfKey(periodKey);
+    if (!ev) return null;
+    const win = { start: ev.start, end: ev.end };
+    const defs = ev.quests.slice(0, EVENT_SLOTS);
+    let rows;
+    if (ev.status === 'current') rows = ensure(userId, periodKey, 'event');
+    else if (ev.status === 'past') rows = rowsOf(userId, periodKey);
+    else rows = [];
+    const bySlot = new Map(rows.map((r) => [r.slot, r]));
+    const slots = defs.map((def, slot) => {
+      const row = bySlot.get(slot);
+      if (row) return questView(userId, row, win, periodKey);
+      const parsed = parseEventQuest(slug, def.id);
+      const progress = ev.status === 'past' ? progressOf(userId, parsed, win) : 0;
+      return {
+        slot, id: def.id, defId: def.id, scope: 'event', category: def.category, metric: def.metric, target: def.target,
+        progress, done: progress >= def.target, claimed: false, claimedAt: null, rerolled: false, reward: rewardOf(parsed.def),
+        vars: def.params || {}, locked: ev.status === 'upcoming',
+      };
+    }).filter(Boolean);
+    const bonusRow = bySlot.get(BONUS_SLOT);
+    const reward = deps.events?.bonusOf?.(slug) ?? null;
+    return {
+      slug,
+      periodKey,
+      status: ev.status,
+      startsAt: ev.start,
+      endsAt: ev.end,
+      slots,
+      bonus: {
+        claimable: ev.status === 'current' && slots.length === defs.length && slots.every((s) => s.claimed) && !bonusRow,
+        claimed: !!bonusRow,
+        reward: bonusRow ? parse(bonusRow.reward, reward) : reward,
+      },
+    };
+  }
+
+  /**
+   * GET /api/quests : { daily, weekly, firstSteps, event?, events, serverTime } (au plus 13 comptages bornés, plus 3 par
+   * événement en cours). `event` : le premier événement en cours (hors Rétro s'il y en a un autre), `events` : tous.
+   */
   function list(userId) {
     const now = current();
     const first = ensure(userId, FIRST_KEY, 'first');
     const firstDone = first.length >= FIRST_STEPS.length && first.every((r) => r.claimed_at != null);
+    const live = calendar().filter((e) => e.status === 'current' && e.quests.length);
+    const events = live.map((e) => eventView(userId, e.slug)).filter(Boolean);
+    const main = events.find((e) => live.find((x) => x.slug === e.slug)?.kind === 'event') || events[0] || null;
     return {
       daily: periodView(userId, 'daily', now.daily),
       weekly: periodView(userId, 'weekly', now.weekly),
       firstSteps: firstDone ? [] : first.map((r) => questView(userId, r, windowOf(FIRST_KEY))).filter(Boolean),
+      ...(main ? { event: main } : {}),
+      events,
       serverTime: Date.now(),
     };
   }
 
   const slotOf = (raw, scope) => {
     const slot = SLOT_RE.test(String(raw)) ? Number(raw) : -1;
-    const max = scope === 'first' ? FIRST_STEPS.length : QUEST_SLOTS;
+    const max = scope === 'first' ? FIRST_STEPS.length : scope === 'event' ? EVENT_SLOTS : QUEST_SLOTS;
     if (slot < 0 || slot >= max) throw new HttpError(404, 'quest_not_found');
     return slot;
   };
@@ -263,16 +404,23 @@ export function init(deps) {
     return services.gainXp(user, reward.xp || 0, source);
   }
 
+  /** Fenêtre d'une période en cours (jour, semaine, événement) ou des « Premiers pas ». */
+  const liveWindow = (scope, periodKey) => {
+    if (scope === 'first') return windowOf(FIRST_KEY);
+    if (scope === 'event') return windowOf(periodKey);
+    return current()[scope];
+  };
+
   /** POST /api/quests/:periodKey/:slot/claim → { reward, quest, levelUp }. */
   function claim(userId, periodKey, rawSlot) {
     const scope = liveScope(periodKey);
     const slot = slotOf(rawSlot, scope);
-    const win = scope === 'first' ? windowOf(FIRST_KEY) : current()[scope];
+    const win = liveWindow(scope, periodKey);
     // La ligne existe dès la première lecture de la période ; on la tire ici aussi (réclamation sans lecture).
     ensure(userId, periodKey, scope);
     const result = services.atomic(() => {
       const row = rowOf(userId, periodKey, slot);
-      const parsed = row && parseQuest(row.quest_id);
+      const parsed = row && parsedOf(periodKey, row.quest_id);
       if (!parsed) throw new HttpError(404, 'quest_not_found');
       if (row.claimed_at != null) throw new HttpError(409, 'already_claimed');
       const progress = progressOf(userId, parsed, win);
@@ -287,7 +435,7 @@ export function init(deps) {
       return { reward, levelUp, row: { ...row, claimed_at: now, reward: json(reward) } };
     });
     deps.bus.emit('quest.claimed', { userId, periodKey, slot });
-    return { reward: result.reward, quest: questView(userId, result.row, win), levelUp: result.levelUp };
+    return { reward: result.reward, quest: questView(userId, result.row, win, periodKey), levelUp: result.levelUp };
   }
 
   /** POST /api/quests/:periodKey/:slot/reroll → { quest, rerollsLeft } (une relance gratuite par jour). */
@@ -319,10 +467,35 @@ export function init(deps) {
     return g ? `genre:${g}` : 'taste';
   }
 
+  /**
+   * Bonus d'un événement : les 3 quêtes réclamées pendant l'événement → badge, cadre, booster thématique (deps.events).
+   */
+  function claimEventBonus(userId, periodKey) {
+    const slug = slugOfKey(periodKey);
+    const bonus = deps.events?.bonusOf?.(slug);
+    if (!bonus) throw new HttpError(409, 'bonus_locked');
+    const result = services.atomic(() => {
+      const rows = rowsOf(userId, periodKey);
+      if (rows.some((r) => r.slot === BONUS_SLOT)) throw new HttpError(409, 'already_claimed');
+      const claimed = rows.filter((r) => r.slot < EVENT_SLOTS && r.claimed_at != null).length;
+      if (claimed < EVENT_SLOTS) throw new HttpError(409, 'bonus_locked', { claimed, needed: EVENT_SLOTS });
+      const now = Date.now();
+      q(`INSERT INTO user_quests (user_id, period_key, slot, quest_id, rerolled, claimed_at, reward, created_at)
+        VALUES (?, ?, ?, 'bonus', 0, ?, ?, ?)`).run(userId, periodKey, BONUS_SLOT, now, json(bonus), now);
+      const levelUp = grant(services.getUser(userId), bonus, `event:${slug}`);
+      deps.events.applyBonus(userId, slug, now);
+      return { reward: bonus, levelUp };
+    });
+    services.forget?.(userId);
+    deps.events?.afterBonus?.(userId, slug, result.reward);
+    return result;
+  }
+
   /** POST /api/quests/bonus/:periodKey → { reward } quand les 3 quêtes de la période sont réclamées. */
   function claimBonus(userId, periodKey) {
     const scope = liveScope(periodKey);
     if (scope === 'first') throw new HttpError(409, 'bonus_locked');
+    if (scope === 'event') return claimEventBonus(userId, periodKey);
     const theme = scope === 'weekly' ? themeOf(userId) : null;
     const result = services.atomic(() => {
       const rows = rowsOf(userId, periodKey);
@@ -341,12 +514,12 @@ export function init(deps) {
 
   /** Progression d'une quête du joueur dans une période (tests, outils). */
   function progress(userId, questId, periodKey) {
-    const parsed = parseQuest(questId);
+    const parsed = parsedOf(periodKey, questId);
     const win = windowOf(periodKey);
     return parsed && win ? progressOf(userId, parsed, win) : null;
   }
 
-  return { list, claim, reroll, claimBonus, progress, windowOf };
+  return { list, claim, reroll, claimBonus, progress, windowOf, eventView };
 }
 
 export function routes(r, deps) {

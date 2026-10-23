@@ -1,0 +1,552 @@
+/* @prefix set- */
+/* Coffrets et événements — chantier P2-B (PLAN.md 6.8, 6.9, 9.2). Identité actuelle seulement (DESIGN-OVERRIDE.md) :
+   panneaux, chips, vignettes d'album, anneaux des quêtes et jetons d'app.css ; aucune couleur en dur, aucune police hors
+   des jetons. L'or marque la progression d'un coffret et ses récompenses (comme les albums complétés), le dégradé du
+   booster marque un événement (le point des pastilles d'événement de l'accueil). Les pochettes ne sont jamais
+   recouvertes : l'éventail pose les pochettes côte à côte, rien par-dessus. */
+
+/* ---------- pochettes en éventail ---------- */
+
+.set-stack {
+  --set-cover: 72px;
+  --set-shift: 18px;
+  position: relative;
+  display: block;
+  flex: none;
+  width: calc(var(--set-cover) + 3 * var(--set-shift));
+  height: var(--set-cover);
+}
+
+.set-stack--lg {
+  --set-cover: 132px;
+  --set-shift: 30px;
+}
+
+.set-stack__cover {
+  position: absolute;
+  top: 0;
+  left: calc(var(--i) * var(--set-shift));
+  z-index: calc(4 - var(--i));
+  width: var(--set-cover);
+  height: var(--set-cover);
+  border-radius: var(--rad-sm);
+  overflow: hidden;
+  background: var(--stage-3);
+  box-shadow: 8px 0 16px -6px rgba(0, 0, 0, 0.85);
+  transform: scale(calc(1 - var(--i) * 0.05));
+  transform-origin: left center;
+}
+
+.set-stack__cover .cover {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.set-stack--skel {
+  border-radius: var(--rad-md);
+  background: var(--grad-skeleton);
+  background-size: 300% 100%;
+  animation: card-loading 1.4s linear infinite;
+}
+
+/* ---------- carte d'un coffret ---------- */
+
+.set-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: var(--s-12);
+}
+
+.set-grid--one {
+  grid-template-columns: minmax(0, 480px);
+}
+
+.panel.set-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-16);
+  padding: var(--s-14) var(--s-16);
+  border-radius: var(--rad-md);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color var(--dur-hover), transform var(--dur-fade);
+}
+
+.panel.set-card:hover { border-color: var(--line); }
+.panel.set-card:focus-visible { outline: none; box-shadow: var(--ring-focus); border-color: var(--cue); }
+
+.panel.set-card--done {
+  border-color: color-mix(in oklab, var(--gold) 45%, var(--line-soft));
+}
+
+.panel.set-card--skel {
+  min-height: 132px;
+  background: var(--grad-skeleton);
+  background-size: 300% 100%;
+  animation: card-loading 1.4s linear infinite;
+}
+
+.set-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-width: 0;
+}
+
+.set-card__kind {
+  color: var(--haze);
+  font: var(--fw-semi) var(--fs-12) / var(--lh-ui) var(--font-body);
+}
+
+.set-card__title {
+  font: var(--fw-title) var(--fs-16) / var(--lh-snug) var(--font-display);
+  font-stretch: var(--fst-title);
+  letter-spacing: var(--ls-title);
+  overflow-wrap: anywhere;
+}
+
+.set-card__meta {
+  color: var(--haze);
+  font-size: var(--fs-13);
+}
+
+.set-card__meta .mono { font-size: var(--fs-12); }
+
+.set-card__progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-8);
+  margin-top: var(--s-2);
+}
+
+.set-card__progress .mono { font-size: var(--fs-13); color: var(--paper-dim); }
+
+.set-chips-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-6);
+  margin-top: var(--s-4);
+}
+
+/* ---------- onglet Coffrets ---------- */
+
+.set-tab .coll-chips { margin-bottom: var(--s-16); }
+
+.set-tab__foot {
+  margin-top: var(--s-20);
+  text-align: center;
+}
+
+.set-tab__foot .link-btn { display: inline-flex; align-items: center; gap: var(--s-6); }
+
+/* ---------- accueil : rangée de l'événement et du Rétro (sous la rangée des quêtes) ---------- */
+
+.set-row {
+  margin-top: var(--s-16);
+}
+
+.pl-strip + .set-row { margin-top: var(--s-8); }
+.set-row:empty { display: none; }
+
+.set-chip { text-decoration: none; }
+.set-chip--retro .quest-chip__dot { background: var(--grad-wordmark); box-shadow: 0 0 10px color-mix(in oklab, var(--r-ultra) 60%, transparent); }
+
+/* ---------- page d'un coffret ---------- */
+
+.set-page__intro { max-width: 62ch; margin-top: var(--s-8); color: var(--paper-dim); }
+.set-page__hint { margin: calc(-1 * var(--s-8)) 0 var(--s-16); }
+.set-page__holders { margin-top: var(--s-12); }
+
+.set-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-28);
+  margin: var(--s-16) 0 var(--s-24);
+  padding: var(--s-24);
+  border-radius: var(--rad-lg);
+  background: var(--grad-panel);
+  border: 1px solid var(--line-soft);
+}
+
+.set-head__info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+  min-width: 0;
+}
+
+.set-head__info h1 { margin: 0; overflow-wrap: anywhere; }
+
+.set-head__line { margin: 0; color: var(--haze); }
+.set-head__line .mono { font-size: var(--fs-13); }
+
+.set-head__progress {
+  display: flex;
+  align-items: center;
+  gap: var(--s-16);
+  max-width: 520px;
+}
+
+.set-head__count {
+  font: var(--fw-display) var(--fs-stat) / 1 var(--font-display);
+  font-stretch: var(--fst-display);
+  color: var(--haze);
+  white-space: nowrap;
+}
+
+.set-head__count b { color: var(--gold); font-weight: inherit; font-size: var(--fs-h2); }
+
+.set-head__bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+  flex: 1;
+  min-width: 0;
+}
+
+.set-head__event {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-8);
+  align-self: flex-start;
+  color: var(--paper);
+  font-size: var(--fs-14);
+  text-decoration: none;
+}
+
+.set-head__event:hover span:nth-child(2) { text-decoration: underline; }
+
+.set-skel-line {
+  display: block;
+  width: 60%;
+  height: 22px;
+  border-radius: var(--rad-xs);
+  background: var(--grad-skeleton);
+  background-size: 300% 100%;
+  animation: card-loading 1.4s linear infinite;
+}
+
+.set-skel-line--short { width: 35%; }
+
+/* Récompenses : le disque du badge (bronze) et l'aperçu du cadre sur l'avatar du joueur. */
+.set-rewards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-12);
+  margin-bottom: var(--s-8);
+}
+
+.panel.set-reward {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-16);
+  padding: var(--s-16) var(--s-20);
+}
+
+.panel.set-reward--earned {
+  border-color: color-mix(in oklab, var(--gold) 45%, var(--line-soft));
+}
+
+.set-reward__disc {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  color: var(--ink);
+  background: var(--grooves), var(--stage-3);
+  box-shadow: inset 0 0 0 3px var(--stage-3), 0 0 0 2px var(--line);
+}
+
+.set-reward__disc svg { color: var(--haze); }
+
+.set-reward--earned .set-reward__disc {
+  background: radial-gradient(circle, var(--gold-light) 0 30%, var(--gold-deep) 31% 34%, transparent 35%), var(--grooves), var(--gold-deep);
+  box-shadow: inset 0 0 0 3px var(--gold-deep), 0 0 0 2px var(--gold);
+}
+
+.set-reward--earned .set-reward__disc svg { color: var(--ink); }
+
+.set-reward__avatar {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+}
+
+.set-reward:not(.set-reward--earned) .set-reward__avatar { opacity: 0.55; }
+
+.set-reward__body { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-4); min-width: 0; }
+
+.set-reward__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-8);
+  margin: 0;
+  font: var(--fw-bold) var(--fs-15) / var(--lh-snug) var(--font-body);
+}
+
+.set-reward__text { margin: 0; color: var(--paper-dim); font-size: var(--fs-14); }
+
+.set-reward__count { color: var(--haze); font-size: var(--fs-14); }
+.set-reward--earned .set-reward__count { color: var(--gold); }
+
+/* Albums du coffret : la grille d'albums partagée ; un album complété garde son anneau or (album-tile--done). */
+.set-albums { margin-top: 0; }
+
+/* Amis sur ce coffret. */
+.set-friends {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: var(--s-8);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.set-friend {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 90px auto;
+  align-items: center;
+  gap: var(--s-12);
+  padding: var(--s-10) var(--s-14);
+  border-radius: var(--rad-md);
+  background: var(--stage);
+  border: 1px solid var(--line-soft);
+  color: inherit;
+  text-decoration: none;
+}
+
+.set-friend:hover { border-color: var(--line); }
+
+.set-friend__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--fw-bold) var(--fs-15) / var(--lh-snug) var(--font-display);
+}
+
+.set-friend .mono { color: var(--paper-dim); font-size: var(--fs-13); }
+
+/* ---------- événements ---------- */
+
+.set-events .section { margin-top: var(--s-32); }
+
+.set-ev-status {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-8);
+}
+
+.set-ev-list { display: grid; gap: var(--s-12); }
+
+/* Grand panneau d'un événement : le dégradé du héros, le point du booster. */
+.panel.set-ev-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-20);
+  padding: var(--s-24);
+  background: var(--grad-hero), var(--stage);
+}
+
+.panel.set-ev-hero--page { margin: var(--s-16) 0 var(--s-20); }
+
+.panel.set-ev-hero--skel {
+  display: block;
+  min-height: 160px;
+  background: var(--grad-skeleton);
+  background-size: 300% 100%;
+  animation: card-loading 1.4s linear infinite;
+}
+
+.set-ev-hero__dot {
+  align-self: start;
+  width: 18px;
+  height: 18px;
+  margin-top: var(--s-6);
+  border-radius: 50%;
+  background: var(--grad-booster);
+  box-shadow: 0 0 18px color-mix(in oklab, var(--r-super) 70%, transparent);
+}
+
+.set-ev-hero__body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-8);
+  min-width: 0;
+}
+
+.set-ev-hero__body p { margin: 0; max-width: 60ch; }
+
+.set-ev-hero__title {
+  margin: 0;
+  font: var(--fw-display) var(--fs-display-sm) / var(--lh-title) var(--font-display);
+  font-stretch: var(--fst-display);
+  letter-spacing: var(--ls-display);
+  overflow-wrap: anywhere;
+}
+
+.set-ev-hero--page .set-ev-hero__title { font-size: var(--fs-h1); }
+
+.set-ev-hero__side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s-10);
+}
+
+.set-ev-hero__count { color: var(--paper-dim); font-size: var(--fs-13); }
+
+.set-ev-rows {
+  display: grid;
+  gap: var(--s-8);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.set-ev-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-14);
+  padding: var(--s-12) var(--s-16);
+  border-radius: var(--rad-md);
+  background: var(--stage);
+  border: 1px solid var(--line-soft);
+  color: inherit;
+  text-decoration: none;
+}
+
+.set-ev-row:hover { border-color: var(--line); }
+
+.set-ev-row__icon,
+.set-ev-reward__icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--rad-sm);
+  background: var(--stage-2);
+  color: var(--haze);
+}
+
+.set-ev-row__text,
+.set-ev-reward__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.set-ev-row__title {
+  font: var(--fw-bold) var(--fs-16) / var(--lh-snug) var(--font-display);
+  font-stretch: var(--fst-title);
+}
+
+/* Page d'un événement : quêtes à gauche, battles et récompenses à droite. */
+.set-ev-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--s-16);
+  align-items: start;
+}
+
+.set-ev-side { display: grid; gap: var(--s-16); }
+
+.set-ev-quests .quests { margin-top: var(--s-4); }
+
+.set-ev-battle__cat {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-8);
+  margin: 0;
+  font: var(--fw-bold) var(--fs-16) / var(--lh-snug) var(--font-display);
+}
+
+.set-ev-battle .btn { align-self: flex-start; }
+
+.set-ev-rewards {
+  display: grid;
+  gap: var(--s-10);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.set-ev-reward {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-12);
+}
+
+.set-ev-reward--earned .set-ev-reward__icon {
+  background: color-mix(in oklab, var(--gold) 18%, var(--stage-2));
+  color: var(--gold);
+}
+
+.set-ev-set__after { align-self: center; margin: 0; }
+
+/* ---------- tablette et téléphone ---------- */
+
+@media (max-width: 1020px) {
+  .set-ev-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 860px) {
+  .set-rewards { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .set-head {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s-16);
+    padding: var(--s-16);
+  }
+
+  .set-stack--lg {
+    --set-cover: 104px;
+    --set-shift: 24px;
+  }
+
+  .set-stack {
+    --set-cover: 60px;
+    --set-shift: 14px;
+  }
+
+  .panel.set-card { gap: var(--s-12); padding: var(--s-12); }
+
+  .panel.set-reward { padding: var(--s-14); gap: var(--s-12); }
+
+  .panel.set-ev-hero {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: var(--s-16);
+    gap: var(--s-12);
+  }
+
+  .set-ev-hero__side {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .set-ev-row { grid-template-columns: auto minmax(0, 1fr); }
+  .set-ev-row .set-ev-status { grid-column: 2; }
+
+  .set-friend { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .set-friend .progress { display: none; }
+}

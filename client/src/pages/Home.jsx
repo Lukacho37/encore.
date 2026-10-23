@@ -1,10 +1,11 @@
-// Accueil (« Boosters ») — chantier P0-B, repris par P1-A en P1 (PLAN.md 2.4, 2.5, DESIGN-OVERRIDE.md).
+// Accueil (« Boosters ») — chantier P0-B, repris par P1-A en P1, par P2-B en P2 (PLAN.md 2.4, 2.5, DESIGN-OVERRIDE.md).
 // En tête, LITTÉRALEMENT inchangés : le héros Boosters (paquet, « N boosters disponibles », minuteur, guide des raretés,
 // « Ouvrir un booster ») et la rangée Boutique / Doublons / Blind test. En dessous (P1) : « Boosters spéciaux » (P1-D),
-// la rangée des quêtes (P1-F), puis le fil (compositeur, onglets Tes amis · Pour toi · Communauté, pages chargées au
-// défilement) à côté de sa colonne (Presque complets avec « Deux façons de finir un album », Taste Match, battle,
-// amis suggérés) ; sur téléphone la colonne se range après la première page du fil. Enfin « Derniers morceaux obtenus ».
-import { useMemo, useState } from 'react';
+// la rangée des quêtes (P1-F), la rangée de l'événement en cours et du Rétro (P2-B), puis le fil (compositeur, onglets
+// Tes amis · Pour toi · Communauté, pages chargées au défilement) à côté de sa colonne (Presque complets avec « Deux
+// façons de finir un album », Taste Match, battle, amis suggérés) ; sur téléphone la colonne se range après la première
+// page du fil. Enfin « Derniers morceaux obtenus ».
+import { Suspense, lazy, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { RarityGuideButton } from '../components/RarityGuide.jsx';
 import { useGame } from '../state/GameContext.jsx';
@@ -20,6 +21,7 @@ import { useAlbums } from '../state/catalog.js';
 import { useBoosterFlow } from '../state/boosterFlow.js';
 import { SpecialBoosters } from '../components/game/SpecialBoosters.jsx';
 import { BattleWidget, QuestStrip } from '../components/play/slots.jsx';
+import { EventChip, RetroChip } from '../components/sets/EventChip.jsx';
 import { SuggestedFriends, TasteMatchCard } from '../components/match/HomeCards.jsx';
 import { Composer } from '../components/social/Composer.jsx';
 import { FEED_TABS, FeedList, feedItemOfPost, useFeed } from '../components/social/FeedList.jsx';
@@ -30,6 +32,23 @@ import '../styles/social.css';
 // La vignette d'album vit dans components/AlbumTile.jsx (une seule pour tout le site) ; ces réexports gardent les
 // anciens imports (`import { AlbumTile } from './Home.jsx'`) valables.
 export { AlbumTile, AlbumTileSkeleton };
+
+// Pastille du Rétro : celle du passeport (P2-A, components/passport/RetroChip.jsx) quand elle existe, chargée à part ;
+// sinon celle du calendrier des événements (P2-B). Glob vide si le fichier n'existe pas : rien n'est importé.
+const passportRetro = Object.values(import.meta.glob('../components/passport/RetroChip.jsx'))[0];
+const PassportRetroChip = passportRetro
+  ? lazy(() => passportRetro().then((m) => ({ default: m.RetroChip || m.default || (() => null) })))
+  : null;
+
+/** Rangée de l'événement en cours et du Rétro, sous la rangée des quêtes (jamais dans le héros). */
+function EventRow() {
+  return (
+    <div className="status-row set-row" data-home="events">
+      <EventChip />
+      {PassportRetroChip ? <Suspense fallback={null}><PassportRetroChip /></Suspense> : <RetroChip />}
+    </div>
+  );
+}
 
 // Albums montrés dans « Presque complets » ; au-delà de SEGMENTS morceaux, une barre continue remplace les segments.
 const ALMOST = 3;
@@ -257,9 +276,10 @@ export default function Home() {
         </Link>
       </section>
 
-      {/* P1 : sous le héros et la rangée, jamais au-dessus. */}
+      {/* P1 : sous le héros et la rangée, jamais au-dessus. P2-B : l'événement et le Rétro sous les quêtes. */}
       <SpecialBoosters />
       <QuestStrip />
+      <EventRow />
 
       <HomeFeed onAlbumPack={openAlbum} />
 

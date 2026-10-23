@@ -5,6 +5,8 @@
 // suggestion choisie filtre la grille avec le texte (le filtre ?q= d'avant). Sur téléphone : une ligne de progression
 // et la feuille « Statistiques », un bouton « Filtres » qui ouvre une feuille (PLAN.md 2.5).
 // Listes, vignettes et états vides : les pièces partagées de P0-B (state/paged.js, AlbumTile, feedback.jsx).
+// P2-B : onglet « Coffrets » (components/sets/SetsTab.jsx) ; les onglets Genres et Décennies restent et mènent aussi au
+// passeport musical (P2-A), où vivent les répartitions détaillées, quand sa page existe.
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigationType, useParams, useSearchParams } from 'react-router';
 import { useGame } from '../state/GameContext.jsx';
@@ -19,6 +21,8 @@ import { Icon, Modal, Progress, Spinner } from '../components/ui.jsx';
 import { RarityGuideButton } from '../components/RarityGuide.jsx';
 import { SearchCombobox } from '../components/search/SearchCombobox.jsx';
 import { ArtistBadge } from '../components/search/ArtistBadge.jsx';
+import { SetsTab } from '../components/sets/SetsTab.jsx';
+import { pageExists } from '../routes.jsx';
 import { ECONOMY, FOCUS_CHANCE, RARITIES, RARITY } from '@shared/rules.js';
 import '../styles/collection.css';
 import '../styles/search.css';
@@ -26,7 +30,9 @@ import '../styles/search.css';
 // La pastille d'artiste a rejoint components/search/ (résultats de recherche) ; ArtistPage l'importe encore d'ici.
 export { ArtistBadge };
 
-const TABS = ['albums', 'cards', 'artists', 'promos', 'genres', 'decades'];
+const TABS = ['albums', 'cards', 'artists', 'promos', 'genres', 'decades', 'sets'];
+/** Libellé d'un onglet : « Coffrets » vient de la zone sets (P2-B), les autres de la collection. */
+const tabLabel = (t, id) => (id === 'sets' ? t('sets.tab') : t(`collection.tabs.${id}`));
 const SORTS = ['progress', 'popular', 'title', 'year', 'recent'];
 const PAGE = { albums: 48, cards: 60, promos: 60, artists: 48 };
 // Le serveur ne pagine pas au-delà de 10 000 résultats : il faut alors affiner la recherche.
@@ -606,7 +612,16 @@ function GroupsTab({ by }) {
     return <ul className="rows" aria-busy="true">{SKELETONS.slice(0, 8).map((i) => <li key={i} className="row coll-skel-row" />)}</ul>;
   }
   const groups = Array.isArray(data.groups) ? data.groups : [];
-  if (!groups.length) return <Empty>{t('collection.empty.groups')}</Empty>;
+  // Les répartitions détaillées (genres, décennies) vivent aussi dans le passeport musical (P2-A).
+  const passport = pageExists('Passport') && (
+    <p className="coll-hint" data-passport-link={by}>
+      <Icon name="compass" size={16} />
+      <Link to={`/passport#${by === 'genre' ? 'genres' : 'decades'}`} className="link-btn">
+        {t(by === 'genre' ? 'sets.passportGenres' : 'sets.passportDecades')}
+      </Link>
+    </p>
+  );
+  if (!groups.length) return <>{passport}<Empty>{t('collection.empty.groups')}</Empty></>;
   const rows = groups.map((g) => ({
     key: g.key,
     label: by === 'genre' ? genreLabel(g.key) : t('decade', { d: g.key }),
@@ -614,7 +629,12 @@ function GroupsTab({ by }) {
     p: g,
     color: by === 'genre' ? 'var(--cue)' : 'var(--r-legendary)',
   }));
-  return <ProgressRows rows={rows} />;
+  return (
+    <>
+      {passport}
+      <ProgressRows rows={rows} />
+    </>
+  );
 }
 
 // ----- page ---------------------------------------------------------------------------------
@@ -697,7 +717,7 @@ export default function Collection() {
         {TABS.map((id) => (
           <Link key={id} to={id === 'albums' ? '/collection' : `/collection/${id}`} className={`tabs__tab${tab === id ? ' active' : ''}`}
             aria-current={tab === id ? 'page' : undefined} onClick={onTabClick}>
-            {t(`collection.tabs.${id}`)}
+            {tabLabel(t, id)}
           </Link>
         ))}
       </nav>
@@ -708,6 +728,7 @@ export default function Collection() {
       {tab === 'promos' && <PromosTab />}
       {tab === 'genres' && <GroupsTab key="genre" by="genre" />}
       {tab === 'decades' && <GroupsTab key="decade" by="decade" />}
+      {tab === 'sets' && <SetsTab />}
     </div>
   );
 }

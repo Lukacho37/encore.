@@ -8,6 +8,7 @@
 //   plateforme (affichage direct) et le lien vers l'album ou le morceau, rafraîchis régulièrement.
 // - COVERS=off coupe tout : le site revient aux visuels générés (par exemple sur demande d'un ayant droit).
 import { config } from './config.js';
+import { providerDetached } from './importer.js';
 import { ALBUMS, ARTIST_BY_ID, TRACKS, TRACKS_BY_ALBUM } from '../shared/catalog.js';
 
 const DAY = 86_400_000;
@@ -280,10 +281,11 @@ export function createCovers(db, { cfg = config, fetchImpl = (...a) => fetch(...
   // Petite pause entre deux appels pour rester sous les quotas des API.
   const pause = () => new Promise((r) => setTimeout(r, pauseMs));
   const mode = cfg.covers;
-  const order = mode === 'off' ? []
+  // Un fournisseur détaché (P2-C, scripts/detach-provider.js) n'est plus jamais appelé.
+  const order = (mode === 'off' ? []
     : mode === 'spotify' ? (cfg.spotify ? ['spotify'] : [])
       : mode === 'deezer' ? ['deezer']
-        : cfg.spotify ? ['spotify', 'deezer'] : ['deezer'];
+        : cfg.spotify ? ['spotify', 'deezer'] : ['deezer']).filter((p) => !providerDetached(db, p));
   const providers = {
     spotify: cfg.spotify ? spotifyProvider(cfg, fetchImpl, pause) : null,
     deezer: deezerProvider(cfg, fetchImpl, pause),

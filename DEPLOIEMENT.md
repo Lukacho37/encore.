@@ -83,7 +83,18 @@ Réglages possibles dans **Environment** : `CATALOG_TARGET` (nombre d'albums, 20
 
 Avec autant d'albums, deux choses aident les joueurs à en finir un : une partie de chaque booster gratuit est tirée dans les **albums qu'ils ont commencés**, et chaque page d'album propose un **booster d'album** (5 cartes de cet album, celles qui manquent d'abord, contre 300 royalties).
 
-> Les conditions de l'API Deezer réservent son usage aux applications non commerciales et n'autorisent pas à recopier son catalogue dans sa propre base. Importer 20 000 albums est donc, comme les pochettes, un risque que tu choisis de prendre : en cas de demande de Deezer, mets `CATALOG_IMPORT=off` (plus aucun appel), puis retire les albums importés depuis le **Shell** de Render avec `npm run catalog:purge -- --yes`, puis redémarre le service (**Manual Deploy → Restart**) ; les 20 albums de base restent.
+> Les conditions de l'API Deezer réservent son usage aux applications non commerciales et n'autorisent pas à recopier son catalogue dans sa propre base. Importer 20 000 albums est donc, comme les pochettes, un risque que tu choisis de prendre : en cas de demande de Deezer :
+
+1. mets `CATALOG_IMPORT=off` et `COVERS=off` dans **Environment** (plus aucun appel à Deezer) ;
+2. depuis le **Shell** de Render, lance d'abord la simulation `npm run catalog:detach -- deezer` : elle indique ce qui serait gardé (tout ce que MusicBrainz confirme) et ce qui passerait en « archivé » ;
+3. applique-la avec `npm run catalog:detach -- deezer --yes` (ajoute `--purge-facts` si Deezer demande aussi l'effacement de ses données : rangs, nombre de fans, identifiants) ;
+4. redémarre le service (**Manual Deploy → Restart**).
+
+Les joueurs ne perdent rien : leurs cartes, vinyles, notes et listes restent, les albums retirés s'affichent « archivé ». Les 20 albums de base restent aussi. Fais une sauvegarde du disque avant l'étape 3.
+
+### Enrichissement du catalogue (MusicBrainz, Wikidata)
+
+Le serveur complète le catalogue en tâche de fond avec **MusicBrainz** et **Wikidata** (données libres, CC0) : pays des artistes, identifiants MusicBrainz, Spotify et Apple (qui permettent de proposer leurs lecteurs officiels, après accord du joueur). Il respecte leurs règles d'usage : au plus une requête par seconde, avec un nom d'application et une **adresse de contact** dans chaque requête. Cette adresse vient de `ENRICH_CONTACT`, sinon de `LEGAL_CONTACT_EMAIL` ; **sans adresse, rien n'est envoyé**. Un premier passage sur 20 000 albums prend environ 13 à 15 heures, puis un nouveau passage a lieu tous les 30 jours. `ENRICH=off` coupe l'enrichissement ; l'espace **Admin → Catalogue** permet de le suivre, de le mettre en pause et de le relancer.
 
 ## 6. Pochettes
 

@@ -244,8 +244,7 @@ async function runC(name, viewport, fn) {
   page.on('pageerror', (e) => fail(`[${name}] ${e.message}`));
   // Seule exception attendue : les classements d'un album archivé répondent 404 (server/battles.js, P1-F, hors de ce
   // chantier : correctif demandé dans le compte rendu P2-C).
-  const expected = (m) => /status of 404/.test(m.text()) && /\/api\/items\/album\/dz1000001\/rankings$/.test(m.location()?.url || '');
-  page.on('console', (m) => m.type() === 'error' && !ignoredConsole(m.text()) && !expected(m) && fail(`[${name}] console: ${m.text()} (${m.location()?.url || '?'})`));
+  page.on('console', (m) => m.type() === 'error' && !ignoredConsole(m.text()) && fail(`[${name}] console: ${m.text()} (${m.location()?.url || '?'})`));
   fs.mkdirSync(OUT, { recursive: true });
   try {
     await fn(page, ctx);

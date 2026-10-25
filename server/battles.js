@@ -500,7 +500,12 @@ export function init(deps) {
   function itemRankings(itemType, id) {
     if (itemType !== 'album' && itemType !== 'track') throw new HttpError(404, 'not_found');
     const facts = factsOf(itemType, [String(id || '').slice(0, 80)]).get(String(id || ''));
-    if (!facts || !facts.active) throw new HttpError(404, 'not_found');
+    if (!facts) throw new HttpError(404, 'not_found');
+    // Élément archivé (fournisseur détaché, P2-C) : plus classé, mais sa page s'ouvre toujours.
+    if (!facts.active) {
+      return { itemType, id: facts.id, items: [], vote: null, archived: true,
+        catalog: deps.refs(itemType === 'track' ? { trackIds: [facts.id] } : { albumIds: [facts.id] }) };
+    }
     const keys = itemType === 'track' ? trackCategories(facts) : albumCategories(facts);
     const mine = q('SELECT rating, votes FROM battle_ratings WHERE category = ? AND item_type = ? AND item_id = ?');
     const above = q('SELECT COUNT(*) AS n FROM battle_ratings WHERE category = ? AND item_type = ? AND rating > ?');

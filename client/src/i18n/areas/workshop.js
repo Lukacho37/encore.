@@ -3,8 +3,8 @@
 // existante. Chaque clé existe en FR et en EN (tutoiement, espace fine insécable avant ; : ! ? % et dans « »).
 // Espace de noms : workshop. Clés précisées ou ajoutées ailleurs (zone chargée en dernier) : home.dupHint (la rangée
 // Doublons renvoie au Comptoir), vinyl.holoHint, rarityGuide.holoBody et .specialBody (chaque règle de l'atelier est
-// publiée dans le guide des raretés), game.special.intro, cosmetics.title.deluxe, notify.kinds.deluxe_earned, et les
-// erreurs des routes de server/workshop.js sous errors.*.
+// publiée dans le guide des raretés), game.special.intro, cosmetics.title.deluxe, notify.kinds.deluxe_earned,
+// badges.f.deluxe (famille de médailles des éditions deluxe), et les erreurs des routes de server/workshop.js sous errors.*.
 const N = ' ';
 
 export default {
@@ -36,7 +36,8 @@ export default {
         progress: '{owned}/{total} cartes',
         exchange: 'Échanger',
         exchangeLabel: 'Échanger {n} doublons de rareté {rarity} contre {title}',
-        need: { one: 'Il te faut {n} doublon de plus de cette rareté', other: 'Il te faut {n} doublons de plus de cette rareté' },
+        need: { one: 'Encore {n} doublon', other: 'Encore {n} doublons' },
+        needLabel: { one: 'Il te faut encore {n} doublon de cette rareté', other: 'Il te faut encore {n} doublons de cette rareté' },
         done: '{title} rejoint ta collection !',
         emptyTitle: 'Aucun album recherché',
         emptyBody: 'Le Comptoir échange tes doublons contre les cartes qui te manquent dans tes albums recherchés. Ajoute un album avec « Rechercher » sur sa page.',
@@ -82,6 +83,7 @@ export default {
       },
       rules: {
         title: 'L’atelier',
+        all: 'Toutes les règles de l’atelier',
         vernir: 'Vernir : une carte standard que tu possèdes devient holo, pour 4 fois sa valeur de recyclage en royalties ({costs}) ou pour {n} doublons de la même rareté. Une carte déjà holo ne se vernit pas.',
         comptoir: 'Comptoir : {n} doublons d’une rareté contre une carte manquante de la même rareté, choisie dans un de tes albums recherchés. Échange fixe avec AlbumMania, jamais entre joueurs.',
         duplicates: 'Doublons donnés : les exemplaires en trop, jamais le dernier d’une version ; les standards d’abord, puis les cartes dont tu as le plus d’exemplaires.',
@@ -96,8 +98,11 @@ export default {
       holoHint: 'Réunis toutes les cartes de l’album en holo (le vernis de l’atelier peut aider) pour l’édition holo ; note l’album et chacun de ses morceaux pour l’édition deluxe.',
     },
     rarityGuide: {
-      holoBody: 'Chaque carte peut aussi sortir en version holo (5 %, 12 % pour les légendaires et les promos). C’est la même carte avec une finition brillante : elle compte pour l’album, et toutes les holos d’un album donnent son vinyle en édition holo. Une carte standard se vernit aussi à l’atelier (voir « L’atelier » plus bas).',
-      specialBody: 'Thématiques (un genre, une décennie, tes genres favoris, un événement) : mêmes chances par carte qu’un booster normal, pitié comprise ; seules les cartes possibles changent. Boosters d’album : 5 cartes d’un album, les manquantes d’abord (comme le booster d’album à {price} royalties). Ils se gagnent en jouant ; un booster thématique s’achète aussi en royalties dans le panneau « Boosters spéciaux », jamais avec de l’argent réel.',
+      // Les chiffres reprennent shared/rules.js (VERNIR_MULTIPLIER, VERNIR_DUPLICATES, COMPTOIR_DUPLICATES, DELUXE_XP,
+      // THEMED_BOOSTER_PRICE) : chaque règle de l'atelier est publiée dans le guide.
+      holoTitle: 'Holo, atelier et éditions',
+      holoBody: 'Chaque carte peut aussi sortir en version holo (5 %, 12 % pour les légendaires et les promos) : la même carte, finition brillante, qui compte pour l’album. À l’atelier, une carte standard se vernit en holo pour 4 fois sa valeur de recyclage en royalties, ou pour 3 doublons de la même rareté. Au Comptoir, 3 doublons d’une rareté s’échangent contre une carte manquante de cette rareté, choisie dans tes albums recherchés (les doublons donnés sont les exemplaires en trop, jamais le dernier). Toutes les holos d’un album donnent son vinyle en édition holo ; l’album complété, noté, et chacun de ses morceaux noté donnent l’édition deluxe (+50 XP).',
+      specialBody: 'Thématiques (un genre, une décennie, tes genres favoris, un événement) : mêmes chances par carte qu’un booster normal, pitié comprise ; seules les cartes possibles changent. Boosters d’album : 5 cartes d’un album, les manquantes d’abord (comme le booster d’album à {price} royalties). Ils se gagnent en jouant ; un booster thématique (un genre, une décennie ou « À ton goût ») s’achète aussi 180 royalties dans le panneau « Boosters spéciaux », jamais avec de l’argent réel.',
     },
     game: {
       special: {
@@ -106,6 +111,10 @@ export default {
     },
     cosmetics: {
       title: { deluxe: 'Oreille deluxe' },
+    },
+    // Famille de badges « Édition deluxe » (shared/badges.js, quand elle y est ajoutée : voir le rapport de P2-D).
+    badges: {
+      f: { deluxe: { name: 'Édition deluxe', goal: { one: 'Obtenir {n} édition deluxe', other: 'Obtenir {n} éditions deluxe' } } },
     },
     notify: {
       kinds: {
@@ -148,7 +157,8 @@ export default {
         progress: '{owned}/{total} cards',
         exchange: 'Trade',
         exchangeLabel: 'Trade {n} {rarity} duplicates for {title}',
-        need: { one: 'You need {n} more duplicate of this rarity', other: 'You need {n} more duplicates of this rarity' },
+        need: { one: '{n} more duplicate', other: '{n} more duplicates' },
+        needLabel: { one: 'You need {n} more duplicate of this rarity', other: 'You need {n} more duplicates of this rarity' },
         done: '{title} joins your collection!',
         emptyTitle: 'No wanted albums',
         emptyBody: 'The Counter trades your duplicates for the cards you’re missing in your wanted albums. Add an album with “Want” on its page.',
@@ -194,6 +204,7 @@ export default {
       },
       rules: {
         title: 'The workshop',
+        all: 'All the workshop rules',
         vernir: 'Varnish: a standard card you own becomes holo, for 4 times its recycle value in royalties ({costs}) or for {n} duplicates of the same rarity. A card that’s already holo can’t be varnished.',
         comptoir: 'Counter: {n} duplicates of one rarity for a missing card of the same rarity, picked from one of your wanted albums. A fixed trade with AlbumMania, never between players.',
         duplicates: 'Duplicates given: spare copies only, never the last of a version; standard copies first, then the cards you have the most copies of.',
@@ -208,8 +219,9 @@ export default {
       holoHint: 'Collect every card of the album in holo (the workshop’s varnish can help) for the holo edition; rate the album and each of its tracks for the deluxe edition.',
     },
     rarityGuide: {
-      holoBody: 'Any card can also come out as a holo (5%, 12% for legendaries and promos). It’s the same card with a shiny finish: it counts for the album, and every holo of an album gives you its vinyl in holo edition. A standard card can also be varnished at the workshop (see “The workshop” below).',
-      specialBody: 'Themed (a genre, a decade, your favourite genres, an event): same odds per card as a regular pack, pity included; only the possible cards change. Album packs: 5 cards from one album, missing ones first (like the {price}-royalty album pack). They’re earned by playing; a themed pack can also be bought with royalties in the “Special packs” panel, never with real money.',
+      holoTitle: 'Holo, workshop and editions',
+      holoBody: 'Any card can also come out as a holo (5%, 12% for legendaries and promos): the same card with a shiny finish, and it counts for the album. At the workshop, a standard card can be varnished into a holo for 4 times its recycle value in royalties, or for 3 duplicates of the same rarity. At the Counter, 3 duplicates of one rarity trade for a missing card of that rarity, picked from your wanted albums (only spare copies are given, never the last one). Every holo of an album gives its vinyl in holo edition; the completed album, its rating and the rating of each of its tracks give the deluxe edition (+50 XP).',
+      specialBody: 'Themed (a genre, a decade, your favourite genres, an event): same odds per card as a regular pack, pity included; only the possible cards change. Album packs: 5 cards from one album, missing ones first (like the {price}-royalty album pack). They’re earned by playing; a themed pack (a genre, a decade or “Your taste”) can also be bought for 180 royalties in the “Special packs” panel, never with real money.',
     },
     game: {
       special: {
@@ -218,6 +230,9 @@ export default {
     },
     cosmetics: {
       title: { deluxe: 'Deluxe ear' },
+    },
+    badges: {
+      f: { deluxe: { name: 'Deluxe edition', goal: { one: 'Get {n} deluxe edition', other: 'Get {n} deluxe editions' } } },
     },
     notify: {
       kinds: {

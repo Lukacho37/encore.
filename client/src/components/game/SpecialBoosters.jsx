@@ -128,7 +128,7 @@ function ThemedShop({ onClose, onBought }) {
     </button>
   );
   return (
-    <Modal open onClose={onClose} title={t('workshop.themed.title')} className="ws-themed">
+    <Modal open onClose={onClose} title={t('workshop.themed.title')} className={`ws-themed${showOdds ? ' modal--wide' : ''}`}>
       <div className="ws-themed__body" data-sheet="themed">
         <p className="muted">{t('workshop.themed.intro')}</p>
         <div className="ws-themed__group" role="group" aria-label={t('workshop.themed.taste')}>
@@ -172,7 +172,7 @@ function ThemedOffer({ onOpen, compact = false }) {
   const { t, num } = useI18n();
   return (
     <div className={`ws-offer-row${compact ? ' ws-offer-row--alone' : ''}`} data-themed-offer>
-      <span className="ws-offer-row__pack" aria-hidden="true"><MiniBooster theme="taste" /></span>
+      <span className="ws-offer-row__pack" aria-hidden="true"><span className="gm-pack"><PackArt /></span></span>
       <div className="ws-offer-row__text">
         <strong>{t('workshop.themed.title')}</strong>
         <span className="small muted">{compact ? t('workshop.themed.empty', { price: num(THEMED_BOOSTER_PRICE) }) : t('workshop.themed.intro')}</span>

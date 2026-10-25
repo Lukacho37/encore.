@@ -1,0 +1,181 @@
+/* @prefix en- */
+/* Provenance du catalogue et écoute — chantier P2-C (PLAN.md 4.3, 7.1). Jetons de app.css seulement.
+   - Panneau d'écoute (ListenPanel, classes trk-listen* de track.css) : choix du lecteur, lecteurs Spotify et Apple
+     Music à leur hauteur officielle, élément archivé, crédit des identifiants libres ;
+   - Espace admin, onglet Catalogue (EnrichPanel) : enrichissement, albums proches, détachement d'un fournisseur. */
+
+/* ---------- panneau d'écoute ---------- */
+
+.en-listen {
+  min-width: 0;
+}
+
+.en-player {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-8);
+  min-width: 0;
+}
+
+.en-player > .trk-listen__embed,
+.en-player > .en-frame {
+  align-self: stretch;
+}
+
+.en-switch {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.en-switch::-webkit-scrollbar {
+  display: none;
+}
+
+.en-switch .seg__btn {
+  flex: none;
+}
+
+/* La hauteur vient du lecteur (Deezer 300 / 150, Spotify 352 / 152, Apple Music 450 / 175), posée par le composant. */
+.en-frame {
+  max-width: 100%;
+}
+
+.en-archived {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-6) var(--s-10);
+  margin: 0;
+  padding: var(--s-10) var(--s-12);
+  border-radius: var(--rad-md);
+  border: 1px dashed var(--line);
+  background: var(--stage-2);
+  line-height: var(--lh-ui);
+}
+
+.en-credit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--s-2);
+}
+
+.en-credit a {
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 3px;
+}
+
+.en-credit a:hover {
+  color: var(--paper);
+}
+
+/* ---------- espace admin ---------- */
+
+.admin .panel.en-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+}
+
+.en-panel > p {
+  margin: 0;
+}
+
+.en-note {
+  padding: var(--s-10) var(--s-12);
+  border-radius: var(--rad-md);
+  background: color-mix(in oklab, var(--gold) 10%, var(--stage-2));
+  color: var(--paper-dim);
+}
+
+.en-note--done {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-6);
+  background: var(--stage-2);
+}
+
+.en-facts li {
+  overflow-wrap: anywhere;
+}
+
+.en-ua {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  overflow-wrap: anywhere;
+}
+
+.en-attribution {
+  font-size: var(--fs-12);
+}
+
+.en-check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-8);
+  color: var(--paper-dim);
+  cursor: pointer;
+}
+
+.en-check input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  accent-color: var(--cue);
+}
+
+.en-report {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-10);
+  padding-top: var(--s-12);
+  border-top: 1px solid var(--line-soft);
+}
+
+.en-report .eyebrow {
+  margin: 0;
+}
+
+.en-report__table {
+  min-width: 280px;
+}
+
+.en-report__table th[scope='row'] {
+  font-weight: var(--fw-semi);
+  text-align: left;
+}
+
+.en-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+}
+
+.en-confirm__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-10);
+}
+
+.en-confirm__input {
+  flex: 1 1 180px;
+  max-width: 260px;
+  min-height: 38px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-14);
+}
+
+@media (max-width: 640px) {
+  .en-confirm__input {
+    max-width: none;
+  }
+
+  .en-report__table {
+    min-width: 0;
+  }
+}

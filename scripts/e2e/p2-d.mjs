@@ -112,6 +112,7 @@ for (const [name, viewport] of Object.entries(VIEWPORTS)) {
     await page.click('[data-theme-pick="genre:rock"]');
     await page.click('[data-sheet="themed"] .link-btn');
     await page.waitForSelector('.ws-themed__odds table');
+    await page.waitForTimeout(400);
     await page.screenshot({ path: `${OUT}/${p}-20-themed-sheet.png` });
     if (name === 'phone') await checkNoHorizontalScroll(page, `${label} booster thématique`);
     const [bought] = await Promise.all([
@@ -143,6 +144,7 @@ for (const [name, viewport] of Object.entries(VIEWPORTS)) {
     await page.click(`[data-vernir="${target.t}"]`);
     await page.waitForSelector('[data-sheet="vernir"] [data-pay="royalties"]');
     await page.click('[data-sheet="vernir"] [data-pay="royalties"]');
+    await page.waitForTimeout(400);
     await page.screenshot({ path: `${OUT}/${p}-30-vernir-sheet.png` });
     if (name === 'phone') await checkNoHorizontalScroll(page, `${label} vernir`);
     const [varnished] = await Promise.all([
@@ -151,7 +153,8 @@ for (const [name, viewport] of Object.entries(VIEWPORTS)) {
     ]);
     const vbody = await varnished.json();
     if (varnished.status() !== 200 || vbody.state?.partial !== false) fail(`[${label}] vernir : ${varnished.status()} ${JSON.stringify(vbody).slice(0, 200)}`);
-    await page.waitForSelector('.trk-mine .card--holo', { timeout: 10_000 });
+    // La carte du morceau passe en holo (en tête de page sur ordinateur, dans « Ma carte » sur téléphone).
+    await page.waitForFunction(() => [...document.querySelectorAll('.card--holo')].some((c) => c.getClientRects().length > 0), null, { timeout: 10_000 });
     if (await page.locator(`[data-vernir="${target.t}"]`).count()) fail(`[${label}] le bouton Vernir reste sur une carte holo`);
     await page.screenshot({ path: `${OUT}/${p}-31-vernir-done.png` });
 
@@ -160,10 +163,8 @@ for (const [name, viewport] of Object.entries(VIEWPORTS)) {
     await page.click('.hero__help');
     await page.waitForSelector('.rarity-guide');
     const guide = await page.locator('.rarity-guide').innerText();
-    for (const word of ['vernit', 'royalties']) if (!guide.includes(word)) fail(`[${label}] guide des raretés sans « ${word} »`);
-    if (await page.locator('.rarity-guide [data-rules="workshop"]').count()) {
-      const rules = await page.locator('.rarity-guide [data-rules="workshop"]').innerText();
-      for (const word of ['180', 'Comptoir', 'deluxe']) if (!rules.includes(word)) fail(`[${label}] règles de l'atelier sans « ${word} »`);
+    for (const word of ['vernit', 'Comptoir', 'deluxe', '180 royalties', '4 fois', '3 doublons']) {
+      if (!guide.includes(word)) fail(`[${label}] guide des raretés sans « ${word} »`);
     }
   });
 }
@@ -214,6 +215,7 @@ for (const [name, viewport] of Object.entries(VIEWPORTS)) {
     await page.click('.modal--card [data-open-comptoir]');
     await page.waitForSelector('[data-sheet="comptoir"] .ws-album');
     await page.waitForSelector(`[data-sheet="comptoir"] [data-exchange="${setup.card.trackId}"]`);
+    await page.waitForTimeout(400);
     await page.screenshot({ path: `${OUT}/${p}-40-comptoir.png` });
     if (name === 'phone') await checkNoHorizontalScroll(page, `${label} comptoir`);
     await page.locator(`[data-exchange="${setup.card.trackId}"]`).scrollIntoViewIfNeeded();
@@ -228,6 +230,18 @@ for (const [name, viewport] of Object.entries(VIEWPORTS)) {
     const owned = (await apiCall(page, 'GET', '/state')).body.cards.some((c) => c.t === setup.card.trackId);
     if (!owned) fail(`[${label}] la carte échangée n'est pas dans la collection`);
     await page.screenshot({ path: `${OUT}/${p}-41-comptoir-done.png` });
+    await page.keyboard.press('Escape');
+
+    // Fiche d'une carte manquante de l'album recherché : l'échange proposé au Comptoir.
+    await page.goto(`${BASE}/album/${enc(setup.wanted)}`);
+    await page.locator('.seg .seg__btn', { hasText: /^Cartes$/ }).first().click();
+    await page.locator('.card--ghost').first().waitFor({ timeout: 10_000 });
+    await page.locator('.card--ghost').first().click();
+    await page.waitForSelector('.modal--card [data-comptoir-offer]', { timeout: 10_000 });
+    await page.locator('.modal--card [data-comptoir-offer]').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `${OUT}/${p}-42-card-comptoir-offer.png` });
+    if (name === 'phone') await checkNoHorizontalScroll(page, `${label} fiche de carte`);
     await page.keyboard.press('Escape');
 
     // Édition deluxe : un album complété, sa note et celles de tous ses morceaux sauf un (par l'API).
@@ -249,12 +263,19 @@ for (const [name, viewport] of Object.entries(VIEWPORTS)) {
     await page.waitForSelector('.modal--turntable [data-deluxe-nudge]', { timeout: 10_000 });
     const nudge = await page.locator('.modal--turntable [data-deluxe-nudge]').innerText();
     if (!/dernier morceau/.test(nudge)) fail(`[${label}] platine : « ${nudge} »`);
+    await page.waitForTimeout(400);
     await page.screenshot({ path: `${OUT}/${p}-50-turntable-nudge.png` });
     await page.keyboard.press('Escape');
 
     // La dernière note, sur la page du morceau : le site annonce l'édition deluxe.
     await page.goto(`${BASE}/track/${enc(tracks.at(-1))}`);
-    await page.locator('#ma-note').scrollIntoViewIfNeeded();
+    await page.waitForLoadState('networkidle');
+    await page.waitForSelector('#ma-note .star-input__stars');
+    // Vite peut recharger la page au premier passage (dépendances optimisées) : on réessaie le défilement.
+    for (let i = 0; i < 3; i++) {
+      if (await page.locator('#ma-note').scrollIntoViewIfNeeded().then(() => true, () => false)) break;
+      await page.waitForSelector('#ma-note .star-input__stars');
+    }
     const stars = await page.locator('#ma-note .star-input__stars').boundingBox();
     await page.mouse.click(stars.x + stars.width * 0.85, stars.y + stars.height / 2);
     await page.click('#ma-note .review-editor__actions .btn--primary');
@@ -272,6 +293,7 @@ for (const [name, viewport] of Object.entries(VIEWPORTS)) {
     const shelfItem = page.locator('.vinyl-shelf .vinyl-item').filter({ has: page.locator('.ws-disc--deluxe') }).first();
     await shelfItem.locator('.vinyl').click();
     await page.waitForSelector('.modal--turntable .ws-edition--deluxe');
+    await page.waitForTimeout(400);
     await page.screenshot({ path: `${OUT}/${p}-61-turntable-deluxe.png` });
     await page.keyboard.press('Escape');
   });

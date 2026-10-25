@@ -3,7 +3,7 @@
 // Apple Music après consentement, élément archivé). Fusionnés dans fr.js / en.js au chargement (i18n/index.jsx) ;
 // une clé d'ici peut aussi préciser une clé existante. Chaque clé existe en FR et en EN (tutoiement, espace fine
 // insécable avant ; : ! ? % et dans « »).
-const NNBSP = ' ';
+const NNBSP = '\u202f';
 
 export default {
   fr: {
@@ -19,20 +19,20 @@ export default {
     enrich: {
       archived: 'Archivé',
       title: 'Provenance et enrichissement',
-      intro: 'Pays des artistes et identifiants MusicBrainz, Spotify et Apple Music, lus sur MusicBrainz et Wikidata (données libres CC0). Une requête par seconde au plus ; seuls des identifiants et des faits sont gardés, jamais d’image ni de paroles.',
+      intro: 'Pays des artistes et identifiants MusicBrainz, Spotify et Apple Music, lus sur MusicBrainz et Wikidata (données libres CC0). Une requête par seconde au plus ; seuls des identifiants et des faits sont gardés, jamais d’image ni de paroles.',
       phase: { idle: 'En attente', running: 'En cours', paused: 'En pause', done: 'Passe terminée', error: 'Interrompu', blocked: 'Bloqué' },
       blocked: {
         off: `Enrichissement coupé (ENRICH=off)${NNBSP}: aucune requête ne part.`,
         contact_missing: `Ajoute un contact (LEGAL_CONTACT_EMAIL ou ENRICH_CONTACT)${NNBSP}: MusicBrainz demande de pouvoir joindre chaque application avant de lui répondre.`,
       },
       progress: '{n} / {m} artistes vus · passe {pass}',
-      countries: `Pays connus${NNBSP}: {n} artistes sur {m}`,
-      countriesBy: 'dont {mb} par MusicBrainz, {wd} par Wikidata, {seed} de la graine',
-      musicbrainz: `MusicBrainz${NNBSP}: {artists} artistes · {albums} albums · {tracks} morceaux`,
-      spotify: `Spotify${NNBSP}: {artists} artistes · {albums} albums`,
-      apple: `Apple Music${NNBSP}: {artists} artistes · {albums} albums`,
-      codes: `Codes${NNBSP}: {upc} UPC · {isrc} ISRC · {wikidata} éléments Wikidata`,
-      requests: `Requêtes depuis le démarrage${NNBSP}: {mb} MusicBrainz · {wd} Wikidata`,
+      countries: `Pays connus${NNBSP}: {n} / {m} artistes`,
+      countriesBy: `dont MusicBrainz${NNBSP}: {mb} · Wikidata${NNBSP}: {wd} · graine${NNBSP}: {seed}`,
+      musicbrainz: `MusicBrainz — artistes${NNBSP}: {artists} · albums${NNBSP}: {albums} · morceaux${NNBSP}: {tracks}`,
+      spotify: `Spotify — artistes${NNBSP}: {artists} · albums${NNBSP}: {albums}`,
+      apple: `Apple Music — artistes${NNBSP}: {artists} · albums${NNBSP}: {albums}`,
+      codes: `Codes — UPC${NNBSP}: {upc} · ISRC${NNBSP}: {isrc} · éléments Wikidata${NNBSP}: {wikidata}`,
+      requests: `Requêtes depuis le démarrage — MusicBrainz${NNBSP}: {mb} · Wikidata${NNBSP}: {wd}`,
       userAgent: `Identité envoyée${NNBSP}: {ua}`,
       retry: 'Nouvelle tentative le {d}',
       error: `Dernière erreur${NNBSP}: {e}`,
@@ -47,7 +47,7 @@ export default {
       similar: {
         title: 'Albums proches',
         body: `Recalculés chaque nuit pour les albums qui ont reçu des notes${NNBSP}: co-notes d’abord, puis le même artiste, puis le même genre et la même décennie.`,
-        line: '{rows} suggestions pour {albums} albums recalculés · {d}',
+        line: { one: '{rows} suggestions pour {n} album · mises à jour le {d}', other: '{rows} suggestions pour {n} albums · mises à jour le {d}' },
         none: `Pas encore calculés${NNBSP}: en attendant, la page album calcule ses albums proches à la volée.`,
         run: 'Recalculer maintenant',
         done: { one: '{n} album recalculé.', other: '{n} albums recalculés.' },
@@ -64,7 +64,8 @@ export default {
         rows: { albums: 'Albums', tracks: 'Morceaux', promos: 'Promos', artists: 'Artistes' },
         players: { one: '{n} joueur garde {cards} cartes archivées', other: '{n} joueurs gardent {cards} cartes archivées' },
         playersNone: 'Aucune carte de joueur concernée',
-        kept2: '{ratings} notes et {items} éléments de listes restent en place',
+        ratingsKept: { one: '{n} note reste en place', other: '{n} notes restent en place' },
+        itemsKept: { one: '{n} élément de liste reste en place', other: '{n} éléments de listes restent en place' },
         covers: { one: '{n} pochette bloquée', other: '{n} pochettes bloquées' },
         facts: '{n} identifiants {p} effacés, file d’import vidée',
         purgeFacts: 'Effacer aussi les données propres à {p} (rang d’écoute, fans, identifiants)',
@@ -73,10 +74,16 @@ export default {
         confirmAsk: `Archiver les éléments non confirmés${NNBSP}?`,
         running: 'Détachement en cours…',
         done: 'Détachement terminé.',
+        badge: 'Détaché',
         detachedOn: `{p} détaché le {d}${NNBSP}: ses pochettes, ses liens et son import sont coupés.`,
         env: 'Mets aussi CATALOG_IMPORT=off et COVERS=off dans l’environnement du serveur, puis redémarre-le.',
       },
       catalogDetached: `{p} détaché le {d}${NNBSP}: l’import ne peut plus être lancé.`,
+    },
+    // Réglage « Lecteurs intégrés » des Paramètres (zone shell, P0-D) : il couvre désormais Deezer, Spotify et Apple Music.
+    settings: {
+      embedsAlways: `Les lecteurs que tu as choisi de «${NNBSP}Toujours charger${NNBSP}» (Deezer, Spotify, Apple Music) se chargent tout de suite.`,
+      embedsAsk: `Les lecteurs Deezer, Spotify et Apple Music se chargent seulement quand tu le demandes${NNBSP}: ils déposent leurs cookies à ce moment-là.`,
     },
     errors: {
       confirm_required: 'Tape le nom du fournisseur pour confirmer.',
@@ -106,13 +113,13 @@ export default {
         contact_missing: 'Add a contact (LEGAL_CONTACT_EMAIL or ENRICH_CONTACT): MusicBrainz needs a way to reach every application before answering it.',
       },
       progress: '{n} / {m} artists checked · pass {pass}',
-      countries: 'Known countries: {n} artists out of {m}',
-      countriesBy: 'including {mb} from MusicBrainz, {wd} from Wikidata, {seed} from the seed',
-      musicbrainz: 'MusicBrainz: {artists} artists · {albums} albums · {tracks} tracks',
-      spotify: 'Spotify: {artists} artists · {albums} albums',
-      apple: 'Apple Music: {artists} artists · {albums} albums',
-      codes: 'Codes: {upc} UPC · {isrc} ISRC · {wikidata} Wikidata items',
-      requests: 'Requests since startup: {mb} MusicBrainz · {wd} Wikidata',
+      countries: 'Known countries: {n} / {m} artists',
+      countriesBy: 'from MusicBrainz: {mb} · Wikidata: {wd} · seed: {seed}',
+      musicbrainz: 'MusicBrainz — artists: {artists} · albums: {albums} · tracks: {tracks}',
+      spotify: 'Spotify — artists: {artists} · albums: {albums}',
+      apple: 'Apple Music — artists: {artists} · albums: {albums}',
+      codes: 'Codes — UPC: {upc} · ISRC: {isrc} · Wikidata items: {wikidata}',
+      requests: 'Requests since startup — MusicBrainz: {mb} · Wikidata: {wd}',
       userAgent: 'Identity sent: {ua}',
       retry: 'Next attempt on {d}',
       error: 'Last error: {e}',
@@ -127,7 +134,7 @@ export default {
       similar: {
         title: 'Similar albums',
         body: 'Recomputed every night for albums that got new ratings: co-ratings first, then the same artist, then the same genre and decade.',
-        line: '{rows} suggestions for {albums} recomputed albums · {d}',
+        line: { one: '{rows} suggestions for {n} album · updated on {d}', other: '{rows} suggestions for {n} albums · updated on {d}' },
         none: 'Not computed yet: meanwhile, album pages compute similar albums on the fly.',
         run: 'Recompute now',
         done: { one: '{n} album recomputed.', other: '{n} albums recomputed.' },
@@ -144,7 +151,8 @@ export default {
         rows: { albums: 'Albums', tracks: 'Tracks', promos: 'Promos', artists: 'Artists' },
         players: { one: '{n} player keeps {cards} archived cards', other: '{n} players keep {cards} archived cards' },
         playersNone: 'No player card affected',
-        kept2: '{ratings} ratings and {items} list items stay in place',
+        ratingsKept: { one: '{n} rating stays in place', other: '{n} ratings stay in place' },
+        itemsKept: { one: '{n} list item stays in place', other: '{n} list items stay in place' },
         covers: { one: '{n} cover blocked', other: '{n} covers blocked' },
         facts: '{n} {p} identifiers erased, import queue emptied',
         purgeFacts: 'Also erase the data that belongs to {p} (listening rank, fans, identifiers)',
@@ -153,10 +161,15 @@ export default {
         confirmAsk: 'Archive the unconfirmed items?',
         running: 'Detaching…',
         done: 'Detached.',
+        badge: 'Detached',
         detachedOn: '{p} detached on {d}: its covers, links and import are off.',
         env: 'Also set CATALOG_IMPORT=off and COVERS=off in the server environment, then restart it.',
       },
       catalogDetached: '{p} detached on {d}: the import can no longer start.',
+    },
+    settings: {
+      embedsAlways: 'The players you chose to “Always load” (Deezer, Spotify, Apple Music) load right away.',
+      embedsAsk: 'The Deezer, Spotify and Apple Music players only load when you ask for them: that is when they set their cookies.',
     },
     errors: {
       confirm_required: 'Type the provider’s name to confirm.',

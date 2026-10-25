@@ -6,7 +6,7 @@
 //                               « Échanger » (3 doublons d'une rareté contre une carte de cette rareté).
 //   ComptoirButton { className, label }  lien qui ouvre le Comptoir (rangée Doublons de l'accueil, fiche de carte).
 //   ComptoirOffer { trackId }   fiche d'une carte manquante : l'échange proposé au Comptoir (ou « recherche l'album »).
-//   WorkshopRules               les règles de l'atelier, pour le guide des raretés (chaque règle y est publiée).
+//   WorkshopRules { heading }   toutes les règles de l'atelier (bas du Comptoir) ; le guide des raretés les publie aussi.
 //   DeluxeWatcher               monté une fois (CardModalProvider) : après une note ou un album complété, demande au
 //                               serveur si l'édition deluxe vient d'être gagnée, l'ajoute à l'état et le dit.
 //   DeluxeLine { albumId }      « Édition deluxe : note les 3 morceaux restants » (page d'album, platine).
@@ -107,7 +107,7 @@ export function VernirSheet({ trackId, onClose }) {
             <fieldset className="ws-pay">
               <legend className="ws-pay__legend">{t('workshop.vernir.choose')}</legend>
               <button type="button" className={`ws-pay__opt${choice === 'royalties' ? ' is-on' : ''}`} aria-pressed={choice === 'royalties'}
-                onClick={() => setPay('royalties')} data-pay="royalties">
+                onClick={() => setPay('royalties')} disabled={!data.can.royalties} data-pay="royalties">
                 <span className="ws-pay__title"><RoyaltyIcon size={16} /> {t('workshop.vernir.royalties', { n: num(data.cost.royalties) })}</span>
                 <span className="ws-pay__hint small muted">
                   {data.can.royalties ? t('workshop.vernir.royaltiesHint')
@@ -115,7 +115,7 @@ export function VernirSheet({ trackId, onClose }) {
                 </span>
               </button>
               <button type="button" className={`ws-pay__opt${choice === 'duplicates' ? ' is-on' : ''}`} aria-pressed={choice === 'duplicates'}
-                onClick={() => setPay('duplicates')} data-pay="duplicates">
+                onClick={() => setPay('duplicates')} disabled={!data.can.duplicates} data-pay="duplicates">
                 <span className="ws-pay__title">
                   <RarityGem rarity={rarity} size={13} /> {t('workshop.vernir.duplicates', { n: data.cost.duplicates, rarity: t(`rarity.${rarity}`) })}
                 </span>
@@ -181,7 +181,9 @@ function ExchangeButton({ track, have, needed, onDone, compact = false }) {
       setArmed(false);
     }
   };
-  if (!ready) return <span className="small muted ws-need">{t('workshop.comptoir.need', { n: needed - have })}</span>;
+  if (!ready) {
+    return <span className="small muted ws-need" title={t('workshop.comptoir.needLabel', { n: needed - have })}>{t('workshop.comptoir.need', { n: needed - have })}</span>;
+  }
   if (!armed) {
     return (
       <button type="button" className={`btn ${compact ? 'btn--ghost btn--sm' : 'btn--primary btn--sm'}`} onClick={() => setArmed(true)}
@@ -279,6 +281,10 @@ export function ComptoirSheet({ onClose }) {
           </div>
           <p className="small muted ws-comptoir__rule">{t('workshop.duplicatesRule')}</p>
           {body}
+          <details className="ws-rules-details">
+            <summary>{t('workshop.rules.all')}</summary>
+            <WorkshopRules heading={false} />
+          </details>
         </div>
       </Modal>
       <Celebration achievements={celebrate} onClose={() => setCelebrate([])} />
@@ -338,14 +344,14 @@ export function ComptoirOffer({ trackId }) {
 
 // ----- règles publiées --------------------------------------------------------------------------------------------
 
-/** Les règles de l'atelier (guide des raretés) : chaque prix et chaque échange, les chiffres de shared/rules.js. */
-export function WorkshopRules() {
+/** Les règles de l'atelier : chaque prix et chaque échange, avec les chiffres de shared/rules.js. */
+export function WorkshopRules({ heading = true }) {
   const { t, num } = useI18n();
   const rules = workshopRules();
   const costs = ALBUM_RARITIES.concat('promo').map((r) => `${t(`rarity.${r}`)} ${num(rules.vernir.costs[r])}`).join(' · ');
   return (
     <section className="ws-rules" data-rules="workshop">
-      <h3><Icon name="star" size={15} /> {t('workshop.rules.title')}</h3>
+      {heading && <h3><Icon name="star" size={15} /> {t('workshop.rules.title')}</h3>}
       <p>{t('workshop.rules.vernir', { costs, n: VERNIR_DUPLICATES })}</p>
       <p>{t('workshop.rules.comptoir', { n: rules.comptoir.duplicates })}</p>
       <p className="small muted">{t('workshop.rules.duplicates')}</p>
@@ -382,6 +388,8 @@ export function DeluxeWatcher() {
     known.current = achievements;
   });
   useEffect(() => onApiResponse((res, { method, path } = {}) => {
+    // Seulement les actions : l'état complet (GET /state) liste tous les succès, ce ne sont pas des nouveautés.
+    if (!method || method === 'GET') return;
     const albums = new Set();
     const m = method === 'PUT' && RATING_PATH.exec(path || '');
     if (m) {

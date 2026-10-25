@@ -1,7 +1,8 @@
 // Espace admin (propriétaire seulement : adresse dans ADMIN_EMAILS) — onglets /admin/:tab (PLAN.md 2.1, 4.1.1, 4.1.6) :
 //   overview    totaux, joueurs (50 par page, « Voir plus »), dons, suspension, probabilités, réglages serveur ;
 //   moderation  file des signalements, contestations, critiques récentes, suspensions, journal (ModerationTab, P0-F) ;
-//   catalog     import du catalogue depuis Deezer ;
+//   catalog     import du catalogue depuis Deezer, provenance et enrichissement MusicBrainz / Wikidata, albums
+//               proches, détachement d'un fournisseur (EnrichPanel, P2-C) ;
 //   covers      état des vraies pochettes et retrait d'une pochette (CoverTakedown) ;
 //   tools       outils de test (boosters par lots, albums complets ou presque, booster d'album).
 // Les ouvertures de boosters passent par useBoosterFlow (même écran d'ouverture que l'accueil).
@@ -19,6 +20,7 @@ import { AlbumPicker } from '../components/admin/AlbumPicker.jsx';
 import { ModerationTab } from '../components/admin/ModerationTab.jsx';
 import { CoverTakedown } from '../components/admin/CoverTakedown.jsx';
 import { DecisionDialog } from '../components/admin/DecisionForm.jsx';
+import { EnrichPanel } from '../components/admin/EnrichPanel.jsx';
 import { RARITIES, RARITY } from '@shared/rules.js';
 import '../styles/admin.css';
 import '../styles/safety.css';
@@ -128,9 +130,12 @@ function CatalogPanel({ status, failed, pauseAsked, busy, onStart, onPause, onRe
         {status.finishedAt && <li>{t('admin.catalogFinished', { d: when.format(new Date(status.finishedAt)) })}</li>}
       </ul>
       {status.lastError && <p className="small muted mono adm-error">{t('admin.catalogError', { e: status.lastError })}</p>}
+      {status.detached && (
+        <p className="small">{t('enrich.catalogDetached', { p: 'Deezer', d: status.detached.at ? when.format(new Date(status.detached.at)) : '—' })}</p>
+      )}
       {!status.demo && (
       <div className="admin-tools">
-        <button type="button" className="btn btn--primary btn--sm" onClick={onStart} disabled={busy || status.running}>
+        <button type="button" className="btn btn--primary btn--sm" onClick={onStart} disabled={busy || status.running || !!status.detached}>
           {t('admin.catalogStart')}
         </button>
         <button type="button" className="btn btn--ghost btn--sm" onClick={onPause} disabled={busy || !status.running || pauseAsked}>
@@ -457,6 +462,10 @@ export default function Admin() {
           onStart={() => catalogAction('/admin/catalog/import', t('admin.catalogLaunched'))}
           onPause={() => catalogAction('/admin/catalog/pause', t('admin.catalogPauseAsked'))} />
       ) : <p className="empty">{t('admin.catalogLoadError')}</p>)}
+      {tab === 'catalog' && <EnrichPanel onDetached={() => {
+        loadCatalog();
+        loadOverview();
+      }} />}
 
       {tab === 'covers' && (
         <>

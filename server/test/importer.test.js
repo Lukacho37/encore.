@@ -494,3 +494,139 @@ test('CATALOG_IMPORT échoue fermé : seul « deezer » (ou rien) active l’imp
   assert.equal(fake.calls.length, 0);
   db.close();
 });
+
+// ---------- provenance (P2-C) : identifiants AlbumMania et identifiants externes ----------
+
+const ids = await import('../../shared/ids.js');
+const { providerKey, providerDetached } = await import('../importer.js');
+
+test('identifiants : neutres pour une source autre que Deezer, « dz… » pour Deezer, formats vérifiés', () => {
+  const a = ids.neutralId('album', { now: 1_700_000_000_000, random: () => 0.5 });
+  assert.match(a, /^al_[0-9a-z]{15}$/);
+  assert.ok(ids.isNeutralId(a));
+  assert.match(ids.neutralId('artist'), /^ar_/);
+  assert.match(ids.neutralId('track'), /^tr_/);
+  assert.throws(() => ids.neutralId('playlist'));
+  // Ordre de création conservé, et pas de collision sur un grand nombre.
+  assert.ok(ids.neutralId('album', { now: 1_000 }) < ids.neutralId('album', { now: 2_000 }));
+  assert.equal(new Set(Array.from({ length: 5000 }, () => ids.neutralId('album'))).size, 5000);
+  assert.equal(ids.catalogIdFor('deezer', 'album', '302127'), 'dz302127');
+  assert.equal(ids.catalogIdFor('deezer', 'artist', 27), 'dz27');
+  assert.equal(ids.catalogIdFor('deezer', 'track', '3135553', { promo: true }), 'promo:dz3135553');
+  assert.match(ids.catalogIdFor('musicbrainz', 'album', 'b6f7b9f6-8c0f-3b6c-9d6d-1f0e6c7f2a11'), /^al_/);
+  assert.match(ids.catalogIdFor('discogs', 'track', '123', { promo: true }), /^promo:tr_/);
+  assert.ok(ids.isNeutralId(ids.catalogIdFor('discogs', 'track', '123', { promo: true })));
+  assert.match(ids.catalogIdFor('deezer', 'album', 'pas-un-nombre'), /^al_/, 'un identifiant Deezer douteux ne devient pas un id « dz »');
+  assert.equal(ids.albumTrackId('dz302127', 3), 'dz302127:03');
+  assert.equal(ids.isNeutralId('discovery'), false);
+  assert.equal(ids.isNeutralId('dz302127'), false);
+  // Formats : ISRC nettoyé, UPC en chiffres, MBID en minuscules, rien de douteux.
+  assert.equal(ids.cleanSourceId('isrc', 'gb-duw-00-00053'), 'GBDUW0000053');
+  assert.equal(ids.cleanSourceId('isrc', 'XX'), null);
+  assert.equal(ids.cleanSourceId('upc', ' 724384960650 '), '724384960650');
+  assert.equal(ids.cleanSourceId('upc', '12ab'), null);
+  assert.equal(ids.cleanSourceId('musicbrainz', 'B6F7B9F6-8C0F-3B6C-9D6D-1F0E6C7F2A11'), 'b6f7b9f6-8c0f-3b6c-9d6d-1f0e6c7f2a11');
+  assert.equal(ids.validSourceId('spotify', '2noRn2Aes5aoNVsU6iWThc'), true);
+  assert.equal(ids.validSourceId('spotify', '2noRn2Aes5aoNVsU6iWTh"'), false);
+  assert.equal(ids.validSourceId('wikidata', 'Q0'), false);
+  assert.equal(ids.validSourceId('nope', '1'), false);
+});
+
+/** Faux Deezer qui donne aussi les codes : UPC dans /album/{id}, ISRC dans /album/{id}/tracks et /track/{id}. */
+function withCodes(fake) {
+  const json = (data) => ({ ok: true, status: 200, json: async () => data });
+  const isrc = (id) => `FRAM1${String(id % 1e7).padStart(7, '0')}`;
+  return async (url) => {
+    const res = await fake.fetchImpl(url);
+    const path = new URL(url).pathname;
+    let m;
+    if ((m = /^\/track\/(\d+)$/.exec(path))) return json({ id: Number(m[1]), isrc: isrc(Number(m[1])) });
+    if (/^\/album\/\d+$/.test(path)) {
+      const data = await res.json();
+      return json(data?.error ? data : { ...data, upc: String(data.id).padStart(12, '0') });
+    }
+    if (/^\/album\/\d+\/tracks$/.test(path)) {
+      const data = await res.json();
+      return json(data?.error ? data : { ...data, data: data.data.map((t) => ({ ...t, isrc: isrc(t.id) })) });
+    }
+    return res;
+  };
+}
+
+test('provenance : l’import écrit les identifiants Deezer, l’UPC de chaque album et l’ISRC de chaque morceau', async () => {
+  const fake = makeFakeDeezer({ artists: 12 });
+  const { db, importer } = setup({ ...CFG, catalogTarget: 25 }, fake, { fetchImpl: withCodes(fake) });
+  await importer.start();
+  assert.equal(importer.status().albums, 25);
+  const count = (sql, ...a) => db.prepare(sql).get(...a).n;
+  const ext = (type, source) => count('SELECT COUNT(*) AS n FROM external_ids WHERE entity_type = ? AND source = ?', type, source);
+  // Chaque album importé : son identifiant Deezer et son code-barres (même valeur que cat_albums.deezer_id).
+  assert.equal(ext('album', 'deezer'), 25);
+  assert.equal(ext('album', 'upc'), 25);
+  assert.equal(count(`SELECT COUNT(*) AS n FROM cat_albums al JOIN external_ids e ON e.entity_type = 'album' AND e.entity_id = al.id
+    AND e.source = 'deezer' AND e.source_id = al.deezer_id WHERE al.source = 'deezer'`), 25);
+  // Chaque morceau d'album : identifiant Deezer et ISRC (lus dans /album/{id}/tracks, la liste intégrée n'en a pas).
+  const albumTracks = count("SELECT COUNT(*) AS n FROM cat_tracks WHERE source = 'deezer' AND kind = 'album'");
+  const withIsrc = count(`SELECT COUNT(DISTINCT t.id) AS n FROM cat_tracks t JOIN external_ids e ON e.entity_type = 'track' AND e.entity_id = t.id
+    AND e.source = 'isrc' WHERE t.source = 'deezer' AND t.kind = 'album'`);
+  assert.equal(withIsrc, albumTracks);
+  assert.ok(db.prepare("SELECT source_id FROM external_ids WHERE source = 'isrc' LIMIT 1").get().source_id.match(/^[A-Z]{2}[A-Z0-9]{3}\d{7}$/));
+  // Promos : identifiant Deezer, ISRC (/track/{id}) et code-barres du single.
+  const promos = db.prepare("SELECT id FROM cat_tracks WHERE kind = 'promo' AND source = 'deezer'").all().map((r) => r.id);
+  assert.ok(promos.length > 0);
+  for (const id of promos) {
+    const sources = db.prepare("SELECT source FROM external_ids WHERE entity_type = 'track' AND entity_id = ? ORDER BY source").all(id).map((r) => r.source);
+    assert.deepEqual(sources, ['deezer', 'isrc', 'upc'], id);
+  }
+  // Artistes : identifiant Deezer (Daft Punk, de la graine, compris).
+  assert.equal(ext('artist', 'deezer'), count('SELECT COUNT(*) AS n FROM cat_artists WHERE deezer_id IS NOT NULL'));
+  for (const a of db.prepare('SELECT id, deezer_id FROM cat_artists WHERE deezer_id IS NOT NULL').all()) {
+    assert.ok(db.prepare("SELECT 1 FROM external_ids WHERE entity_type = 'artist' AND entity_id = ? AND source = 'deezer' AND source_id = ?").get(a.id, a.deezer_id), a.id);
+  }
+  // Tous écrits par l'import, aucun en double.
+  assert.equal(count("SELECT COUNT(*) AS n FROM external_ids WHERE matched_by <> 'import' AND matched_by <> 'backfill'"), 0);
+  db.close();
+});
+
+test('provenance : sans ISRC dans la liste intégrée, un album entier n’est pas perdu si /tracks échoue', async () => {
+  const fake = makeFakeDeezer({ artists: 3 });
+  // /album/{id}/tracks refusé : la liste intégrée (complète) suffit, l'album est gardé sans ISRC.
+  const fetchImpl = async (url) => (/\/album\/\d+\/tracks$/.test(new URL(url).pathname) ? { ok: false, status: 404, json: async () => null } : fake.fetchImpl(url));
+  const { db, importer } = setup({ ...CFG, catalogTarget: 6 }, fake, { fetchImpl });
+  await importer.start();
+  assert.equal(importer.status().albums, 6);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM external_ids WHERE source = 'isrc'").get().n, 0);
+  db.close();
+});
+
+test('fournisseur détaché : plus aucun appel à Deezer, même avec « Lancer » ou en pleine tournée', async () => {
+  const fake = makeFakeDeezer({ artists: 30 });
+  let calls = 0;
+  let detachAfter = Infinity;
+  const { db, make } = setup({ ...CFG, catalogTarget: 200 }, fake);
+  const detach = () => db.prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+    .run(providerKey('deezer'), JSON.stringify({ detached: true, at: Date.now(), by: 'test' }));
+  const importer = createImporter(db, createCatalog(db), {
+    cfg: { ...CFG, catalogTarget: 200 },
+    fetchImpl: (url) => {
+      calls++;
+      if (calls === detachAfter) detach();
+      return fake.fetchImpl(url);
+    },
+    pauseMs: 0, backoffMs: 1, log: quiet,
+  });
+  // En pleine tournée : la requête suivante n'est pas envoyée, la tournée s'arrête sans nouvelle tentative.
+  detachAfter = 40;
+  await importer.start();
+  assert.equal(calls, 40, 'aucune requête après le détachement');
+  const st = importer.status();
+  assert.equal(st.retryAt, null, 'pas de nouvelle tentative');
+  assert.ok(st.detached?.at, 'détachement publié dans l’état');
+  assert.ok(providerDetached(db, 'deezer'));
+  // « Lancer » (force) et la planification ne font plus rien.
+  assert.equal(importer.start({ force: true }), null);
+  assert.equal(importer.hasWork(), false);
+  assert.equal(make().start({ force: true }), null);
+  assert.equal(calls, 40);
+  db.close();
+});

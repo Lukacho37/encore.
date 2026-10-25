@@ -199,8 +199,11 @@ export function createEnricher(core, opts = {}) {
   /** Une requête à la fois par service, à l'écart minimal de la précédente. */
   async function pace(kind) {
     const interval = kind === 'mb' ? settings.mbIntervalMs : settings.wdIntervalMs;
-    const gap = interval - (Date.now() - last[kind]);
-    if (gap > 0) await sleep(gap);
+    // Une minuterie peut se déclencher une milliseconde trop tôt : on attend jusqu'à ce que l'écart soit complet.
+    for (let gap = interval - (Date.now() - last[kind]); gap > 0; gap = interval - (Date.now() - last[kind])) {
+      await sleep(gap);
+      checkStop();
+    }
     checkStop();
     last[kind] = Date.now();
   }
@@ -747,51 +750,97 @@ export async function computeSimilar(db, { batch = SIMILAR_BATCH, yieldEvery = 2
 /**
  * Plan de détachement (dans une table temporaire de la connexion) : éléments du fournisseur `source` qu'aucune autre
  * source ne confirme (pas d'identifiant MusicBrainz, trouvé par UPC, ISRC ou titre et artiste), et ce que gardent les
- * joueurs. Renvoie le compte rendu ; la table temporaire sert ensuite à appliquer par lots.
+ * joueurs. Générateur : chaque lot (plage de lignes) est une étape, l'appelant peut souffler entre deux (sur la base
+ * peuplée, le plan entier d'un coup bloquerait le serveur plus d'une seconde). Renvoie le compte rendu ; la table
+ * temporaire sert ensuite à appliquer par lots.
  */
-function planDetach(db, source) {
+function* planDetach(db, source, chunk = 2000) {
   const q = (sql) => db.prepare(sql);
   db.exec(`CREATE TEMP TABLE IF NOT EXISTS detach_items (rid INTEGER PRIMARY KEY, kind TEXT NOT NULL, id TEXT NOT NULL);
     DELETE FROM temp.detach_items;
     CREATE UNIQUE INDEX IF NOT EXISTS temp.detach_items_kid ON detach_items(kind, id);`);
   const confirmed = (type, col) => `EXISTS (SELECT 1 FROM external_ids e WHERE e.entity_type = '${type}' AND e.entity_id = ${col} AND e.source = 'musicbrainz')`;
-  q(`INSERT INTO temp.detach_items (kind, id) SELECT 'album', al.id FROM cat_albums al
-    WHERE al.source = ? AND al.status = 'active' AND NOT ${confirmed('album', 'al.id')} ORDER BY al.rowid`).run(source);
-  q(`INSERT INTO temp.detach_items (kind, id) SELECT 'track', t.id FROM temp.detach_items d JOIN cat_tracks t ON t.album_id = d.id
-    WHERE d.kind = 'album' AND t.status = 'active' ORDER BY d.rid, t.n`).run();
-  q(`INSERT INTO temp.detach_items (kind, id) SELECT 'track', t.id FROM cat_tracks t
-    WHERE t.kind = 'promo' AND t.source = ? AND t.status = 'active' AND NOT ${confirmed('track', 't.id')} ORDER BY t.rowid`).run(source);
+  const rowids = (table) => q(`SELECT COALESCE(MIN(rowid), 0) AS lo, COALESCE(MAX(rowid), -1) AS hi FROM ${table}`).get();
+  const tempRange = () => q('SELECT COALESCE(MIN(rid), 1) AS lo, COALESCE(MAX(rid), 0) AS hi FROM temp.detach_items').get();
+  // Albums non confirmés, par plages de lignes.
+  const albums = rowids('cat_albums');
+  const addAlbums = q(`INSERT INTO temp.detach_items (kind, id) SELECT 'album', al.id FROM cat_albums al
+    WHERE al.rowid BETWEEN ? AND ? AND al.source = ? AND al.status = 'active' AND NOT ${confirmed('album', 'al.id')} ORDER BY al.rowid`);
+  const withdrawn = { album: 0, track: 0, promo: 0, artist: 0 };
+  for (let lo = albums.lo; lo <= albums.hi; lo += chunk * 2) {
+    withdrawn.album += Number(addAlbums.run(lo, lo + chunk * 2 - 1, source).changes);
+    yield 'plan:albums';
+  }
+  // Leurs morceaux, par lots d'albums.
+  const albumRids = tempRange();
+  const addTracks = q(`INSERT INTO temp.detach_items (kind, id) SELECT 'track', t.id FROM temp.detach_items d JOIN cat_tracks t ON t.album_id = d.id
+    WHERE +d.kind = 'album' AND d.rid BETWEEN ? AND ? AND t.status = 'active' ORDER BY d.rid, t.n`);
+  for (let lo = albumRids.lo; lo <= albumRids.hi; lo += Math.max(1, Math.floor(chunk / 4))) {
+    withdrawn.track += Number(addTracks.run(lo, lo + Math.max(1, Math.floor(chunk / 4)) - 1).changes);
+    yield 'plan:tracks';
+  }
+  withdrawn.promo = Number(q(`INSERT INTO temp.detach_items (kind, id) SELECT 'track', t.id FROM cat_tracks t
+    WHERE t.kind = 'promo' AND t.source = ? AND t.status = 'active' AND NOT ${confirmed('track', 't.id')} ORDER BY t.rowid`).run(source).changes);
+  yield 'plan:promos';
   // Un artiste reste tant qu'il est confirmé ou qu'il garde un album ou une promo au catalogue.
-  q(`INSERT INTO temp.detach_items (kind, id) SELECT 'artist', ar.id FROM cat_artists ar
-    WHERE ar.source = ? AND ar.status = 'active' AND NOT ${confirmed('artist', 'ar.id')}
+  const artists = rowids('cat_artists');
+  const addArtists = q(`INSERT INTO temp.detach_items (kind, id) SELECT 'artist', ar.id FROM cat_artists ar
+    WHERE ar.rowid BETWEEN ? AND ? AND ar.source = ? AND ar.status = 'active' AND NOT ${confirmed('artist', 'ar.id')}
       AND NOT EXISTS (SELECT 1 FROM cat_albums al WHERE al.artist_id = ar.id AND al.status = 'active'
         AND NOT EXISTS (SELECT 1 FROM temp.detach_items d WHERE d.kind = 'album' AND d.id = al.id))
       AND NOT EXISTS (SELECT 1 FROM cat_tracks t WHERE t.artist_id = ar.id AND t.kind = 'promo' AND t.status = 'active'
         AND NOT EXISTS (SELECT 1 FROM temp.detach_items d WHERE d.kind = 'track' AND d.id = t.id))
-    ORDER BY ar.rowid`).run(source);
-  const count = (kind) => q('SELECT COUNT(*) AS n FROM temp.detach_items WHERE kind = ?').get(kind).n;
-  const total = (table, extra = '') => q(`SELECT COUNT(*) AS n FROM ${table} WHERE source = ? ${extra}`).get(source).n;
-  const withdrawnPromos = q("SELECT COUNT(*) AS n FROM temp.detach_items d JOIN cat_tracks t ON t.id = d.id WHERE d.kind = 'track' AND t.kind = 'promo'").get().n;
-  const cards = q("SELECT COUNT(DISTINCT c.user_id) AS players, COUNT(*) AS n FROM temp.detach_items d JOIN cards c ON c.track_id = d.id WHERE d.kind = 'track'").get();
-  const ratings = q("SELECT COUNT(*) AS n FROM temp.detach_items d JOIN ratings r ON r.item_type = d.kind AND r.item_id = d.id WHERE d.kind IN ('album', 'track')").get().n;
-  const listItems = q("SELECT COUNT(*) AS n FROM temp.detach_items d JOIN list_items li ON li.item_type = d.kind AND li.item_id = d.id WHERE d.kind IN ('album', 'track')").get().n;
+    ORDER BY ar.rowid`);
+  for (let lo = artists.lo; lo <= artists.hi; lo += chunk) {
+    withdrawn.artist += Number(addArtists.run(lo, lo + chunk - 1, source).changes);
+    yield 'plan:artists';
+  }
+  // Ce que gardent les joueurs (rien n'est supprimé) : cartes, notes et éléments de listes des éléments archivés.
+  const players = new Set();
+  let cards = 0;
+  let ratings = 0;
+  let listItems = 0;
+  const all = tempRange();
+  const cardsOf = q(`SELECT c.user_id, COUNT(*) AS n FROM temp.detach_items d JOIN cards c ON c.track_id = d.id
+    WHERE +d.kind = 'track' AND d.rid BETWEEN ? AND ? GROUP BY c.user_id`);
+  const ratingsOf = q(`SELECT COUNT(*) AS n FROM temp.detach_items d JOIN ratings r ON r.item_type = d.kind AND r.item_id = d.id
+    WHERE +d.kind IN ('album', 'track') AND d.rid BETWEEN ? AND ?`);
+  const itemsOf = q(`SELECT COUNT(*) AS n FROM temp.detach_items d JOIN list_items li ON li.item_type = d.kind AND li.item_id = d.id
+    WHERE +d.kind IN ('album', 'track') AND d.rid BETWEEN ? AND ?`);
+  const step = Math.max(1, Math.floor(chunk / 4)); // les morceaux populaires ont beaucoup de cartes : petits lots
+  for (let lo = all.lo; lo <= all.hi; lo += step) {
+    for (const r of cardsOf.all(lo, lo + step - 1)) {
+      players.add(r.user_id);
+      cards += r.n;
+    }
+    ratings += ratingsOf.get(lo, lo + step - 1).n;
+    listItems += itemsOf.get(lo, lo + step - 1).n;
+    yield 'plan:players';
+  }
+  // Totaux du fournisseur, par plages de lignes (240 000 morceaux sur un grand catalogue).
+  const totals = { album: 0, track: 0, promo: 0, artist: 0 };
+  const countIn = (table, extra) => q(`SELECT COUNT(*) AS n FROM ${table} WHERE rowid BETWEEN ? AND ? AND source = ? ${extra}`);
+  for (const [key, table, extra] of [['album', 'cat_albums', ''], ['track', 'cat_tracks', "AND kind = 'album'"], ['promo', 'cat_tracks', "AND kind = 'promo'"], ['artist', 'cat_artists', '']]) {
+    const r = rowids(table);
+    const st = countIn(table, extra);
+    for (let lo = r.lo; lo <= r.hi; lo += chunk * 10) {
+      totals[key] += st.get(lo, lo + chunk * 10 - 1, source).n;
+      yield 'plan:totals';
+    }
+  }
   const pattern = PROVIDER_PATTERNS[source] || { cover: '', link: '' };
   const covers = q('SELECT COUNT(*) AS n FROM cat_albums WHERE cover IS NOT NULL AND (source = ? OR cover LIKE ?)').get(source, pattern.cover).n
     + q("SELECT COUNT(*) AS n FROM cat_tracks WHERE kind = 'promo' AND cover IS NOT NULL AND (source = ? OR cover LIKE ?)").get(source, pattern.cover).n
     + q('SELECT COUNT(*) AS n FROM covers WHERE provider = ? AND cover IS NOT NULL').get(source).n;
-  const albums = total('cat_albums');
-  const tracks = total('cat_tracks', "AND kind = 'album'");
-  const promos = total('cat_tracks', "AND kind = 'promo'");
-  const artists = total('cat_artists');
-  const withdrawnTracks = count('track') - withdrawnPromos;
+  yield 'plan:covers';
+  const row = (key) => ({ total: totals[key], withdrawn: withdrawn[key], kept: totals[key] - withdrawn[key] });
   return {
     source,
-    albums: { total: albums, withdrawn: count('album'), kept: albums - count('album') },
-    tracks: { total: tracks, withdrawn: withdrawnTracks, kept: tracks - withdrawnTracks },
-    promos: { total: promos, withdrawn: withdrawnPromos, kept: promos - withdrawnPromos },
-    artists: { total: artists, withdrawn: count('artist'), kept: artists - count('artist') },
-    // Ce que les joueurs gardent (rien n'est supprimé) : cartes, notes et éléments de listes des éléments archivés.
-    players: { withCards: cards.players, cards: cards.n, ratings, listItems },
+    albums: row('album'),
+    tracks: row('track'),
+    promos: row('promo'),
+    artists: row('artist'),
+    players: { withCards: players.size, cards, ratings, listItems },
     covers,
     facts: {
       externalIds: q("SELECT COUNT(*) AS n FROM external_ids WHERE source = ? AND source <> 'isrc'").get(source).n,
@@ -804,12 +853,14 @@ const dropPlan = (db) => db.exec('DROP TABLE IF EXISTS temp.detach_items');
 
 /**
  * Étapes du détachement (générateur : une étape = une petite transaction, l'appelant peut souffler entre deux).
- * Rejouable : relancé après une interruption, il reprend ce qui reste. `search` : API du module search (retire les
- * documents des éléments archivés) ; sans elle (script), l'index est reconstruit au prochain démarrage.
+ * Rejouable : relancé après une interruption, il reprend ce qui reste. L'index de recherche globale est reconstruit
+ * au démarrage suivant (sa version est effacée) : il n'indexe que les éléments actifs. Le retirer document par
+ * document coûterait ici des dizaines de secondes (suppressions FTS5 une à une) pour 260 000 éléments, et un
+ * détachement demande de toute façon un redémarrage (CATALOG_IMPORT=off, COVERS=off).
  */
-function* detachSteps(db, source, { dryRun = true, purgeFacts = false, by = null, search = null, chunk = 2000 } = {}) {
+function* detachSteps(db, source, { dryRun = true, purgeFacts = false, by = null, chunk = 2000 } = {}) {
   const q = (sql) => db.prepare(sql);
-  const report = planDetach(db, source);
+  const report = yield* planDetach(db, source, chunk);
   if (dryRun) {
     dropPlan(db);
     return { ...report, dryRun: true, purgeFacts: !!purgeFacts };
@@ -818,17 +869,18 @@ function* detachSteps(db, source, { dryRun = true, purgeFacts = false, by = null
   // D'abord : plus aucun appel au fournisseur (l'import s'arrête à sa requête suivante).
   q('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
     .run(providerKey(source), json({ detached: true, at, by, purgeFacts: !!purgeFacts }));
-  if (!search) q("DELETE FROM kv WHERE key IN ('search:version', 'search:marks')").run();
+  // Index de recherche : reconstruit au prochain démarrage (pas en cours de route : 8 s de calcul d'un bloc).
+  q("DELETE FROM kv WHERE key = 'search:version'").run();
   yield 'flag';
   const { hi } = q('SELECT COALESCE(MAX(rid), 0) AS hi FROM temp.detach_items').get();
-  const slice = 'SELECT id FROM temp.detach_items WHERE kind = ? AND rid BETWEEN ? AND ?';
+  // « +kind » : la plage de rid (clé primaire) sert, pas l'index (kind, id) qui parcourrait tout un type à chaque lot.
+  const slice = 'SELECT id FROM temp.detach_items WHERE +kind = ? AND rid BETWEEN ? AND ?';
   for (let lo = 1; lo <= hi; lo += chunk) {
     const up = lo + chunk - 1;
     runTx(db, () => {
       q(`UPDATE cat_albums SET status = 'withdrawn' WHERE id IN (${slice})`).run('album', lo, up);
       q(`UPDATE cat_tracks SET status = 'withdrawn' WHERE id IN (${slice})`).run('track', lo, up);
       q(`UPDATE cat_artists SET status = 'withdrawn' WHERE id IN (${slice})`).run('artist', lo, up);
-      if (search) for (const r of q('SELECT kind, id FROM temp.detach_items WHERE rid BETWEEN ? AND ?').all(lo, up)) search.remove(r.kind, r.id);
     });
     yield 'withdraw';
   }
@@ -888,15 +940,22 @@ export function detachProvider(db, source, opts = {}) {
   return step.value;
 }
 
-/** Détachement par lots, avec une pause entre deux : le serveur continue de répondre pendant ce temps. */
-export async function detachProviderAsync(db, source, opts = {}) {
+/**
+ * Détachement par lots, avec une pause entre deux : le serveur continue de répondre pendant ce temps.
+ * `onStep(name, ms)` : durée de chaque lot (suivi, tests de performance).
+ */
+export async function detachProviderAsync(db, source, { onStep = null, ...opts } = {}) {
   if (!DETACHABLE.includes(source)) throw new Error(`fournisseur inconnu : ${source}`);
   const it = detachSteps(db, source, opts);
+  let started = performance.now();
   let step = it.next();
   while (!step.done) {
+    onStep?.(step.value, performance.now() - started);
     await new Promise((r) => setImmediate(r));
+    started = performance.now();
     step = it.next();
   }
+  onStep?.('end', performance.now() - started);
   return step.value;
 }
 
@@ -977,7 +1036,8 @@ export function init(deps) {
   // Compteurs de l'espace admin, 30 s (« source <> 'isrc' » est répété exprès : il rend l'index partiel utilisable).
   const counts = deps.lru({ max: 4, ttlMs: 30 * SECOND });
   const countExt = (source, type) => q("SELECT COUNT(*) AS n FROM external_ids WHERE source = ? AND source <> 'isrc' AND entity_type = ?").get(source, type).n;
-  const totals = () => counts.wrap('totals', () => ({
+  // Clé : phase et avancée de la passe (par dizaines d'artistes) ; une passe qui avance ou se termine les recompte.
+  const totals = (s) => counts.wrap(`totals:${s.phase}:${Math.floor((s.cursor || 0) / 10)}`, () => ({
     artists: q('SELECT COUNT(*) AS n FROM cat_artists').get().n,
     artistsWithCountry: q('SELECT COUNT(*) AS n FROM cat_artists WHERE country IS NOT NULL AND country_source IS NOT NULL').get().n,
     countriesBy: Object.fromEntries(q('SELECT country_source AS s, COUNT(*) AS n FROM cat_artists WHERE country_source IS NOT NULL GROUP BY country_source').all().map((r) => [r.s, r.n])),
@@ -1001,7 +1061,7 @@ export function init(deps) {
   function status() {
     const s = enricher.state();
     const settings = enricher.settings();
-    const t = totals();
+    const t = totals(s);
     const done = s.cursor ? q('SELECT COUNT(*) AS n FROM cat_artists WHERE rowid <= ?').get(s.cursor).n : 0;
     const similar = parse(q("SELECT value FROM kv WHERE key = 'album-similar'").get()?.value, null);
     const providers = {};
@@ -1025,7 +1085,11 @@ export function init(deps) {
       retryAt: enricher.retryAt,
       lastError: s.lastError,
       counts: t,
-      similar: similar ? { at: similar.at, albums: similar.albums, rows: q('SELECT COUNT(*) AS n FROM album_similar').get().n, done: !!similar.done } : null,
+      // Albums qui ont des suggestions, suggestions en tout, albums revus au dernier passage.
+      similar: similar ? {
+        at: similar.at, albums: q('SELECT COUNT(DISTINCT album_id) AS n FROM album_similar').get().n,
+        rows: q('SELECT COUNT(*) AS n FROM album_similar').get().n, lastRun: similar.albums, done: !!similar.done,
+      } : null,
       providers,
     };
   }
@@ -1035,13 +1099,14 @@ export function init(deps) {
     if (!DETACHABLE.includes(source)) throw new deps.HttpError(404, 'unknown_provider');
     if (detaching) throw new deps.HttpError(409, 'detach_running');
     if (!dryRun && providerDetached(db, source)) throw new deps.HttpError(409, 'already_detached');
-    detaching = detachProviderAsync(db, source, { dryRun, purgeFacts, by, search: dryRun ? null : deps.search });
+    detaching = detachProviderAsync(db, source, { dryRun, purgeFacts, by });
     try {
       const report = await detaching;
       if (!dryRun) {
         // Tirages, totaux et agrégats sans les éléments archivés (filtres status de catalog.js, P2-E).
         deps.catalog.invalidate?.();
         deps.catalog.rebuildIndex?.();
+        deps.search.forget?.();
         counts.clear();
       }
       return report;

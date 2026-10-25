@@ -73,7 +73,8 @@
   box-shadow:
     0 0 0 var(--st-gap) var(--stage),
     0 0 0 calc(var(--st-gap) + var(--st-ring)) var(--like),
-    0 0 calc(var(--st-ring) * 3) calc(var(--st-ring) * 0.6) color-mix(in oklab, var(--cue) 60%, transparent);
+    0 0 0 calc(var(--st-gap) + var(--st-ring) + 1.5px) var(--cue),
+    0 0 calc(var(--st-ring) * 4) calc(var(--st-ring) * 0.8) color-mix(in oklab, var(--cue) 55%, transparent);
 }
 
 /* Légendes du rock : ampli orange sur un liseré sombre. */
@@ -102,6 +103,12 @@
 
 .ws-showcase-frame--rock-legends .showcase__slot {
   --ws-frame-c: var(--r-ultra);
+}
+
+/* Lien « Échanger au Comptoir » sous un bouton de panneau (rangée Doublons de l'accueil, fiche de carte). */
+.panel > .ws-comptoir-link,
+.card-detail__info > .ws-comptoir-link {
+  align-self: flex-start;
 }
 
 /* ---------- fenêtres de l'atelier ---------- */
@@ -187,8 +194,18 @@
   transition: border-color var(--dur-hover) var(--ease-out), background var(--dur-hover) var(--ease-out);
 }
 
-.ws-pay__opt:hover {
+.ws-pay__opt:hover:not(:disabled) {
   border-color: var(--haze-2);
+}
+
+.ws-pay__opt:disabled {
+  border-color: var(--line-soft);
+  background: transparent;
+  cursor: not-allowed;
+}
+
+.ws-pay__opt:disabled .ws-pay__title {
+  color: var(--haze);
 }
 
 .ws-pay__opt.is-on {
@@ -451,6 +468,10 @@
   border-top: 0;
 }
 
+.ws-offer-row > .btn {
+  align-self: center;
+}
+
 .ws-offer-row__pack .gm-pack .pack {
   --pw: 52px;
 }
@@ -528,7 +549,22 @@
   overflow: auto;
 }
 
-/* Règles de l'atelier (guide des raretés) */
+/* Règles de l'atelier (bas du Comptoir) */
+
+.ws-rules-details {
+  padding-top: var(--s-12);
+  border-top: 1px solid var(--line-soft);
+}
+
+.ws-rules-details > summary {
+  cursor: pointer;
+  font-weight: var(--fw-semi);
+  color: var(--cue);
+}
+
+.ws-rules-details[open] > summary {
+  margin-bottom: var(--s-10);
+}
 
 .ws-rules {
   display: flex;

@@ -63,16 +63,14 @@ function EnrichStatus({ status, busy, onStart, onPause }) {
       </ul>
       <p className="small muted en-ua">{t('enrich.userAgent', { ua: status.userAgent })}</p>
       {status.lastError && <p className="small muted mono adm-error">{t('enrich.error', { e: status.lastError })}</p>}
-      {!status.demo && (
-        <div className="admin-tools">
-          <button type="button" className="btn btn--primary btn--sm" onClick={onStart} disabled={busy || status.running || !!status.blocked}>
-            {status.paused || status.phase === 'error' ? t('enrich.resume') : t('enrich.start')}
-          </button>
-          <button type="button" className="btn btn--ghost btn--sm" onClick={onPause} disabled={busy || !status.running}>
-            {t('enrich.pause')}
-          </button>
-        </div>
-      )}
+      <div className="admin-tools">
+        <button type="button" className="btn btn--primary btn--sm" onClick={onStart} disabled={busy || status.running || !!status.blocked}>
+          {status.paused || status.phase === 'error' ? t('enrich.resume') : t('enrich.start')}
+        </button>
+        <button type="button" className="btn btn--ghost btn--sm" onClick={onPause} disabled={busy || !status.running}>
+          {t('enrich.pause')}
+        </button>
+      </div>
       <p className="small muted en-attribution">{t('enrich.attribution')}</p>
     </section>
   );
@@ -85,7 +83,7 @@ function SimilarPanel({ status, busy, onRun }) {
     <section className="panel en-panel" aria-labelledby="en-similar-title">
       <h2 className="panel__title" id="en-similar-title"><Icon name="disc" /> {t('enrich.similar.title')}</h2>
       <p className="small muted">{t('enrich.similar.body')}</p>
-      <p className="mono small">{s ? t('enrich.similar.line', { rows: num(s.rows || 0), albums: num(s.albums || 0), d: date(s.at) }) : t('enrich.similar.none')}</p>
+      <p className="mono small">{s ? t('enrich.similar.line', { rows: num(s.rows || 0), n: s.albums || 0, d: date(s.at) }) : t('enrich.similar.none')}</p>
       <div className="admin-tools">
         <button type="button" className="btn btn--ghost btn--sm" onClick={onRun} disabled={busy}>{t('enrich.similar.run')}</button>
       </div>
@@ -122,7 +120,8 @@ function DetachReport({ report }) {
       </div>
       <ul className="adm-facts small en-facts">
         <li>{report.players?.cards ? t('enrich.detach.players', { n: report.players.withCards, cards: num(report.players.cards) }) : t('enrich.detach.playersNone')}</li>
-        <li>{t('enrich.detach.kept2', { ratings: num(report.players?.ratings || 0), items: num(report.players?.listItems || 0) })}</li>
+        <li>{t('enrich.detach.ratingsKept', { n: report.players?.ratings || 0 })}</li>
+        <li>{t('enrich.detach.itemsKept', { n: report.players?.listItems || 0 })}</li>
         <li>{t('enrich.detach.covers', { n: report.covers || 0 })}</li>
         {report.purgeFacts && <li>{t('enrich.detach.facts', { n: num(report.facts?.externalIds || 0), p })}</li>}
       </ul>
@@ -166,7 +165,7 @@ function DetachPanel({ source, status, onDone }) {
       {detached ? (
         <>
           <p className="small en-note en-note--done">
-            <span className="chip chip--sm chip--gold">{t('enrich.archived')}</span>{' '}
+            <span className="chip chip--sm chip--gold">{t('enrich.detach.badge')}</span>{' '}
             {t('enrich.detach.detachedOn', { p, d: detached.at ? when.format(new Date(detached.at)) : '—' })}
           </p>
           <p className="small muted">{t('enrich.detach.env')}</p>

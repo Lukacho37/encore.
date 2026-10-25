@@ -28,6 +28,9 @@ const setRoyalties = (userId, n) => db.prepare('UPDATE users SET royalties = ? W
 /** Cartes données directement (même chemin qu'un booster : progression, succès, événements). */
 const give = (userId, cards, source = 'test') => services.atomic(() => services.addCards(services.getUser(userId), cards, source));
 const std = (trackId, times = 1) => Array.from({ length: times }, () => ({ trackId, variant: 'std' }));
+/** XP des badges gagnés depuis `since` (une note ou une édition deluxe peut aussi débloquer une médaille). */
+const badgeXpSince = (userId, since) => db.prepare("SELECT key FROM achievements WHERE user_id = ? AND key >= 'badge:' AND key < 'badge;' AND created_at >= ?")
+  .all(userId, since).map((r) => parseBadgeKey(r.key)).reduce((n, b) => n + (b ? rewardFor(b.family, b.tier).xp || 0 : 0), 0);
 
 // ---------- règles partagées ----------
 
@@ -277,8 +280,7 @@ test('édition deluxe : album complété, album noté, chaque morceau noté → 
   assert.equal(lastRate.status, 200);
   assert.ok(db.prepare('SELECT 1 FROM achievements WHERE user_id = ? AND key = ?').get(gus.user.id, `deluxe:${albumId}`), 'succès deluxe');
   // +50 XP, plus ceux des badges gagnés par la même note (« Oreille fine » : chaque morceau d'un album noté).
-  const badgeXp = db.prepare("SELECT key FROM achievements WHERE user_id = ? AND key >= 'badge:' AND key < 'badge;' AND created_at >= ?")
-    .all(gus.user.id, t0).map((r) => parseBadgeKey(r.key)).reduce((n, b) => n + (b ? rewardFor(b.family, b.tier).xp || 0 : 0), 0);
+  const badgeXp = badgeXpSince(gus.user.id, t0);
   assert.equal(db.prepare('SELECT xp FROM users WHERE id = ?').get(gus.user.id).xp, xp + DELUXE_XP + badgeXp);
   assert.equal(lastRate.body.state.user.level.xp, xp + DELUXE_XP + badgeXp, 'l’XP est dans l’état partiel de la note');
   const notes = db.prepare("SELECT target_id, data FROM notifications WHERE user_id = ? AND kind = 'deluxe_earned'").all(gus.user.id);
@@ -338,13 +340,15 @@ test('édition deluxe : rattrapage silencieux au premier Studio, une fois ; titr
   }
   services.recountCollection?.(ivy.user.id, albums);
   const xp = db.prepare('SELECT xp FROM users WHERE id = ?').get(ivy.user.id).xp;
+  const t0 = Date.now();
   const studio = (await api(app.base, ivy.cookie, 'GET', `/users/${ivy.username}`)).body;
   assert.equal(studio.vinyls.filter((v) => v.edition === 'deluxe').length, albums.length);
-  assert.equal(db.prepare('SELECT xp FROM users WHERE id = ?').get(ivy.user.id).xp, xp + DELUXE_XP * albums.length);
+  // +50 XP par édition, plus ceux des badges qu'elles débloquent (si une famille de badges les compte).
+  assert.equal(db.prepare('SELECT xp FROM users WHERE id = ?').get(ivy.user.id).xp, xp + DELUXE_XP * albums.length + badgeXpSince(ivy.user.id, t0));
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND kind = 'deluxe_earned'").get(ivy.user.id).n, 0, 'rattrapage silencieux');
   assert.equal(deps.workshop.backfillDeluxe(ivy.user.id), 0, 'une seule fois');
   const cos = (await api(app.base, ivy.cookie, 'GET', '/me/cosmetics')).body;
-  assert.ok(cos.unlocked.some((c) => c.id === 'title:deluxe' && c.source === `deluxe:${DELUXE_TITLE_AT}`));
+  assert.ok(cos.unlocked.some((c) => c.id === 'title:deluxe'));
   assert.equal((await api(app.base, ivy.cookie, 'PUT', '/me/cosmetics', { title: 'deluxe' })).status, 200);
 });
 

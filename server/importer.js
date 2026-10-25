@@ -16,10 +16,18 @@
 // (réseau, 5xx, 401/403, quota, refus en série) arrête l'import sans toucher à la file d'artistes, qui reprend
 // 10 minutes plus tard. La pause est enregistrée en base : elle tient jusqu'au bouton « Lancer » de l'espace admin.
 // Le serveur ne stocke que des métadonnées et l'adresse des pochettes, jamais de fichier audio ni image.
+//
+// Provenance (PLAN.md 3.4, P2-C) : chaque artiste, album et morceau importé reçoit ses identifiants externes
+// (external_ids) : Deezer, le code-barres (UPC) de l'album, l'ISRC de chaque morceau (lus dans /album/{id}/tracks quand
+// la liste intégrée à /album/{id} ne les donne pas). Ils servent à l'enrichissement MusicBrainz / Wikidata
+// (server/enrich.js) et au détachement d'un fournisseur (scripts/detach-provider.js). Les identifiants AlbumMania
+// viennent de shared/ids.js (« dz… » pour Deezer). Un fournisseur détaché (kv « provider:deezer ») n'est plus jamais
+// appelé : l'import refuse de démarrer et toute tournée en cours s'arrête à la requête suivante.
 import { config } from './config.js';
 import { SEED_CATALOG_MAX } from './catalog.js';
 import { ARTISTS, ALBUMS } from '../shared/catalog.js';
 import { generatedArt } from '../shared/art.js';
+import { albumTrackId, catalogIdFor, cleanSourceId } from '../shared/ids.js';
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -57,6 +65,20 @@ export const RANK_TIERS = [
 /** Rang Deezer approximatif de chaque palier avant le premier calibrage. */
 const DEFAULT_BREAKS = [900_000, 800_000, 650_000, 450_000, 250_000];
 
+/** Clé kv de l'état d'un fournisseur (détachement, PLAN.md 7.1). */
+export const providerKey = (source) => `provider:${source}`;
+
+/** Fournisseur détaché : { detached: true, at, by, purgeFacts } lu dans kv, ou null. */
+export function providerDetached(db, source) {
+  const row = db.prepare('SELECT value FROM kv WHERE key = ?').get(providerKey(source));
+  try {
+    const value = row ? JSON.parse(row.value) : null;
+    return value?.detached ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Deezer en panne, injoignable ou qui bloque le serveur : l'import s'arrête sans toucher à la file et reprend plus tard. */
 export class Unavailable extends Error {}
 export class RateLimited extends Unavailable {}
@@ -71,6 +93,8 @@ const optional = (promise) => promise.catch((err) => {
 // écritures sont gardés (Кино, 宇多田ヒカル, عمرو دياب) : un titre non latin ne devient pas vide.
 const norm = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/\p{M}+/gu, '').replace(/&/g, ' and ')
   .replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+/** La même clé, pour comparer les noms d'artistes et les titres lus chez MusicBrainz (server/enrich.js). */
+export const normText = norm;
 
 /** Titre de base d'un album : sans « (Deluxe Edition) », « [Remastered] », « - Live »… pour repérer les rééditions. */
 export function baseTitle(title) {
@@ -158,6 +182,16 @@ export function createImporter(db, catalog, {
   };
   const kvSet = (key, value) => q('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, JSON.stringify(value));
   const state = () => kvGet('import', { phase: 'idle', lastError: null, startedAt: null, finishedAt: null, discovered: false });
+  const detached = () => providerDetached(db, 'deezer');
+
+  // Identifiants externes posés par l'import (PLAN.md 3.4) : un identifiant déjà relié à un autre élément est ignoré
+  // (index unique source × type × identifiant, sauf pour l'ISRC qui peut désigner plusieurs morceaux).
+  const insExt = q(`INSERT OR IGNORE INTO external_ids (entity_type, entity_id, source, source_id, url, confidence, matched_by, fetched_at)
+    VALUES (?, ?, ?, ?, NULL, 1, 'import', ?)`);
+  function ext(type, entityId, source, value) {
+    const v = cleanSourceId(source, value);
+    if (v) insExt.run(type, entityId, source, v, Date.now());
+  }
   const setState = (patch) => kvSet('import', { ...state(), ...patch });
 
   // Après un redémarrage ou un plantage en plein import, plus rien ne tourne. Une pause d'avant cette version (sans
@@ -175,6 +209,8 @@ export function createImporter(db, catalog, {
    * est refusée, Unavailable si Deezer est en panne, bloque le serveur ou refuse tout : l'import s'arrête et reprendra.
    */
   async function call(path) {
+    // Fournisseur détaché (scripts/detach-provider.js ou espace admin) : plus aucun appel, même en pleine tournée.
+    if (providerDetached(db, 'deezer')) throw new Unavailable('deezer: fournisseur détaché');
     for (let attempt = 0; ; attempt++) {
       const gap = pauseMs - (Date.now() - lastCall);
       if (gap > 0) await wait(gap);
@@ -248,17 +284,26 @@ export function createImporter(db, catalog, {
     const total = Number(full.nb_tracks) || embedded.length;
     if (total < MIN_TRACKS || total > MAX_TRACKS) return null;
     let list = embedded;
-    if (list.length < total) {
-      list = [];
-      for (let index = 0; list.length < total && index < 300; index += 100) {
-        const page = await optional(call(`/album/${albumId}/tracks?limit=100&index=${index}`));
-        const data = Array.isArray(page?.data) ? page.data : [];
-        list.push(...data);
-        if (!page?.next || data.length === 0) break;
-      }
+    // Liste intégrée partielle, ou sans ISRC (la vraie API ne les donne que dans /album/{id}/tracks) : liste complète.
+    // Si cette liste-là est incomplète alors que l'intégrée est entière, l'album est gardé sans ses ISRC.
+    if (list.length < total || !list.some((t) => t?.isrc)) {
+      const pages = (await trackPages(albumId, total)).filter(valid);
+      if (pages.length >= total || list.length < total) list = pages;
     }
     list = list.filter(valid);
     return list.length >= total && list.length <= MAX_TRACKS ? list : null;
+  }
+
+  /** Pistes d'un album par pages de 100 (/album/{id}/tracks) ; une page refusée arrête la lecture. */
+  async function trackPages(albumId, total) {
+    const out = [];
+    for (let index = 0; out.length < total && index < 300; index += 100) {
+      const page = await optional(call(`/album/${albumId}/tracks?limit=100&index=${index}`));
+      const data = Array.isArray(page?.data) ? page.data : [];
+      out.push(...data);
+      if (!page?.next || data.length === 0) break;
+    }
+    return out;
   }
 
   // ---------- file d'artistes ---------------------------------------------------------------
@@ -341,21 +386,28 @@ export function createImporter(db, catalog, {
     const bound = q('SELECT id, source FROM cat_artists WHERE deezer_id = ?').get(deezerId);
     if (bound && bound.source !== 'seed') {
       q('UPDATE cat_artists SET fans = MAX(fans, ?) WHERE id = ?').run(fans, bound.id);
+      ext('artist', bound.id, 'deezer', deezerId);
       return bound.id;
     }
     const seedId = bound?.id || seedByName.get(norm(dz.name));
     if (seedId) {
       if (await isSeedArtist(seedId, dz, releases)) {
-        // Deux pages Deezer pour le même artiste : ses albums vont tous à l'artiste de la graine, rattaché à la première.
+        // Deux pages Deezer pour le même artiste : ses albums vont tous à l'artiste de la graine, rattaché à la première
+        // (les deux identifiants Deezer sont gardés dans external_ids).
         q('UPDATE cat_artists SET deezer_id = COALESCE(deezer_id, ?), fans = MAX(fans, ?) WHERE id = ?').run(deezerId, fans, seedId);
+        ext('artist', seedId, 'deezer', deezerId);
         return seedId;
       }
       // Ancien rattachement par le seul nom : l'artiste de la graine est libéré pour le bon.
-      if (bound) q('UPDATE cat_artists SET deezer_id = NULL WHERE id = ?').run(seedId);
+      if (bound) {
+        q('UPDATE cat_artists SET deezer_id = NULL WHERE id = ?').run(seedId);
+        q("DELETE FROM external_ids WHERE entity_type = 'artist' AND entity_id = ? AND source = 'deezer' AND source_id = ?").run(seedId, deezerId);
+      }
     }
-    const id = `dz${deezerId}`;
+    const id = catalogIdFor('deezer', 'artist', deezerId);
     q(`INSERT INTO cat_artists (id, name, genre, fans, source, deezer_id, created_at) VALUES (?, ?, ?, ?, 'deezer', ?, ?)
       ON CONFLICT(id) DO UPDATE SET fans = MAX(fans, excluded.fans)`).run(id, String(dz.name), dz.genre || null, fans, deezerId, Date.now());
+    ext('artist', id, 'deezer', deezerId);
     if (seedId) reclaimAlbums(seedId, id, releases);
     return id;
   }
@@ -389,7 +441,7 @@ export function createImporter(db, catalog, {
     if (list.length < MIN_TRACKS || list.length > MAX_TRACKS) return 0;
     if (q('SELECT 1 FROM cat_albums WHERE deezer_id = ?').get(String(dzAlbum.id))) return 0;
     if (seedAlbums.has(`${artistId}|${baseTitle(dzAlbum.title)}`)) return 0;
-    const id = `dz${dzAlbum.id}`;
+    const id = catalogIdFor('deezer', 'album', String(dzAlbum.id));
     const genreId = dzAlbum.genre_id ?? dzAlbum.genres?.data?.[0]?.id;
     const genre = GENRE_MAP[genreId] || artistGenre || 'pop';
     const year = yearOf(dzAlbum.release_date);
@@ -406,12 +458,18 @@ export function createImporter(db, catalog, {
       );
       const ins = q(`INSERT INTO cat_tracks (id, kind, album_id, artist_id, n, total, title, feat, year, genre, pop, rarity, rank, url, source, deezer_id, created_at)
         VALUES (?, 'album', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'deezer', ?, ?) ON CONFLICT(id) DO NOTHING`);
+      // Provenance : identifiant Deezer et code-barres de l'album, identifiant Deezer et ISRC de chaque morceau.
+      ext('album', id, 'deezer', String(dzAlbum.id));
+      ext('album', id, 'upc', dzAlbum.upc);
       list.forEach((t, i) => {
         const { title, feat } = splitFeat(t.title, t.title_short);
         const { pop, rarity } = provisional(t.rank, b);
         const dzId = q('SELECT 1 FROM cat_tracks WHERE deezer_id = ?').get(String(t.id)) ? null : String(t.id);
-        ins.run(`${id}:${String(i + 1).padStart(2, '0')}`, id, artistId, i + 1, list.length, title, feat, year, genre, pop, rarity,
+        const trackId = albumTrackId(id, i + 1);
+        ins.run(trackId, id, artistId, i + 1, list.length, title, feat, year, genre, pop, rarity,
           Number(t.rank) || 0, https(t.link), dzId, Date.now());
+        if (dzId) ext('track', trackId, 'deezer', dzId);
+        ext('track', trackId, 'isrc', t.isrc);
       });
       catalog.indexAlbum(id);
       db.exec('COMMIT');
@@ -428,14 +486,25 @@ export function createImporter(db, catalog, {
     const { title, feat } = splitFeat(track.title, track.title_short);
     const genre = GENRE_MAP[single.genre_id] || artistGenre || 'pop';
     const n = (q("SELECT MAX(n) AS n FROM cat_tracks WHERE kind = 'promo'").get().n || 0) + 1;
-    const id = `promo:dz${track.id}`;
+    const id = catalogIdFor('deezer', 'track', String(track.id), { promo: true });
     const { pop } = provisional(track.rank);
     const cover = https(single.cover_xl) || https(single.cover_big);
-    q(`INSERT INTO cat_tracks (id, kind, album_id, artist_id, n, total, title, feat, year, genre, pop, rarity, rank, promo_kind, art, url, cover, thumb, source, deezer_id, created_at)
-      VALUES (?, 'promo', NULL, ?, ?, ?, ?, ?, ?, ?, ?, 'promo', ?, 'single', ?, ?, ?, ?, 'deezer', ?, ?) ON CONFLICT(id) DO NOTHING`).run(
-      id, artistId, n, n, title, feat, yearOf(single.release_date), genre, pop, Number(track.rank) || 0, JSON.stringify(generatedArt(id)),
-      https(track.link) || https(single.link), cover, https(single.cover_big) || cover, String(track.id), Date.now(),
-    );
+    db.exec('BEGIN');
+    try {
+      q(`INSERT INTO cat_tracks (id, kind, album_id, artist_id, n, total, title, feat, year, genre, pop, rarity, rank, promo_kind, art, url, cover, thumb, source, deezer_id, created_at)
+        VALUES (?, 'promo', NULL, ?, ?, ?, ?, ?, ?, ?, ?, 'promo', ?, 'single', ?, ?, ?, ?, 'deezer', ?, ?) ON CONFLICT(id) DO NOTHING`).run(
+        id, artistId, n, n, title, feat, yearOf(single.release_date), genre, pop, Number(track.rank) || 0, JSON.stringify(generatedArt(id)),
+        https(track.link) || https(single.link), cover, https(single.cover_big) || cover, String(track.id), Date.now(),
+      );
+      // Provenance de la promo : identifiant Deezer et ISRC du morceau, code-barres du single qui le contient.
+      ext('track', id, 'deezer', String(track.id));
+      ext('track', id, 'isrc', track.isrc);
+      ext('track', id, 'upc', single.upc);
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
     sinceCalibration += 1;
     return true;
   }
@@ -618,8 +687,11 @@ export function createImporter(db, catalog, {
         if (added >= perArtist || importedPromos() >= maxPromos() || stopRequested) break;
         if (albumTitles.has(norm(splitFeat(s.title).title))) continue;
         const full = await optional(call(`/album/${s.id}`));
-        const first = full?.tracks?.data?.[0];
+        let first = full?.tracks?.data?.[0];
         if (!first || albumTitles.has(norm(splitFeat(first.title, first.title_short).title))) continue;
+        if (q('SELECT 1 FROM cat_tracks WHERE deezer_id = ?').get(String(first.id))) continue;
+        // ISRC du morceau : /track/{id} (la liste intégrée au single ne le donne pas).
+        if (!first.isrc) first = { ...first, isrc: (await optional(call(`/track/${first.id}`)))?.isrc ?? null };
         if (savePromo(artistId, artistGenre, { ...s, ...full }, first)) added++;
       }
 
@@ -740,6 +812,8 @@ export function createImporter(db, catalog, {
    * admin) : même si l'import automatique est coupé, et lève la pause.
    */
   function start({ force = false } = {}) {
+    // Fournisseur détaché : plus aucun appel, même avec le bouton « Lancer ».
+    if (detached()) return running || null;
     if (force && state().paused) setState({ paused: false });
     if (running) {
       // « Lancer » pendant qu'une pause s'achève : l'import repart dès que la tournée en cours s'est arrêtée.
@@ -750,6 +824,11 @@ export function createImporter(db, catalog, {
     clearRetry();
     running = run()
       .catch((err) => {
+        // Fournisseur détaché pendant la tournée : arrêt définitif, sans nouvelle tentative.
+        if (detached()) {
+          setState({ phase: 'idle', lastError: null });
+          return;
+        }
         if (state().paused) {
           setState({ phase: 'paused', lastError: err.message });
           return;
@@ -772,9 +851,14 @@ export function createImporter(db, catalog, {
   /** Y a-t-il quelque chose à faire ? (import en cours de route, vérification quotidienne due, calibrage en retard) */
   function hasWork() {
     const s = state();
-    if (s.paused || cfg.catalogImport !== 'deezer') return false;
+    if (s.paused || cfg.catalogImport !== 'deezer' || detached()) return false;
     if (importedAlbums() < cfg.catalogTarget && (!s.discovered || pendingArtists() > 0)) return true;
     return refreshDue() || deezerTracks() !== s.calibratedTracks;
+  }
+
+  function detachedInfo() {
+    const d = detached();
+    return d ? { at: d.at || null, purgeFacts: !!d.purgeFacts } : null;
   }
 
   function status() {
@@ -803,6 +887,8 @@ export function createImporter(db, catalog, {
       lastError: s.lastError,
       // Raretés gelées depuis (PLAN.md 6.5) ; null pendant la construction initiale du catalogue.
       frozenAt: s.frozenAt || null,
+      // Fournisseur détaché (PLAN.md 7.1) : { at, purgeFacts } ; l'import ne peut plus être lancé.
+      detached: detachedInfo(),
     };
   }
 

@@ -238,7 +238,8 @@ function sanitize(d) {
     }
     for (const k of Object.keys(list)) {
       const [type, id] = [k.slice(0, k.indexOf(':')), k.slice(k.indexOf(':') + 1)];
-      if (!((type === 'album' && ALBUM.has(id)) || (type === 'artist' && ARTIST.has(id)))) delete list[k];
+      // deluxe:<albumId> : édition deluxe d'un album (P2-D, mock/workshop.js).
+      if (!(((type === 'album' || type === 'deluxe') && ALBUM.has(id)) || (type === 'artist' && ARTIST.has(id)))) delete list[k];
       else list[k] = num(list[k], now);
     }
   }
@@ -1435,7 +1436,11 @@ const routes = [
  * jumeaux : addXp(userId, xp, source) → levelUp | null (la seule façon d'ajouter de l'XP : paliers de niveau),
  * grantBooster(userId, kind, theme, source) → id, unlockedCosmetics(userId), grantCosmetic(userId, id, source),
  * cosmeticsOf(userId), setCosmetics(userId, selection), wishlist(userId), addToWishlist(userId, albumIds) ; et pour
- * mock/collection.js : ownedSet, achOf, rankOf, levelOf, pressInfo, openSpecialPack, demoGift.
+ * mock/collection.js : ownedSet, achOf, rankOf, levelOf, pressInfo, openSpecialPack, demoGift ; pour mock/workshop.js
+ * (P2-D) : cardsOf, holoSet, addCards(userId, cards, source), insertBooster(userId, kind, theme, source).
+ * Un module peut aussi compléter la réponse de n'importe quelle route, comme un abonné du bus du vrai serveur :
+ * `export function after({ method, path, query, body, result, ctx })` (appelé après chaque route, dans l'ordre des
+ * modules ; renvoie la réponse, modifiée ou non). Exemple : l'édition deluxe donnée après une note (mock/workshop.js).
  */
 export const ctx = {
   get db() {
@@ -1514,6 +1519,12 @@ export const ctx = {
     pressInfo,
     openSpecialPack,
     demoGift,
+    // Atelier (P2-D, mock/workshop.js) : exemplaires du joueur ({ 'trackId|variant': { count, at, r } }), cartes holo,
+    // ajout de cartes (même calcul que services.addCards), booster spécial ajouté à l'inventaire.
+    cardsOf,
+    holoSet,
+    addCards: (userId, cards, source) => addCards(userById(userId), cards, source),
+    insertBooster,
   },
 };
 
@@ -1530,7 +1541,17 @@ export async function handle(method, path, body = {}) {
     if (m !== method) continue;
     const match = re.exec(pathname);
     if (!match) continue;
-    const result = await fn({ params: match.slice(1), body: body || {}, query: new URLSearchParams(qs || ''), ctx });
+    const query = new URLSearchParams(qs || '');
+    let result = await fn({ params: match.slice(1), body: body || {}, query, ctx });
+    // Abonnés des modules (comme le bus du serveur) : chacun dans son try/catch, une erreur ne casse pas la route.
+    for (const mod of MODULES) {
+      if (!mod.after) continue;
+      try {
+        result = mod.after({ method, path: pathname, query, body: body || {}, result, ctx }) ?? result;
+      } catch (err) {
+        console.error(`[démo] abonné du module ${mod.name} en erreur :`, err);
+      }
+    }
     save();
     return JSON.parse(JSON.stringify(result));
   }

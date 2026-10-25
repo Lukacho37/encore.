@@ -6,6 +6,13 @@
 //
 // Identifiant complet d'un cosmétique : « <type>:<clé> » (ex. frame:ivoire, vinyl:prune) ; c'est la forme des listes
 // `unlocked` (GET /api/me/cosmetics, deps.collection.unlockedCosmetics).
+//
+// Cosmétiques en plus des paliers (P2-D, PLAN.md 6.6, 6.8, 6.9) : ceux des coffrets (un cadre par coffret,
+// « frame:set-<id> », source set:<id>, accordé par server/sets.js au coffret complet), des événements (cadres
+// « frame:french-touch » et « frame:rock-legends », source event:<slug>, accordés par server/events.js avec le bonus
+// de l'événement), des badges (titres du dernier palier, source badge:<famille>, server/badges.js) et de l'atelier
+// (titre « Oreille deluxe » à la DELUXE_TITLE_AT-ième édition deluxe, source deluxe:<n>, server/workshop.js).
+// cosmeticDef(id) les décrit tous ; frameStyle(clé) donne le dessin d'un cadre (classe ws-frame--<style> du site).
 
 /** Types de cosmétiques, dans l'ordre d'affichage. */
 export const COSMETIC_KINDS = ['frame', 'vinyl', 'theme', 'title'];
@@ -67,4 +74,59 @@ export function cleanSelection(raw, unlockedIds) {
     out[kind] = key && unlocked.has(cosmeticId(kind, key)) ? key : null;
   }
   return out;
+}
+
+// ----- cosmétiques en plus des paliers (P2-D) -----------------------------------------------------------------
+
+/** Cadres des événements (shared/events.js) : dessin propre à chacun, jamais de logo ni de nom d'artiste. */
+export const EVENT_FRAMES = [
+  { id: 'frame:french-touch', kind: 'frame', key: 'french-touch', source: 'event:french-touch', style: 'french-touch' },
+  { id: 'frame:rock-legends', kind: 'frame', key: 'rock-legends', source: 'event:rock-legends', style: 'rock-legends' },
+];
+
+/** Titres offerts au dernier palier d'une famille de badges (shared/badges.js), et celui de l'atelier. */
+export const EXTRA_TITLES = [
+  { id: 'title:vinylophile', kind: 'title', key: 'vinylophile', source: 'badge:vinyl' },
+  { id: 'title:maitre', kind: 'title', key: 'maitre', source: 'badge:master' },
+  { id: 'title:critique', kind: 'title', key: 'critique', source: 'badge:critic' },
+  { id: 'title:juge', kind: 'title', key: 'juge', source: 'badge:judge' },
+  { id: 'title:deluxe', kind: 'title', key: 'deluxe', source: 'deluxe' },
+];
+
+/** Nombre d'éditions deluxe qui débloque le titre « Oreille deluxe » (title:deluxe). */
+export const DELUXE_TITLE_AT = 10;
+export const DELUXE_TITLE = 'title:deluxe';
+
+/** Préfixe des cadres de coffret : « frame:set-<id du coffret> » (shared/sets.js setFrameId). */
+export const SET_FRAME_PREFIX = 'set-';
+
+const EXTRA = new Map([...EVENT_FRAMES, ...EXTRA_TITLES].map((c) => [c.id, c]));
+/** Dessins des cadres : ceux des paliers, le cadre commun des coffrets, ceux des événements. */
+export const FRAME_STYLES = ['ivoire', 'neon', 'or', 'holo', 'set', 'french-touch', 'rock-legends'];
+
+/**
+ * Définition d'un cosmétique : { id, kind, key, level? (palier), source?, style? (cadres), setId? (cadre de coffret) } ;
+ * null pour un identifiant inconnu ou mal formé.
+ */
+export function cosmeticDef(id) {
+  const level = levelCosmetic(id);
+  if (level) return { ...level, source: `level:${level.level}`, ...(level.kind === 'frame' ? { style: level.key } : {}) };
+  const extra = EXTRA.get(id);
+  if (extra) return extra;
+  const parsed = parseCosmetic(id);
+  if (parsed?.kind === 'frame' && parsed.key.startsWith(SET_FRAME_PREFIX) && parsed.key.length > SET_FRAME_PREFIX.length) {
+    const setId = parsed.key.slice(SET_FRAME_PREFIX.length);
+    return { id, kind: 'frame', key: parsed.key, source: `set:${setId}`, style: 'set', setId };
+  }
+  return null;
+}
+
+/**
+ * Dessin d'un cadre choisi (clé courte « ivoire » ou identifiant « frame:ivoire ») : un de FRAME_STYLES, ou null
+ * (cadre inconnu : l'anneau neutre). Les cadres de coffret partagent le dessin « set ».
+ */
+export function frameStyle(key) {
+  if (typeof key !== 'string' || !key) return null;
+  const id = key.startsWith('frame:') ? key : `frame:${key}`;
+  return cosmeticDef(id)?.style ?? null;
 }

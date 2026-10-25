@@ -3,8 +3,23 @@
 //
 // Les fonctions qui ont besoin du catalogue le reçoivent en argument : la base de données côté serveur
 // (server/catalog.js, jusqu'à 20 000 albums et plus) ou le catalogue statique de la démo (shared/staticCatalog.js).
-// Ces deux catalogues ont la même interface.
-import { decadeOf } from './catalog.js';
+// Ces deux catalogues ont la même interface. Ce fichier n'importe pas le catalogue de base (shared/catalog.js) :
+// il est chargé par chaque page du site, le catalogue de base ne sert qu'au serveur et à la démo (P2-D, PLAN.md 9.5).
+
+/** Décennie d'une année (1977 → 1970) ; null sans année. */
+export const decadeOf = (year) => (Number.isFinite(year) ? Math.floor(year / 10) * 10 : null);
+
+// Seuils de popularité de chaque rareté (indice 0 à 100 ; les promos ont leur propre rareté, quel que soit leur
+// indice). Publiés dans le guide des raretés ; le catalogue de base (shared/catalog.js) en déduit la rareté de ses
+// morceaux.
+export const POP_TIERS = [
+  { rarity: 'legendary', min: 92, max: 100 },
+  { rarity: 'ultra', min: 82, max: 91 },
+  { rarity: 'super', min: 70, max: 81 },
+  { rarity: 'rare', min: 55, max: 69 },
+  { rarity: 'uncommon', min: 35, max: 54 },
+  { rarity: 'common', min: 0, max: 34 },
+];
 
 export const RARITIES = ['common', 'uncommon', 'rare', 'super', 'ultra', 'legendary', 'promo'];
 
@@ -378,6 +393,107 @@ export function newAchievements({ owned, already, touched, catalog }) {
     }
   }
   return result;
+}
+
+// --- Atelier : édition deluxe, Vernir, Comptoir, boosters thématiques à acheter (P2-D, PLAN.md 6.3, 6.10, 6.11) ---
+//
+// Échanges déterministes avec le jeu, publiés dans le guide des raretés et dans chaque fenêtre de l'atelier : rien
+// n'y est tiré au hasard, rien ne se paie en argent réel, rien ne s'échange entre joueurs (P3).
+//   Édition deluxe : album complété + album noté + chaque morceau noté → succès deluxe:<albumId>, un vinyle deluxe
+//     (couleur AlbumMania, jamais la pochette) sur l'étagère et la platine, +DELUXE_XP. L'édition holo (toutes les
+//     cartes de l'album en holo) reste affichée pour ceux qui l'ont.
+//   Vernir : une carte standard possédée devient holo, pour VERNIR_MULTIPLIER × sa valeur de recyclage en royalties,
+//     ou pour VERNIR_DUPLICATES doublons de la même rareté. Une carte dont on a déjà la version holo ne se vernit pas.
+//   Comptoir : COMPTOIR_DUPLICATES doublons d'une rareté → une carte manquante de cette rareté, choisie dans un de ses
+//     albums recherchés.
+//   Doublons donnés (Vernir et Comptoir) : les exemplaires en trop, jamais le dernier d'une version ; les standards
+//     avant les holos (un holo vaut deux fois plus au recyclage), puis les cartes qui en ont le plus.
+//   Booster thématique : THEMED_BOOSTER_PRICE royalties, un genre, une décennie ou « À ton goût » ; mêmes chances par
+//     carte qu'un booster normal (boosterOdds).
+export const DELUXE_XP = 50;
+export const VERNIR_MULTIPLIER = 4;
+export const VERNIR_DUPLICATES = 3;
+export const COMPTOIR_DUPLICATES = 3;
+export const THEMED_BOOSTER_PRICE = 180;
+/** Décennies proposées à l'achat d'un booster thématique (parseBoosterTheme en accepte jusqu'à 2030). */
+export const THEMED_DECADES = [1950, 1960, 1970, 1980, 1990, 2000, 2010, 2020];
+
+/** Clé du succès de l'édition deluxe d'un album. */
+export const deluxeKey = (albumId) => `deluxe:${albumId}`;
+
+/** Prix pour vernir une carte standard : { royalties, duplicates } ; null pour une rareté inconnue. */
+export function vernirCost(rarity) {
+  if (!RARITY[rarity]) return null;
+  return { royalties: VERNIR_MULTIPLIER * recycleValue(rarity, 'std'), duplicates: VERNIR_DUPLICATES };
+}
+
+/** Un booster thématique peut-il s'acheter ? Un genre, une décennie proposée, ou « À ton goût » (pas les événements). */
+export function buyableTheme(theme) {
+  const p = parseBoosterTheme(theme);
+  if (!p) return false;
+  if (p.kind === 'genre' || p.kind === 'taste') return true;
+  return p.kind === 'decade' && THEMED_DECADES.includes(p.value);
+}
+
+const variantRank = (v) => (v === 'std' ? 0 : 1);
+
+/**
+ * Doublons à donner (Vernir, Comptoir) : `rows` = exemplaires d'une rareté [{ trackId, variant, count }] ; renvoie
+ * [{ trackId, variant, n }] (n exemplaires retirés de chaque carte) pour `needed` doublons, ou null s'il en manque.
+ * `reserve` ({ trackId, variant }) : la carte qu'on vernit, dont un exemplaire de plus est mis de côté. Ordre : les
+ * standards d'abord, puis les cartes qui ont le plus d'exemplaires, puis l'identifiant (même choix partout).
+ */
+export function pickDuplicates(rows, needed, { reserve = null } = {}) {
+  const pool = [];
+  for (const r of rows || []) {
+    const keep = reserve && r.trackId === reserve.trackId && r.variant === reserve.variant ? 2 : 1;
+    const spare = Math.max(0, Math.floor(r.count) - keep);
+    if (spare > 0) pool.push({ trackId: r.trackId, variant: r.variant, spare });
+  }
+  pool.sort((a, b) => variantRank(a.variant) - variantRank(b.variant) || b.spare - a.spare
+    || (a.trackId < b.trackId ? -1 : a.trackId > b.trackId ? 1 : 0));
+  const out = [];
+  let left = needed;
+  for (const p of pool) {
+    if (left <= 0) break;
+    const n = Math.min(p.spare, left);
+    out.push({ trackId: p.trackId, variant: p.variant, n });
+    left -= n;
+  }
+  return left > 0 ? null : out;
+}
+
+/** Doublons disponibles par rareté ({ common: 4, … }) depuis les exemplaires [{ rarity, variant, count }]. */
+export function duplicatesByRarity(rows) {
+  const out = Object.fromEntries(RARITIES.map((r) => [r, 0]));
+  for (const r of rows || []) if (out[r.rarity] !== undefined) out[r.rarity] += Math.max(0, Math.floor(r.count) - 1);
+  return out;
+}
+
+/**
+ * Où en est l'édition deluxe d'un album : `completed` (album complété), `albumRated`, `tracksRated` / `tracksTotal`,
+ * `missing` (morceaux pas encore notés) ; `ready` quand les trois conditions sont remplies.
+ */
+export function deluxeProgress({ completed, albumRated, trackIds = [], ratedTrackIds = new Set() }) {
+  const missing = trackIds.filter((id) => !ratedTrackIds.has(id));
+  return {
+    completed: !!completed,
+    albumRated: !!albumRated,
+    tracksRated: trackIds.length - missing.length,
+    tracksTotal: trackIds.length,
+    missing,
+    ready: !!completed && !!albumRated && trackIds.length > 0 && missing.length === 0,
+  };
+}
+
+/** Règles de l'atelier, telles que le guide des raretés et les fenêtres de l'atelier les publient. */
+export function workshopRules() {
+  return {
+    deluxe: { xp: DELUXE_XP },
+    vernir: { multiplier: VERNIR_MULTIPLIER, duplicates: VERNIR_DUPLICATES, costs: Object.fromEntries(RARITIES.map((r) => [r, vernirCost(r).royalties])) },
+    comptoir: { duplicates: COMPTOIR_DUPLICATES },
+    themed: { price: THEMED_BOOSTER_PRICE, decades: THEMED_DECADES, genres: THEME_GENRES },
+  };
 }
 
 // --- Blind test ------------------------------------------------------------

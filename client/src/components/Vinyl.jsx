@@ -7,20 +7,27 @@ import { getAlbum, useAlbum, useAlbumDetail, useApi } from '../state/catalog.js'
 import { useI18n } from '../i18n/index.jsx';
 import { useGame } from '../state/GameContext.jsx';
 import { sound } from '../sound.js';
+import { DELUXE_XP, deluxeKey } from '@shared/rules.js';
 import '../styles/album.css';
 import '../styles/game.css';
+import '../styles/workshop.css';
 
 // Compléter un album = posséder son vinyle. Réunir toutes ses cartes en holo = édition holo.
 // Les albums viennent du catalogue chargé (vue d'album de l'API) : on peut passer `album` quand on l'a déjà,
 // sinon `albumId` suffit et l'album est récupéré par lots.
 // Jeu de collection (P1-D, PLAN.md 6.2 et 6.6) : `pressing` = « Pressage n° 37 » (rang du joueur parmi ceux qui ont
 // complété l'album), écrit sur l'étiquette du disque et sous le vinyle, jamais par-dessus la pochette (PLAN.md 7.1) ;
-// `color` = couleur de vinyle choisie par le joueur (cosmétique « prune », « marbre », « transparent ») ; l'édition
-// holo, gagnée album par album, passe avant.
+// `color` = couleur de vinyle choisie par le joueur (cosmétique « prune », « marbre », « transparent ») ; les éditions
+// gagnées album par album passent avant.
+// Éditions (P2-D, PLAN.md 6.3) : `edition` = 'deluxe' (album complété, noté, et chacun de ses morceaux noté : un disque
+// doré, couleur AlbumMania, jamais la pochette), 'holo' (toutes les cartes en holo) ou 'black' ; `holo` (vinyles du
+// Studio) garde l'étiquette « Édition holo » sous une deluxe. Pour ses propres vinyles, l'édition se lit dans l'état du
+// joueur (ownVinylEdition : succès deluxe:<albumId>, holos possédées).
 
 /** Couleurs de vinyle connues (shared/cosmetics.js) ; une autre valeur garde le disque noir. */
 const DISC_COLORS = new Set(['prune', 'marbre', 'transparent']);
-const colorClass = (edition, color) => (edition !== 'holo' && DISC_COLORS.has(color) ? ` gm-disc gm-disc--${color}` : '');
+const colorClass = (edition, color) => (edition === 'black' && DISC_COLORS.has(color) ? ` gm-disc gm-disc--${color}` : '');
+const editionClass = (edition) => (edition === 'deluxe' ? ' ws-disc ws-disc--deluxe' : '');
 
 // Nombre de cartes holo possédées par album, calculé une fois par état de collection (Map trackId -> { std, holo }).
 // L'identifiant d'une carte d'album est « <albumId>:<numéro> » (ex. abbey-road:01, dz123456:07).
@@ -54,6 +61,29 @@ export function isHoloComplete(albumId, owned, tracks) {
   return (holoCounts(owned).get(albumId) || 0) >= total;
 }
 
+/**
+ * Édition de l'un de ses propres vinyles d'après l'état du joueur : { edition, holo }. `achievements` et `owned` :
+ * ceux de useGame() ; `tracks` : liste des cartes de l'album ou leur nombre (voir isHoloComplete).
+ */
+export function ownVinylEdition(albumId, { achievements, owned, tracks } = {}) {
+  const holo = isHoloComplete(albumId, owned, tracks);
+  const deluxe = !!achievements?.has?.(deluxeKey(albumId));
+  return { edition: deluxe ? 'deluxe' : holo ? 'holo' : 'black', holo };
+}
+
+/** Étiquettes d'édition d'un vinyle : « Édition deluxe », et « Édition holo » quand elle est réunie aussi. */
+export function EditionTags({ edition, holo }) {
+  const { t } = useI18n();
+  const isHolo = edition === 'holo' || (edition === 'deluxe' && holo);
+  if (edition !== 'deluxe' && !isHolo) return null;
+  return (
+    <>
+      {edition === 'deluxe' && <span className="edition-tag ws-edition ws-edition--deluxe">{t('workshop.deluxe.tag')}</span>}
+      {isHolo && <span className="edition-tag edition-tag--holo">{t('vinyl.holo')}</span>}
+    </>
+  );
+}
+
 /** Album passé en prop, ou lu dans le catalogue (undefined le temps du chargement). */
 function useVinylAlbum(albumId, album) {
   const fetched = useAlbum(album ? null : albumId);
@@ -69,7 +99,7 @@ export function Disc({ albumId, album: albumProp, edition = 'black', spinning = 
   // Le temps du chargement, étiquette neutre sans texte.
   const [, c1 = '#3a3145', c2 = '#f4eee3'] = album?.art?.palette || [];
   return (
-    <span className={`disc disc--${edition}${colorClass(edition, color)}${spinning ? ' is-spinning' : ''}`} style={{ '--lc': c1, '--lr': c2 }} aria-hidden="true">
+    <span className={`disc disc--${edition}${editionClass(edition)}${colorClass(edition, color)}${spinning ? ' is-spinning' : ''}`} style={{ '--lc': c1, '--lr': c2 }} aria-hidden="true">
       {/* Le corps tourne ; les reflets restent fixes, comme sur une vraie platine. */}
       <span className="disc__body">
         <span className="disc__label">
@@ -126,11 +156,37 @@ function Sides({ tracks, mine }) {
   );
 }
 
+/**
+ * Ce qui manque pour l'édition deluxe d'un de ses vinyles (GET /albums/:id/deluxe) : « Édition deluxe : note les
+ * 3 morceaux restants », avec un lien vers la page de l'album. Rien tant que ce n'est pas chargé.
+ */
+export function DeluxeNudge({ albumId, onClose, className = '' }) {
+  const { t } = useI18n();
+  const status = useApi(albumId ? `/albums/${encodeURIComponent(albumId)}/deluxe` : null, { keep: false }).data;
+  if (!status || status.albumId !== albumId || !status.completed) return null;
+  if (status.done) return <p className={`ws-deluxe-line ws-deluxe-line--done small ${className}`}><Icon name="disc" size={14} /> {t('workshop.deluxe.done')}</p>;
+  const left = status.tracksTotal - status.tracksRated;
+  const text = !status.albumRated && left > 0 ? t('workshop.deluxe.nudgeBoth', { n: left })
+    : !status.albumRated ? t('workshop.deluxe.nudgeAlbum') : t('workshop.deluxe.nudgeTracks', { n: left });
+  return (
+    <p className={`ws-deluxe-line small ${className}`} data-deluxe-nudge={albumId}>
+      <Icon name="disc" size={14} /> <span>{text}</span>
+      <span className="muted"> · +{status.xp ?? DELUXE_XP} XP</span>
+      {' '}
+      <Link to={`/album/${encodeURIComponent(albumId)}`} onClick={onClose} className="link-btn">{t('workshop.deluxe.open')}</Link>
+    </p>
+  );
+}
+
 /** Platine : le vinyle tourne, le bras se pose, et on entend les craquements. */
-export function TurntableModal({ vinyl, onClose }) {
+export function TurntableModal({ vinyl: shown, onClose }) {
   const { t, date } = useI18n();
-  const { ratings, ranks } = useGame();
+  const { ratings, ranks, achievements } = useGame();
   const [playing, setPlaying] = useState(false);
+  // Son propre vinyle : l'édition deluxe se lit dans l'état du joueur (la page d'album ne connaît que l'édition holo).
+  const vinyl = shown?.mine && achievements?.has?.(deluxeKey(shown.albumId)) && shown.edition !== 'deluxe'
+    ? { ...shown, edition: 'deluxe', holo: shown.holo ?? shown.edition === 'holo', color: null }
+    : shown;
   const albumId = vinyl?.albumId || null;
   // Album et cartes ne sont chargés qu'à l'ouverture de la platine (puis gardés pour la session).
   const detail = useAlbumDetail(albumId);
@@ -181,8 +237,12 @@ export function TurntableModal({ vinyl, onClose }) {
             </div>
           </div>
           <div className="turntable-view__info">
-            <span className={`edition-tag edition-tag--${vinyl.edition}`}>
-              {vinyl.edition === 'holo' ? t('vinyl.holo') : DISC_COLORS.has(vinyl.color) ? t('game.vinylColor', { name: t(`cosmetics.vinyl.${vinyl.color}`) }) : t('vinyl.black')}
+            <span className="ws-turntable__tags">
+              {vinyl.edition === 'deluxe' || vinyl.edition === 'holo' ? <EditionTags edition={vinyl.edition} holo={vinyl.holo} /> : (
+                <span className={`edition-tag edition-tag--${vinyl.edition}`}>
+                  {DISC_COLORS.has(vinyl.color) ? t('game.vinylColor', { name: t(`cosmetics.vinyl.${vinyl.color}`) }) : t('vinyl.black')}
+                </span>
+              )}
             </span>
             {album ? (
               <>
@@ -199,7 +259,8 @@ export function TurntableModal({ vinyl, onClose }) {
             {vinyl.mine && ratings?.get(`album:${albumId}`) != null && (
               <div className="turntable-view__rating"><span className="small muted">{t('rating.yours')}</span> <RatingValue value={ratings.get(`album:${albumId}`)} /></div>
             )}
-            {vinyl.mine && vinyl.edition !== 'holo' && <p className="small muted">{t('vinyl.holoHint')}</p>}
+            {vinyl.mine && vinyl.edition !== 'deluxe' && <DeluxeNudge albumId={albumId} onClose={onClose} />}
+            {vinyl.mine && vinyl.edition === 'black' && <p className="small muted">{t('vinyl.holoHint')}</p>}
             {loaded ? (
               <Sides tracks={loaded.tracks} mine={vinyl.mine} />
             ) : detail.error ? (
@@ -229,7 +290,7 @@ function ShelfVinyl({ vinyl, onOpen }) {
         <span className="vinyl-item__title">{album?.title || '…'}</span>
         <span className="vinyl-item__artist">{album?.artist || ''}</span>
         {vinyl.rank ? <span className="gm-pressing gm-pressing--shelf mono">{t('game.moment.pressing', { n: vinyl.rank })}</span> : null}
-        {vinyl.edition === 'holo' && <span className="edition-tag edition-tag--holo">{t('vinyl.holo')}</span>}
+        <EditionTags edition={vinyl.edition} holo={vinyl.holo} />
       </figcaption>
     </figure>
   );
@@ -264,14 +325,21 @@ function ShelfUpcoming({ albumId, progress }) {
  */
 export function VinylShelf({ vinyls: list, upcoming = [], title, emptyText, mine, count, color }) {
   const { t } = useI18n();
-  const { user, ranks } = useGame();
+  const { user, ranks, achievements } = useGame();
   const [open, setOpen] = useState(null);
   const shelfColor = color !== undefined ? color : mine ? user?.cosmetics?.vinyl ?? null : null;
-  const vinyls = list.map((v) => ({
-    ...v,
-    color: v.color ?? shelfColor,
-    rank: v.rank ?? (mine ? ranks?.get(`album:${v.albumId}`) ?? null : null),
-  }));
+  const vinyls = list.map((v) => {
+    // Sa propre étagère : l'édition deluxe se lit aussi dans l'état du joueur (à jour dès qu'elle est gagnée).
+    const deluxe = v.edition === 'deluxe' || (mine && !!achievements?.has?.(deluxeKey(v.albumId)));
+    const edition = deluxe ? 'deluxe' : v.edition;
+    return {
+      ...v,
+      edition,
+      holo: v.holo ?? v.edition === 'holo',
+      color: edition === 'black' ? v.color ?? shelfColor : null,
+      rank: v.rank ?? (mine ? ranks?.get(`album:${v.albumId}`) ?? null : null),
+    };
+  });
   return (
     <section className="vinyl-shelf">
       <header className="vinyl-shelf__head">

@@ -1,0 +1,548 @@
+/* @prefix ws- */
+/* L'atelier — chantier P2-D (PLAN.md 6.3, 6.6, 6.10, 6.11) : édition deluxe des vinyles, cadres des coffrets et des
+   événements, fenêtres Vernir, Comptoir et booster thématique. Identité actuelle seulement (DESIGN-OVERRIDE.md) :
+   panneaux, chips, boutons pilules et jetons d'app.css, aucune couleur en dur. Chargée avec la fiche de carte
+   (CardModal, présente sur tout le site) : les cadres d'avatar et les disques deluxe s'affichent partout. */
+
+/* ---------- vinyle deluxe : un disque doré (couleur AlbumMania, jamais la pochette) ---------- */
+
+.ws-disc--deluxe .disc__body {
+  background:
+    repeating-radial-gradient(circle at 50% 50%, transparent 0 0.9cqi, color-mix(in oklab, var(--gold-cream) 18%, transparent) 0.9cqi 1.25cqi),
+    conic-gradient(from 30deg,
+      color-mix(in oklab, var(--gold) 70%, var(--ink)),
+      color-mix(in oklab, var(--gold-light) 80%, var(--ink)),
+      color-mix(in oklab, var(--gold-deep) 70%, var(--ink)),
+      color-mix(in oklab, var(--gold) 75%, var(--ink)),
+      color-mix(in oklab, var(--gold-pale) 70%, var(--ink)),
+      color-mix(in oklab, var(--gold) 70%, var(--ink)));
+}
+
+.ws-disc--deluxe {
+  box-shadow: 0 8px 20px color-mix(in oklab, var(--black) 55%, transparent), 0 0 18px -6px color-mix(in oklab, var(--gold) 70%, transparent);
+}
+
+.edition-tag.ws-edition--deluxe {
+  background: var(--grad-gold);
+  color: var(--ink);
+}
+
+.ws-turntable__tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--s-6);
+}
+
+.ws-deluxe-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-4) var(--s-6);
+  margin: 0;
+  color: var(--gold);
+}
+
+.ws-deluxe-line .muted,
+.ws-deluxe-line .link-btn {
+  color: inherit;
+}
+
+.ws-deluxe-line .muted {
+  opacity: 0.75;
+}
+
+.ws-deluxe-line--done {
+  color: var(--gold-title);
+}
+
+/* ---------- cadres des coffrets et des événements (anneau de l'avatar, jamais la pochette) ---------- */
+
+/* Coffret : un double anneau, ivoire puis or, comme le ruban d'un coffret. */
+.avatar.st-frame.ws-frame--set {
+  --st-frame-c: var(--gold);
+  box-shadow:
+    0 0 0 var(--st-gap) var(--stage),
+    0 0 0 calc(var(--st-gap) + var(--st-ring) * 0.55) var(--paper-dim),
+    0 0 0 calc(var(--st-gap) + var(--st-ring)) var(--gold-deep),
+    0 0 0 calc(var(--st-gap) + var(--st-ring) + 1px) var(--gold);
+}
+
+/* French Touch : néon rose et turquoise de la piste de danse. */
+.avatar.st-frame.ws-frame--french-touch {
+  --st-frame-c: var(--like);
+  box-shadow:
+    0 0 0 var(--st-gap) var(--stage),
+    0 0 0 calc(var(--st-gap) + var(--st-ring)) var(--like),
+    0 0 calc(var(--st-ring) * 3) calc(var(--st-ring) * 0.6) color-mix(in oklab, var(--cue) 60%, transparent);
+}
+
+/* Légendes du rock : ampli orange sur un liseré sombre. */
+.avatar.st-frame.ws-frame--rock-legends {
+  --st-frame-c: var(--r-ultra);
+  box-shadow:
+    0 0 0 var(--st-gap) var(--stage),
+    0 0 0 calc(var(--st-gap) + var(--st-ring)) var(--r-ultra),
+    0 0 0 calc(var(--st-gap) + var(--st-ring) + 1.5px) var(--ink),
+    0 0 0 calc(var(--st-gap) + var(--st-ring) + 2.5px) color-mix(in oklab, var(--r-ultra) 55%, var(--danger));
+}
+
+/* Vitrine du Studio : le cadre choisi décore l'extérieur des cartes, jamais leur cadre de rareté. */
+.ws-showcase-frame--set .showcase__slot,
+.ws-showcase-frame--french-touch .showcase__slot,
+.ws-showcase-frame--rock-legends .showcase__slot {
+  border-radius: var(--rad-md);
+  outline: 2px solid var(--ws-frame-c, var(--gold));
+  outline-offset: 4px;
+}
+
+.ws-showcase-frame--french-touch .showcase__slot {
+  --ws-frame-c: var(--like);
+  box-shadow: 0 0 18px -4px color-mix(in oklab, var(--cue) 70%, transparent);
+}
+
+.ws-showcase-frame--rock-legends .showcase__slot {
+  --ws-frame-c: var(--r-ultra);
+}
+
+/* ---------- fenêtres de l'atelier ---------- */
+
+.ws-sheet__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-8) var(--s-12);
+  margin-top: var(--s-16);
+  padding-top: var(--s-14);
+  border-top: 1px solid var(--line-soft);
+}
+
+.ws-sheet__foot .pill {
+  margin-right: auto;
+}
+
+/* Vernir */
+
+.ws-vernir__body {
+  display: grid;
+  grid-template-columns: minmax(120px, 170px) minmax(0, 1fr);
+  gap: var(--s-16) var(--s-20);
+  align-items: start;
+}
+
+.ws-vernir__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-8);
+  margin: 0;
+  text-align: center;
+}
+
+.ws-vernir__card .card {
+  width: 100%;
+}
+
+.ws-vernir__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+  min-width: 0;
+}
+
+.ws-vernir__intro {
+  margin: 0;
+}
+
+.ws-pay {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.ws-pay__legend {
+  margin-bottom: var(--s-4);
+  padding: 0;
+  font-weight: var(--fw-semi);
+}
+
+.ws-pay__opt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  width: 100%;
+  padding: var(--s-10) var(--s-14);
+  border: 1px solid var(--line);
+  border-radius: var(--rad-md);
+  background: var(--stage-2);
+  color: var(--paper);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur-hover) var(--ease-out), background var(--dur-hover) var(--ease-out);
+}
+
+.ws-pay__opt:hover {
+  border-color: var(--haze-2);
+}
+
+.ws-pay__opt.is-on {
+  border-color: var(--cue);
+  background: color-mix(in oklab, var(--cue) 10%, var(--stage-2));
+}
+
+.ws-pay__opt:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+
+.ws-pay__title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-6);
+  font-weight: var(--fw-semi);
+}
+
+.ws-pay__rule {
+  margin: var(--s-2) 0 0;
+}
+
+@media (max-width: 520px) {
+  .ws-vernir__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ws-vernir__card {
+    max-width: 150px;
+    margin: 0 auto;
+  }
+}
+
+/* Comptoir */
+
+.ws-comptoir__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+  min-width: 0;
+}
+
+.ws-comptoir__intro,
+.ws-comptoir__rule {
+  margin: 0;
+  max-width: 72ch;
+}
+
+.ws-comptoir__spares {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+}
+
+.ws-spares {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip.ws-spares__chip {
+  gap: var(--s-6);
+  border: 1px solid transparent;
+}
+
+.chip.ws-spares__chip--ready {
+  border-color: color-mix(in oklab, var(--rc) 55%, transparent);
+  color: var(--paper);
+}
+
+.ws-comptoir__albums {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-14);
+}
+
+.ws-comptoir__wait {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+}
+
+.ws-album {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-10);
+  padding: var(--s-12) var(--s-14);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--rad-md);
+  background: var(--stage-2);
+}
+
+.ws-album__head {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-12);
+}
+
+.ws-album__cover {
+  display: block;
+  width: 48px;
+  height: 48px;
+  overflow: hidden;
+  border-radius: var(--rad-xs);
+  box-shadow: var(--shadow-cover-sm);
+}
+
+.ws-album__cover-wait {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--grad-skeleton);
+}
+
+.ws-album__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ws-album__text > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-album__title {
+  font: var(--fw-title) var(--fs-15) / var(--lh-snug) var(--font-display);
+  font-stretch: var(--fst-title);
+  color: var(--paper);
+}
+
+.ws-album__progress {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s-4);
+  min-width: 84px;
+}
+
+.ws-album__progress .progress {
+  width: 84px;
+}
+
+.ws-missing {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: var(--s-12);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ws-missing__item {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--s-8);
+  min-width: 0;
+}
+
+.ws-missing__item .btn {
+  justify-content: center;
+}
+
+.ws-need {
+  text-align: center;
+}
+
+.ws-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-6);
+}
+
+.ws-confirm .btn {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
+@media (max-width: 640px) {
+  .ws-missing {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ws-album__head {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .ws-album__cover {
+    width: 40px;
+    height: 40px;
+  }
+
+  .ws-album__progress {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .ws-album__progress .progress {
+    width: auto;
+    flex: 1;
+    margin-left: var(--s-10);
+  }
+}
+
+/* Offre du Comptoir dans la fiche d'une carte manquante */
+
+.ws-offer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-8);
+  padding: var(--s-12) var(--s-14);
+  border: 1px dashed var(--line);
+  border-radius: var(--rad-md);
+}
+
+.ws-offer p {
+  margin: 0;
+}
+
+.ws-offer__title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-6);
+  margin: 0;
+  font-size: var(--fs-15);
+}
+
+.ws-offer__wish {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-8) var(--s-12);
+}
+
+/* Booster thématique : ligne d'offre du panneau « Boosters spéciaux » et fenêtre de choix */
+
+.ws-offer-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-8) var(--s-14);
+  margin-top: var(--s-4);
+  padding-top: var(--s-12);
+  border-top: 1px solid var(--line-soft);
+}
+
+.ws-offer-row--alone {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.ws-offer-row__pack .gm-pack .pack {
+  --pw: 52px;
+}
+
+.ws-offer-row__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.ws-special--shop {
+  gap: var(--s-8);
+}
+
+@media (max-width: 640px) {
+  .ws-offer-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .ws-offer-row .btn {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
+.ws-themed__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-14);
+  min-width: 0;
+}
+
+.ws-themed__body > p {
+  margin: 0;
+}
+
+.ws-themed__group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-8) var(--s-10);
+}
+
+.ws-themed__group .eyebrow {
+  flex-basis: 100%;
+}
+
+.ws-themed__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-6);
+}
+
+.ws-themed__pick {
+  display: flex;
+  align-items: center;
+  gap: var(--s-16);
+  padding: var(--s-12) var(--s-14);
+  border-radius: var(--rad-md);
+  background: var(--stage-2);
+  border: 1px solid var(--line-soft);
+}
+
+.ws-themed__pick-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.ws-themed__odds {
+  max-height: 320px;
+  overflow: auto;
+}
+
+/* Règles de l'atelier (guide des raretés) */
+
+.ws-rules {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+}
+
+.ws-rules h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-6);
+  margin: 0;
+}
+
+.ws-rules p {
+  margin: 0;
+}

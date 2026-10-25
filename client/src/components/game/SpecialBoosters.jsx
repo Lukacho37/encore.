@@ -3,21 +3,25 @@
 // Inventaire user_boosters (GET /me/boosters) : boosters thématiques (genre, décennie, « À ton goût », événement) et
 // boosters d'album (offert ou « au choix »), gagnés en jouant (paliers de niveau, quêtes de la semaine, accueil,
 // événements). Ouverture avec l'écran d'ouverture inchangé (useBoosterFlow().openSpecial) ; « Voir les chances »
-// publie les chances de chacun. Rien n'est affiché tant que l'inventaire est vide.
+// publie les chances de chacun.
+// Achat (P2-D, PLAN.md 6.10) : un booster thématique (un genre, une décennie ou « À ton goût ») coûte
+// THEMED_BOOSTER_PRICE royalties, jamais d'argent réel (POST /me/boosters/buy) ; mêmes chances par carte qu'un
+// booster normal. Inventaire vide : le panneau se réduit à cette offre.
 // Monte aussi le message de niveau (LevelUpToast) : l'accueil est la page où l'on ouvre les boosters.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { PackArt } from '../PackOpening.jsx';
-import { Icon, Modal, Spinner, useToast } from '../ui.jsx';
+import { Icon, Modal, Royalties, RoyaltyIcon, Spinner, useToast } from '../ui.jsx';
 import { SearchCombobox } from '../search/SearchCombobox.jsx';
 import { onApiResponse, post } from '../../api.js';
 import { useI18n } from '../../i18n/index.jsx';
 import { useGame } from '../../state/GameContext.jsx';
 import { useApi, useAlbum } from '../../state/catalog.js';
 import { useBoosterFlow } from '../../state/boosterFlow.js';
-import { parseBoosterTheme } from '@shared/rules.js';
+import { THEMED_BOOSTER_PRICE, THEMED_DECADES, THEME_GENRES, parseBoosterTheme } from '@shared/rules.js';
 import { BoosterOdds, useThemeName } from './odds.jsx';
 import { LevelUpToast } from './LevelUpToast.jsx';
 import '../../styles/game.css';
+import '../../styles/workshop.css';
 
 /** Origine d'un booster : « Palier du niveau 10 », « Quête de la semaine »… */
 function useSourceName() {
@@ -93,6 +97,93 @@ function ChooseAlbum({ booster, onClose, onChosen }) {
   );
 }
 
+/** Choix et achat d'un booster thématique (fenêtre) : thème, aperçu, chances, prix en royalties. */
+function ThemedShop({ onClose, onBought }) {
+  const { t, error, num } = useI18n();
+  const toast = useToast();
+  const { user } = useGame();
+  const themeName = useThemeName();
+  const [theme, setTheme] = useState('taste');
+  const [showOdds, setShowOdds] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const royalties = user?.royalties ?? 0;
+  const short = Math.max(0, THEMED_BOOSTER_PRICE - royalties);
+  const buy = async () => {
+    if (busy || short) return;
+    setBusy(true);
+    try {
+      const res = await post('/me/boosters/buy', { theme });
+      toast(t('workshop.themed.bought', { name: themeName(res.booster.theme) }), 'success');
+      onBought?.(res.booster);
+      onClose();
+    } catch (err) {
+      toast(error(err.code), 'error');
+      setBusy(false);
+    }
+  };
+  const chip = (value, label) => (
+    <button key={value} type="button" className={`chip chip--toggle${theme === value ? ' is-on' : ''}`} aria-pressed={theme === value}
+      onClick={() => setTheme(value)} data-theme-pick={value}>
+      {label}
+    </button>
+  );
+  return (
+    <Modal open onClose={onClose} title={t('workshop.themed.title')} className="ws-themed">
+      <div className="ws-themed__body" data-sheet="themed">
+        <p className="muted">{t('workshop.themed.intro')}</p>
+        <div className="ws-themed__group" role="group" aria-label={t('workshop.themed.taste')}>
+          {chip('taste', t('workshop.themed.taste'))}
+          <span className="small muted">{t('workshop.themed.tasteHint')}</span>
+        </div>
+        <div className="ws-themed__group" role="group" aria-labelledby="ws-themed-genres">
+          <span className="eyebrow" id="ws-themed-genres">{t('workshop.themed.genres')}</span>
+          <div className="ws-themed__chips">{THEME_GENRES.map((g) => chip(`genre:${g}`, t(`genre.${g}`)))}</div>
+        </div>
+        <div className="ws-themed__group" role="group" aria-labelledby="ws-themed-decades">
+          <span className="eyebrow" id="ws-themed-decades">{t('workshop.themed.decades')}</span>
+          <div className="ws-themed__chips">{THEMED_DECADES.map((d) => chip(`decade:${d}`, t('decade', { d })))}</div>
+        </div>
+        <div className="ws-themed__pick">
+          <MiniBooster theme={theme} />
+          <div className="ws-themed__pick-text">
+            <strong className="gm-special__name">{themeName(theme)}</strong>
+            <span className="small muted">{t('game.special.kind.theme')}</span>
+            <button type="button" className="link-btn small" onClick={() => setShowOdds((v) => !v)} aria-expanded={showOdds}>
+              <Icon name="star" size={14} /> {t('workshop.themed.odds')}
+            </button>
+          </div>
+        </div>
+        {showOdds && <div className="ws-themed__odds"><BoosterOdds theme={theme} pity={user?.pity ?? null} /></div>}
+        <p className="small muted">{t('workshop.themed.note')}</p>
+      </div>
+      <footer className="ws-sheet__foot">
+        <Royalties value={royalties} className="pill" />
+        {short > 0 && <span className="small muted">{t('workshop.themed.short', { n: num(short) })}</span>}
+        <button type="button" className="btn btn--primary" onClick={buy} disabled={busy || short > 0} data-buy-themed>
+          {busy ? <Spinner /> : <RoyaltyIcon size={16} />} {t('workshop.themed.buy', { price: num(THEMED_BOOSTER_PRICE) })}
+        </button>
+      </footer>
+    </Modal>
+  );
+}
+
+/** Ligne d'achat du panneau : « Booster thématique · 180 royalties » et « Choisir un thème ». */
+function ThemedOffer({ onOpen, compact = false }) {
+  const { t, num } = useI18n();
+  return (
+    <div className={`ws-offer-row${compact ? ' ws-offer-row--alone' : ''}`} data-themed-offer>
+      <span className="ws-offer-row__pack" aria-hidden="true"><MiniBooster theme="taste" /></span>
+      <div className="ws-offer-row__text">
+        <strong>{t('workshop.themed.title')}</strong>
+        <span className="small muted">{compact ? t('workshop.themed.empty', { price: num(THEMED_BOOSTER_PRICE) }) : t('workshop.themed.intro')}</span>
+      </div>
+      <button type="button" className="btn btn--ghost btn--sm" onClick={onOpen} data-open-themed>
+        <RoyaltyIcon size={14} /> <span className="mono">{num(THEMED_BOOSTER_PRICE)}</span> · {t('workshop.themed.cta')}
+      </button>
+    </div>
+  );
+}
+
 export function SpecialBoosters() {
   const { t } = useI18n();
   const toast = useToast();
@@ -103,6 +194,8 @@ export function SpecialBoosters() {
   const sourceName = useSourceName();
   const [oddsFor, setOddsFor] = useState(undefined);
   const [choosing, setChoosing] = useState(null);
+  const [shopping, setShopping] = useState(false);
+  const shop = shopping && <ThemedShop onClose={() => setShopping(false)} onBought={() => reload()} />;
 
   // Un booster spécial gagné ailleurs (palier des dizaines en ouvrant un booster du héros, quête, badge) : la réponse
   // le signale (`levelUp.themed`, `boosters`), l'inventaire est rechargé.
@@ -149,7 +242,22 @@ export function SpecialBoosters() {
       </>
     );
   }
-  if (!total) return <>{leveltoast}{flow.overlay}</>;
+  if (!total) {
+    // Inventaire vide : seulement l'offre d'achat, en petit (l'accueil garde son héros et sa rangée en tête).
+    return (
+      <>
+        {leveltoast}
+        {data && (
+          <section className="panel gm-special ws-special--shop" aria-labelledby="gm-special-title" id="boosters-speciaux">
+            <h2 className="panel__title" id="gm-special-title"><Icon name="pack" /> {t('game.special.title')}</h2>
+            <ThemedOffer onOpen={() => setShopping(true)} compact />
+          </section>
+        )}
+        {shop}
+        {flow.overlay}
+      </>
+    );
+  }
 
   return (
     <>
@@ -192,7 +300,9 @@ export function SpecialBoosters() {
             );
           })}
         </ul>
+        <ThemedOffer onOpen={() => setShopping(true)} />
       </section>
+      {shop}
       <Modal open={oddsFor !== undefined} onClose={() => setOddsFor(undefined)} className="modal--wide gm-odds-modal"
         title={oddsFor ? t('game.special.oddsTitle', { name: themeName(oddsFor) }) : t('game.special.oddsStandard')}>
         {oddsFor !== undefined && <BoosterOdds theme={oddsFor} pity={user?.pity ?? null} />}

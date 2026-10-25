@@ -5,15 +5,21 @@ import { Modal, Icon, Progress, useToast } from './ui.jsx';
 import { RatingValue, ReviewEditor, itemPath, useItemRatings } from './Rating.jsx';
 import ListenPanel from './ListenPanel.jsx';
 import { useAlbum, useTrack } from '../state/catalog.js';
-import { RARITY, SHOWCASE_SLOTS } from '@shared/rules.js';
+import { COMPTOIR_DUPLICATES, RARITY, SHOWCASE_SLOTS } from '@shared/rules.js';
 import { useI18n } from '../i18n/index.jsx';
 import { useGame } from '../state/GameContext.jsx';
 import { post } from '../api.js';
+import { ComptoirButton, ComptoirOffer, DeluxeWatcher, VernirButton } from './game/VernirButton.jsx';
 import '../styles/album.css';
 import '../styles/track.css';
+// Feuille de l'atelier (P2-D) : chargée avec la fiche, présente sur tout le site (cadres d'avatar des coffrets et des
+// événements, éditions des vinyles).
+import '../styles/workshop.css';
 
 // Fiche d'une carte (modale) : la carte, ses faits, ta note, l'écoute (ListenPanel) et « Voir la page du morceau ».
 // Un seul titre (celui du morceau, dans la fiche) : l'en-tête de la modale dit seulement « Fiche de la carte ».
+// Atelier (P2-D, PLAN.md 6.11) : « Vernir » une carte standard possédée ; pour une carte manquante d'un album
+// recherché, l'échange proposé au Comptoir. Le fournisseur monte aussi DeluxeWatcher (édition deluxe gagnée).
 
 const CardModalContext = createContext(() => {});
 
@@ -52,7 +58,7 @@ function CardDetailSkeleton() {
 
 function CardDetail({ trackId, onClose }) {
   const { t, date, error } = useI18n();
-  const { owned, user, applyState } = useGame();
+  const { owned, user, applyState, duplicates } = useGame();
   const toast = useToast();
   const track = useTrack(trackId);
   // L'album complète la fiche (son titre arrive déjà avec la carte, on l'affiche tout de suite).
@@ -149,6 +155,7 @@ function CardDetail({ trackId, onClose }) {
           )}
         </dl>
         <TrackRating trackId={trackId} />
+        {!mine && <ComptoirOffer trackId={trackId} />}
         {/* Carte pas encore obtenue : elle montre le visuel généré, donc pas de crédit de pochette. */}
         <ListenPanel kind="track" item={mine ? track : { ...track, art: null }} />
         <div className="trk-modal__actions">
@@ -160,7 +167,10 @@ function CardDetail({ trackId, onClose }) {
               {pinned ? t('card.unpin') : t('card.pin')}
             </button>
           )}
+          {mine && <VernirButton trackId={trackId} />}
         </div>
+        {/* Assez de doublons pour un échange : le Comptoir est à un clic. */}
+        {mine && duplicates >= COMPTOIR_DUPLICATES && <ComptoirButton />}
       </div>
     </div>
   );
@@ -173,6 +183,7 @@ export function CardModalProvider({ children }) {
   return (
     <CardModalContext.Provider value={setTrackId}>
       {children}
+      <DeluxeWatcher />
       <Modal open={!!trackId} onClose={close} className="modal--card" title={trackId ? t('track.cardTitle') : ''}>
         {trackId && <CardDetail key={trackId} trackId={trackId} onClose={close} />}
       </Modal>

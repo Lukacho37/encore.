@@ -11,7 +11,13 @@
 //   blocks         [{ id, on }] : les 12 blocs de la vue d'ensemble, dans l'ordre choisi (ceux qui manquent à la fin)
 //   vinyls         les 24 vinyles les plus récents (du plus ancien au plus récent, comme l'étagère) ; vinylCount : le
 //                  total ; la suite par GET /api/users/:username/vinyls?cursor=
-//   featuredVinyl  vinyle mis en avant { albumId, at, rank, edition, color } ou null (le site prend alors le plus récent)
+//   featuredVinyl  vinyle mis en avant { albumId, at, rank, edition, holo, color } ou null (le site prend alors le plus
+//                  récent)
+//   Éditions des vinyles (P2-D, PLAN.md 6.3) : `edition` = 'deluxe' (album, sa note et celles de chaque morceau :
+//   succès deluxe:<albumId>), sinon 'holo' (toutes les cartes de l'album en holo), sinon 'black' ; `holo` dit en plus
+//   si l'édition holo est réunie (un vinyle deluxe la garde affichée). La couleur de vinyle choisie (`color`) ne
+//   s'applique qu'aux disques noirs. Le Studio de soi déclenche une fois le rattrapage des éditions deluxe
+//   (deps.workshop.backfillDeluxe).
 //   favorites      { artists, tracks, genres } (5 au plus chacun) ; featuredLists : ListSummary épinglés (3 au plus) ;
 //   recent         derniers morceaux obtenus [{ trackId, variant, at }] (12 au plus)
 // Les références du catalogue sont reconstruites une fois (refs) pour ce qui est renvoyé : la réponse reste bornée,
@@ -134,15 +140,34 @@ export function init(deps) {
     return out;
   }
 
-  /** Vinyle d'un album pressé par ce joueur : { albumId, at, rank, edition, color } ou null. */
+  /** Albums de ces vinyles dont le joueur a l'édition deluxe (module workshop, P2-D ; aucun sans lui). */
+  const deluxeOf = (userId, albumIds) => deps.workshop?.deluxeAmong?.(userId, albumIds) ?? new Set();
+
+  /**
+   * Édition d'un vinyle : 'deluxe' > 'holo' > 'black' ; `holo` garde l'édition holo visible sous une deluxe ; la
+   * couleur choisie ne teint que les disques noirs.
+   */
+  function withEdition(vinyl, { holo, deluxe, color }) {
+    const edition = deluxe ? 'deluxe' : holo ? 'holo' : 'black';
+    return { ...vinyl, edition, holo: !!holo, color: edition === 'black' ? color || null : null };
+  }
+
+  /** Éditions de vinyles déjà construits (holo d'après `edition` : profil gardé 30 s par services). */
+  function editions(userId, vinyls, color) {
+    const deluxe = deluxeOf(userId, vinyls.map((v) => v.albumId));
+    return vinyls.map((v) => withEdition(v, { holo: v.holo ?? v.edition === 'holo', deluxe: deluxe.has(v.albumId), color }));
+  }
+
+  /** Vinyle d'un album pressé par ce joueur : { albumId, at, rank, edition, holo, color } ou null. */
   function vinylOf(userId, albumId, vinylColor) {
     if (!albumId) return null;
     const r = q(`SELECT a.created_at, a.rank, p.holo, p.total FROM achievements a
       LEFT JOIN user_album_progress p ON p.user_id = a.user_id AND p.album_id = ?
       WHERE a.user_id = ? AND a.key = ?`).get(albumId, userId, `album:${albumId}`);
     if (!r || !catalog.album(albumId)) return null;
-    const edition = r.total && r.holo >= r.total ? 'holo' : 'black';
-    return { albumId, at: r.created_at, rank: r.rank ?? null, edition, color: edition === 'black' ? vinylColor || null : null };
+    return withEdition({ albumId, at: r.created_at, rank: r.rank ?? null }, {
+      holo: !!(r.total && r.holo >= r.total), deluxe: deluxeOf(userId, [albumId]).has(albumId), color: vinylColor,
+    });
   }
 
   /** Derniers morceaux obtenus (index cards_user_first) : un par morceau, la version holo si elle existe. */
@@ -167,6 +192,8 @@ export function init(deps) {
   /** GET /api/users/:username : le Studio (voir l'en-tête du fichier). */
   function studio(viewerId, username) {
     const target = targetUser(viewerId, username);
+    // Son propre Studio : rattrapage des éditions deluxe, une fois (avant le profil gardé en cache).
+    if (target.id === Number(viewerId)) deps.workshop?.backfillDeluxe?.(target.id);
     // Partie de P0 (statistiques, vitrine, vinyles, maîtrises, prochains vinyles, relation), gardée 30 s par services.
     const base = services.publicProfile(viewerId, target.username);
     const summary = services.userSummaries([target.id], viewerId, { hidden: new Set() }).get(target.id);
@@ -182,7 +209,7 @@ export function init(deps) {
       visibility: visibilityOf(target),
     };
     const allVinyls = full ? base.vinyls || [] : [];
-    const vinyls = allVinyls.slice(-VINYLS_SHOWN);
+    const vinyls = editions(target.id, allVinyls.slice(-VINYLS_SHOWN), cosmetics.vinyl);
     const vinylCount = full ? Math.max(allVinyls.length, base.stats?.albumsCompleted ?? 0) : 0;
     const featured = full ? vinylOf(target.id, config.featuredVinyl, cosmetics.vinyl) : null;
     const favorites = full ? favoritesOf(target.id) : { artists: [], tracks: [], genres: [] };
@@ -239,6 +266,7 @@ export function init(deps) {
   function vinylPage(viewerId, username, query = {}) {
     const target = targetUser(viewerId, username);
     if (accessOf(viewerId, target) !== 'full') return { items: [], nextCursor: null, restricted: true, catalog: deps.refs() };
+    if (target.id === Number(viewerId)) deps.workshop?.backfillDeluxe?.(target.id);
     const { cursor, limit } = paging.pageOf(query, { def: VINYLS_PAGE, max: 48 });
     if (cursor && (!Number.isFinite(cursor[0]) || typeof cursor[1] !== 'string')) throw new HttpError(400, 'invalid_input', { field: 'cursor' });
     const color = deps.collection?.cosmeticsOf ? deps.collection.cosmeticsOf(target.id)?.vinyl : null;
@@ -249,10 +277,10 @@ export function init(deps) {
         AND EXISTS (SELECT 1 FROM cat_albums al WHERE al.id = substr(a.key, 7))
       ORDER BY a.created_at DESC, a.key DESC LIMIT ?`).all(target.id, ...(cursor || []), limit + 1);
     const page = paging.keysetPage(rows, limit, (r) => [r.created_at, r.key]);
-    const items = page.items.map((r) => {
-      const edition = r.total && r.holo >= r.total ? 'holo' : 'black';
-      return { albumId: r.key.slice(6), at: r.created_at, rank: r.rank ?? null, edition, color: edition === 'black' ? color || null : null };
-    });
+    const deluxe = deluxeOf(target.id, page.items.map((r) => r.key.slice(6)));
+    const items = page.items.map((r) => withEdition({ albumId: r.key.slice(6), at: r.created_at, rank: r.rank ?? null }, {
+      holo: !!(r.total && r.holo >= r.total), deluxe: deluxe.has(r.key.slice(6)), color,
+    }));
     return { items, nextCursor: page.nextCursor, catalog: deps.refs({ albumIds: items.map((v) => v.albumId) }) };
   }
 

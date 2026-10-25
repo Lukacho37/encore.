@@ -164,7 +164,10 @@ async function enrichFlow(page, p, { phone = false } = {}) {
   if (!/En pause|Passe terminée/i.test(await phaseText(page))) fail(`[${p}] état inattendu : ${await phaseText(page)}`);
   await settledShot(page, `${p}-10-enrich-paused`, { fullPage: true });
 
-  // Reprise : la passe avance (Daft Punk puis Air, à 1,1 s par requête).
+  // Reprise : la passe avance (Daft Punk puis Air, à 1,1 s par requête). Compteur de requêtes du serveur relevé
+  // avant et après, pour vérifier son rythme (une requête MusicBrainz par 1,1 s au plus).
+  const before = (await apiCall(page, 'GET', '/admin/enrich')).body;
+  const t0 = Date.now();
   const resume = page.locator('.en-panel').first().getByRole('button', { name: /^(Reprendre|Lancer)$/ });
   if (await resume.isEnabled()) {
     await resume.click();
@@ -182,14 +185,16 @@ async function enrichFlow(page, p, { phone = false } = {}) {
     await page.waitForSelector('.toast');
     await until(async () => /En pause/i.test(await phaseText(page)), { timeout: 30_000, every: 1000, label: 'pause' });
   }
-  // Politesse : User-Agent avec contact sur chaque requête, au moins une seconde entre deux requêtes MusicBrainz.
+  // Politesse : User-Agent avec contact sur chaque requête ; pas plus d'une requête MusicBrainz par 1,1 s d'après le
+  // compteur du serveur (les heures d'arrivée relevées dans ce processus, qui pilote aussi le navigateur, sont trop
+  // bruitées pour un écart requête par requête : celui-ci est vérifié côté client par server/test/enrich.test.js).
   if (!log.length || log.some((r) => !String(r.ua).includes(CONTACT))) fail(`[${p}] User-Agent manquant`);
-  // Heures d'arrivée lues dans ce processus (qui pilote aussi le navigateur) : bruitées de quelques centaines de ms.
-  // Le rythme moyen doit rester au-dessus de 1,1 s par requête ; l'écart exact est vérifié côté client par
-  // server/test/enrich.test.js.
+  const after = (await apiCall(page, 'GET', '/admin/enrich')).body;
+  const sent = (after.requests?.musicbrainz || 0) - (before.requests?.musicbrainz || 0);
+  const allowed = Math.floor((Date.now() - t0) / 1100) + 1;
+  if (sent > allowed) fail(`[${p}] ${sent} requêtes MusicBrainz en ${Date.now() - t0} ms (au plus ${allowed})`);
   const mb = log.filter((r) => r.kind === 'mb').map((r) => r.t);
   if (mb.length > 3 && (mb[mb.length - 1] - mb[0]) / (mb.length - 1) < 1050) fail(`[${p}] rythme moyen MusicBrainz trop rapide`);
-  for (let i = 1; i < mb.length; i++) if (mb[i] - mb[i - 1] < 400) fail(`[${p}] deux requêtes MusicBrainz à ${mb[i] - mb[i - 1]} ms`);
 
   // Albums proches.
   await page.getByRole('button', { name: 'Recalculer maintenant' }).click();

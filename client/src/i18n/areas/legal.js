@@ -156,7 +156,7 @@ export default {
                 'L’hébergeur du site (voir les mentions légales) et le prestataire d’envoi des e-mails.',
                 'Pochettes : les images sont chargées par ton navigateur depuis les serveurs de Deezer, qui reçoivent alors ton adresse IP.',
                 'Lecteur intégré : le lecteur Deezer n’est chargé qu’à ta demande ; il peut alors déposer ses propres cookies.',
-                'Polices de caractères : chargées depuis Google Fonts (ton adresse IP est transmise à Google) jusqu’à leur hébergement sur nos serveurs.',
+                'Polices de caractères : hébergées sur nos serveurs, sans aucune requête vers un service tiers.',
               ],
             },
             {
@@ -224,7 +224,7 @@ export default {
               h: 'Services tiers',
               p: [
                 'Le lecteur Deezer n’est chargé que lorsque tu cliques sur « Charger le lecteur » (ou si tu as choisi « Toujours charger ») ; il peut alors déposer ses propres cookies, régis par la politique de Deezer. Tu peux revenir sur ce choix dans Paramètres, rubrique « Lecteurs intégrés ».',
-                'Les pochettes et les polices sont chargées depuis les serveurs de Deezer et de Google, sans cookie déposé par AlbumMania.',
+                'Les pochettes sont chargées depuis les serveurs de Deezer, sans cookie déposé par AlbumMania ; les polices sont hébergées sur nos serveurs.',
               ],
             },
           ],
@@ -383,7 +383,7 @@ export default {
                 'The site host (see the legal notice) and the email delivery provider.',
                 'Covers: images are loaded by your browser from Deezer’s servers, which then receive your IP address.',
                 'Embedded player: the Deezer player only loads when you ask for it; it may then set its own cookies.',
-                'Fonts: loaded from Google Fonts (your IP address is sent to Google) until we host them ourselves.',
+                'Fonts: hosted on our own servers, with no request to any third party.',
               ],
             },
             {
@@ -451,7 +451,7 @@ export default {
               h: 'Third-party services',
               p: [
                 'The Deezer player only loads when you click “Load the player” (or if you chose “Always load”); it may then set its own cookies, governed by Deezer’s policy. You can change this choice in Settings, under “Embedded players”.',
-                'Covers and fonts are loaded from Deezer’s and Google’s servers, without any cookie set by AlbumMania.',
+                'Covers are loaded from Deezer’s servers, without any cookie set by AlbumMania; fonts are hosted on our own servers.',
               ],
             },
           ],

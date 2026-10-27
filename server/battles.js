@@ -242,9 +242,15 @@ export function init(deps) {
    * d'exploration, jamais une paire déjà votée (ni une paire déjà prise dans ce lot, `taken`).
    */
   function pairIn(userId, cat, taken) {
-    const pool = popularPool(cat);
-    // Le réservoir est gardé 10 min : un album retiré entre-temps en sort ici.
-    const facts = factsOf(cat.itemType, [...new Set(pool)]);
+    let pool = popularPool(cat);
+    // Le réservoir est gardé 10 min : un album retiré entre-temps en sort ici. S'il n'en reste presque rien (fournisseur
+    // détaché depuis, P2-C : ses albums sont archivés d'un coup), le réservoir est relu tout de suite.
+    let facts = factsOf(cat.itemType, [...new Set(pool)]);
+    if (pool.filter((id) => facts.get(id)?.active).length < 2) {
+      pools.delete(`pop:${cat.key}`);
+      pool = popularPool(cat);
+      facts = factsOf(cat.itemType, [...new Set(pool)]);
+    }
     const known = knownPool(userId, cat, pool).filter((id) => cat.itemType === 'album' || facts.get(id)?.active);
     const all = [...new Set([...known, ...pool.filter((id) => facts.get(id)?.active)])];
     if (all.length < 2) return null;

@@ -44,6 +44,9 @@ export function notificationHref(n) {
   if (kind === 'terms_updated') return pageExists('Legal') ? '/legal/terms' : null;
   // Médaille gagnée (P1-F) : la page des badges plutôt que son propre Studio.
   if (kind === 'badge_earned') return pageExists('Badges') ? '/badges' : null;
+  // Coffret et événement (P2-B) : la page du coffret ou de l'événement concerné.
+  if (kind === 'set_reward') return data.setId ? `/sets/${enc(data.setId)}` : '/collection/sets';
+  if (kind === 'event_reward') return data.slug ? `/events/${enc(data.slug)}` : '/events';
   if (kind === 'report_resolved') return null;
   if (!target) return null;
   if (kind === 'moderation_action' || kind === 'appeal_decided') {
@@ -75,6 +78,8 @@ function iconOf(kind) {
   if (kind.startsWith('comment_') || kind.startsWith('reply_')) return { name: 'comment', tone: 'notif__icon--cue' };
   if (kind.startsWith('friend_')) return { name: 'user', tone: 'notif__icon--gold' };
   if (kind.startsWith('badge_')) return { name: 'trophy', tone: 'notif__icon--gold' };
+  // Édition deluxe (P2-D) : le disque doré.
+  if (kind === 'deluxe_earned') return { name: 'disc', tone: 'notif__icon--gold' };
   if (kind === 'terms_updated') return { name: 'flag', tone: 'notif__icon--cue' };
   return { name: 'shield', tone: 'notif__icon--cue' };
 }

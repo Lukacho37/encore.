@@ -377,6 +377,9 @@ export function init(deps) {
         { id: 'lists', to: '/lists' },
         { id: 'nine', to: '/nine', count: nine },
         { id: 'blindtest', to: '/blindtest' },
+        { id: 'passport', to: '/passport' },
+        { id: 'events', to: '/events' },
+        { id: 'sets', to: '/collection/sets' },
       ];
       const seeds = sections.map((s) => s.titleVars?.albumId).filter(Boolean);
       const avatars = services.summaryAlbums(Object.values(built.usersOf).flat());

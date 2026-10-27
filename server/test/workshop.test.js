@@ -2,7 +2,8 @@
 // album complété, rattrapage silencieux, titre à la 10e), Vernir (royalties ou doublons, jamais le dernier
 // exemplaire), Comptoir (3 doublons d'une rareté contre une carte manquante d'un album recherché), achat d'un booster
 // thématique (180 royalties), éditions des vinyles du Studio, cosmétiques des coffrets et des événements, plans de
-// requêtes. Le site fusionne l'état complet renvoyé par Vernir et le Comptoir.
+// requêtes. Vernir et le Comptoir renvoient un état partiel et le delta `cardCounts` (exemplaires après l'échange,
+// P2-E), que le site fusionne (client/src/state/mergeState.js).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -78,7 +79,7 @@ test('cosmétiques des coffrets, des événements et des badges : définis et de
 
 // ---------- Vernir ----------
 
-test('Vernir en royalties : la carte standard devient holo, 4 × sa valeur de recyclage, état complet', async () => {
+test('Vernir en royalties : la carte standard devient holo, 4 × sa valeur de recyclage, delta des exemplaires', async () => {
   const alice = await signupVerified(app, { username: 'ws_alice' });
   const [t1] = tracksOf(ALBUMS[0]);
   give(alice.user.id, std(t1.id));
@@ -95,9 +96,9 @@ test('Vernir en royalties : la carte standard devient holo, 4 × sa valeur de re
   const r = await api(app.base, alice.cookie, 'POST', '/collection/vernir', { trackId: t1.id, pay: 'royalties' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.deepEqual(r.body.spent, { royalties: cost });
-  assert.equal(r.body.state.partial, false, 'état complet');
-  assert.ok(r.body.state.cards.some((c) => c.t === t1.id && c.v === 'holo' && c.c === 1));
-  assert.ok(!r.body.state.cards.some((c) => c.t === t1.id && c.v === 'std'), 'le dernier exemplaire standard est devenu holo');
+  assert.equal(r.body.state.partial, true, 'état partiel');
+  assert.ok(r.body.cardCounts.some((c) => c.t === t1.id && c.v === 'holo' && c.c === 1));
+  assert.ok(r.body.cardCounts.some((c) => c.t === t1.id && c.v === 'std' && c.c === 0), 'le dernier exemplaire standard est devenu holo');
   assert.equal(royaltiesOf(alice.user.id), 7);
   assert.equal(cardOf(alice.user.id, t1.id, 'holo'), 1);
   assert.equal(db.prepare('SELECT holo FROM user_album_progress WHERE user_id = ? AND album_id = ?').get(alice.user.id, ALBUMS[0]).holo, 1);
@@ -194,7 +195,9 @@ test('Comptoir : 3 doublons d’une rareté contre une carte manquante choisie d
   assert.deepEqual(r.body.spent.duplicates, [{ trackId: spares[0].id, variant: 'std', n: 2 }, { trackId: spares[1].id, variant: 'std', n: 1 }]);
   assert.equal(r.body.cards[0].trackId, wanted.id);
   assert.equal(r.body.cards[0].newTrack, true);
-  assert.equal(r.body.state.partial, false);
+  assert.equal(r.body.state.partial, true);
+  // Doublons dépensés : leurs exemplaires restants dans le delta `cardCounts`.
+  assert.ok(r.body.cardCounts.some((c) => c.t === spares[0].id && c.v === 'std' && c.c === 1));
   assert.equal(cardOf(dana.user.id, wanted.id, 'std'), 1);
   assert.equal(cardOf(dana.user.id, spares[0].id, 'std'), 1);
   assert.equal(cardOf(dana.user.id, spares[1].id, 'std'), 1);

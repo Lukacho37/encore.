@@ -152,7 +152,11 @@ for (const [name, viewport] of Object.entries(VIEWPORTS)) {
       page.click('.ws-vernir .ws-sheet__foot .btn--primary'),
     ]);
     const vbody = await varnished.json();
-    if (varnished.status() !== 200 || vbody.state?.partial !== false) fail(`[${label}] vernir : ${varnished.status()} ${JSON.stringify(vbody).slice(0, 200)}`);
+    // État partiel et delta `cardCounts` (P2-E) : la carte vernie a sa version holo, plus de version standard.
+    const counted = (v, c) => vbody.cardCounts?.some((x) => x.t === target.t && x.v === v && x.c === c);
+    if (varnished.status() !== 200 || vbody.state?.partial !== true || !counted('holo', 1)) {
+      fail(`[${label}] vernir : ${varnished.status()} ${JSON.stringify(vbody).slice(0, 200)}`);
+    }
     // La carte du morceau passe en holo (en tête de page sur ordinateur, dans « Ma carte » sur téléphone).
     await page.waitForFunction(() => [...document.querySelectorAll('.card--holo')].some((c) => c.getClientRects().length > 0), null, { timeout: 10_000 });
     if (await page.locator(`[data-vernir="${target.t}"]`).count()) fail(`[${label}] le bouton Vernir reste sur une carte holo`);

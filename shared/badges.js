@@ -46,6 +46,9 @@ export const FAMILIES = [
     tiers: [{ tier: 'silver', target: 10 }, { tier: 'gold', target: 14 }] },
   { id: 'genre_fan', group: 'collect', icon: 'headphones', variants: BADGE_GENRES, hiddenUntilEarned: true, events: ['album.completed'],
     tiers: [{ tier: 'silver', target: 5 }] },
+  // Édition deluxe (P2-D, PLAN.md 6.3) : album complété, noté, et chacun de ses morceaux noté (succès deluxe:<albumId>).
+  { id: 'deluxe', group: 'rate', icon: 'disc', events: ['deluxe.earned'], cosmetic: 'title:deluxe',
+    tiers: [{ tier: 'gold', target: 1 }, { tier: 'platinum', target: 10 }] },
   { id: 'critic', group: 'rate', icon: 'star', events: ['rating.saved'], cosmetic: 'title:critique',
     tiers: [{ tier: 'bronze', target: 25 }, { tier: 'silver', target: 100 }, { tier: 'gold', target: 500 }] },
   { id: 'pen', group: 'rate', icon: 'quote', events: ['rating.saved'],

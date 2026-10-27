@@ -27,14 +27,14 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
  * avant le démarrage, comme en production où les données existent avant le serveur).
  */
 /**
- * En-têtes de sécurité de toutes les réponses (PLAN.md 7.2). Les entrées Google Fonts de la CSP partiront avec
- * l'hébergement des polices (P2-E) ; les pochettes viennent du CDN de Deezer, les lecteurs intégrés de leurs sites.
+ * En-têtes de sécurité de toutes les réponses (PLAN.md 7.2). Les polices sont hébergées avec le site (P2-E) : plus
+ * aucune entrée Google Fonts ; les pochettes viennent du CDN de Deezer, les lecteurs intégrés de leurs sites.
  */
 export const CSP = [
   "default-src 'self'",
   "script-src 'self'",
-  "style-src 'self' https://fonts.googleapis.com",
-  "font-src 'self' https://fonts.gstatic.com",
+  "style-src 'self'",
+  "font-src 'self'",
   "img-src 'self' data: blob: https://*.dzcdn.net https://coverartarchive.org https://*.archive.org",
   'frame-src https://widget.deezer.com https://open.spotify.com https://embed.music.apple.com',
   "connect-src 'self'",
@@ -205,10 +205,10 @@ export function createApp({ dbFile, db: openedDb } = {}) {
     const result = services.buyPack(req.user.id);
     res.json({ ...result, state: partial(req) });
   });
-  // Recycler change le nombre d'exemplaires de chaque carte : état complet.
+  // Recycler ramène chaque carte à un exemplaire : état partiel et delta `dedupe` (client/src/state/mergeState.js).
   api.post('/collection/recycle', (req, res) => {
     const result = services.recycleDuplicates(req.user.id);
-    res.json({ ...result, state: full(req) });
+    res.json({ ...result, state: partial(req) });
   });
   api.post('/collection/press', (req, res) => {
     const result = services.pressCard(req.user.id, req.body.trackId);

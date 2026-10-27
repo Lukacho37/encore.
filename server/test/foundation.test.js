@@ -144,8 +144,8 @@ test('état partiel : après une suite d’actions, l’état fusionné par le s
   }
   await check('blind test');
 
-  // Recycler change le nombre d'exemplaires de chaque carte : état complet ; puis de nouveau des états partiels.
-  await apply('POST', '/collection/recycle', {}, { full: true });
+  // Recycler ramène chaque carte à un exemplaire : état partiel et delta `dedupe` (P2-E), puis d'autres actions.
+  await apply('POST', '/collection/recycle', {});
   await apply('POST', '/packs/open', {});
   await apply('POST', '/packs/album', { albumId: 'thriller' });
   await check('recyclage puis boosters');

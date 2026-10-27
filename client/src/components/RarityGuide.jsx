@@ -2,9 +2,8 @@ import { useMemo, useState } from 'react';
 import { Modal, Icon } from './ui.jsx';
 import { RarityGem } from './Card.jsx';
 import { BoosterOdds, usePct } from './game/odds.jsx';
-import { POP_TIERS } from '@shared/catalog.js';
 import {
-  RARITIES, RARITY, packOdds, ADVANCED_ALBUMS, ADVANCED_FOCUS, FOCUS_CHANCE, PITY_AFTER, PITY_SLOT, PROMO_FOCUS, PROMO_PRESS_COST,
+  POP_TIERS, RARITIES, RARITY, packOdds, ADVANCED_ALBUMS, ADVANCED_FOCUS, FOCUS_CHANCE, PITY_AFTER, PITY_SLOT, PROMO_FOCUS, PROMO_PRESS_COST,
   WISHLIST_FOCUS, WISHLIST_SLOTS, WISHLIST_BONUS_LEVELS, SHOWCASE_SLOTS, SHOWCASE_BONUS_LEVELS, THEMED_BOOSTER_EVERY, ECONOMY,
 } from '@shared/rules.js';
 import { LEVEL_COSMETICS } from '@shared/cosmetics.js';

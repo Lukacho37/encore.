@@ -18,7 +18,8 @@ import { Avatar, Icon, Modal, Progress, RoyaltyIcon, Spinner, useToast } from '.
 import { Skeleton } from '../components/feedback.jsx';
 import { UgcText } from '../components/UgcText.jsx';
 import { SafetyMenu } from '../components/safety/SafetyMenu.jsx';
-import { Vinyl, TurntableModal, isHoloComplete } from '../components/Vinyl.jsx';
+import { EditionTags, Vinyl, TurntableModal, ownVinylEdition } from '../components/Vinyl.jsx';
+import { DeluxeLine } from '../components/game/VernirButton.jsx';
 import { RatingInput, RatingValue, RatingsSection, itemPath, useItemRatings } from '../components/Rating.jsx';
 import { getAlbum, useAlbumDetail, useApi, useTrack } from '../state/catalog.js';
 import { useBoosterFlow } from '../state/boosterFlow.js';
@@ -502,7 +503,8 @@ function AlbumView({ id }) {
   const complete = total > 0 && ownedCount >= total;
   const doneAt = achievements.get(`album:${id}`);
   const reward = albumReward(album.trackCount || total);
-  const edition = doneAt && isHoloComplete(id, owned, tracks || album.trackCount) ? 'holo' : 'black';
+  // Éditions du vinyle (P2-D) : deluxe (album, sa note et celles de ses morceaux) > holo > noire.
+  const { edition, holo: holoEdition } = doneAt ? ownVinylEdition(id, { achievements, owned, tracks: tracks || album.trackCount }) : { edition: 'black', holo: false };
   // Couleur de vinyle choisie dans le Studio (cosmétique P1-D) : seulement pour l'édition noire, comme sur l'étagère.
   const vinylColor = edition === 'black' ? user?.cosmetics?.vinyl ?? null : null;
   const summary = ratingsApi.data?.summary;
@@ -524,7 +526,7 @@ function AlbumView({ id }) {
         {doneAt ? (
           <div className="album-head__vinyl">
             <Vinyl albumId={id} album={album} edition={edition} color={vinylColor} pressing={ranks?.get(`album:${id}`) ?? null}
-              onClick={() => setTurntable({ albumId: id, edition, at: doneAt, mine: true, color: vinylColor })} label={t('album.playVinyl')} />
+              onClick={() => setTurntable({ albumId: id, edition, holo: holoEdition, at: doneAt, mine: true, color: vinylColor })} label={t('album.playVinyl')} />
           </div>
         ) : (
           <div className="album-head__cover">
@@ -550,7 +552,8 @@ function AlbumView({ id }) {
           </div>
           {/* Ligne de complétion (P1-D) : « Complété le … · Pressage n° … » puis « Complété par N joueurs · N amis ». */}
           <CompletionLine albumId={id} />
-          {doneAt && edition === 'holo' && <span className="edition-tag edition-tag--holo">{t('vinyl.holo')}</span>}
+          {doneAt && <EditionTags edition={edition} holo={holoEdition} />}
+          {doneAt && <DeluxeLine albumId={id} />}
           {!doneAt && (
             <div className="reward-box">
               <span className="label">{t('album.reward')}</span>

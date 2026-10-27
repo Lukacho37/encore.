@@ -18,12 +18,13 @@
 // Routes (joueur connecté) :
 //   GET  /api/collection/vernir/:trackId  → { trackId, rarity, std, holo, cost, royalties, duplicates, can, reason }
 //   POST /api/collection/vernir { trackId, pay: 'royalties' | 'duplicates' } → { trackId, rarity, albumId, pay, spent,
-//        holoEdition, at, catalog, state } (état complet : le nombre d'exemplaires de plusieurs cartes change, comme
-//        au recyclage)
+//        holoEdition, at, cardCounts, catalog, state } (état partiel ; `cardCounts` : exemplaires de chaque carte touchée
+//        après l'échange, fusionnés par le site, client/src/state/mergeState.js)
 //   GET  /api/collection/comptoir?cursor=&limit= → { needed, duplicates, items: [{ albumId, owned, total, missing:
 //        [{ trackId, rarity }] }], nextCursor, wishlist, complete, catalog } (albums recherchés qui ont encore des
 //        cartes manquantes, dans l'ordre d'ajout)
-//   POST /api/collection/comptoir { trackId } → { trackId, rarity, albumId, spent, …deltas d'addCards, state } (complet)
+//   POST /api/collection/comptoir { trackId } → { trackId, rarity, albumId, spent, …deltas d'addCards, cardCounts, state }
+//        (état partiel)
 //   POST /api/me/boosters/buy { theme } → { booster, spent, state } (état partiel)
 //   GET  /api/albums/:id/deluxe → { albumId, completed, albumRated, tracksRated, tracksTotal, missing, ready, done, at,
 //        xp, catalog } ; une fois l'édition obtenue, aussi `achievements: [{ key }]` et l'état partiel, pour que le
@@ -355,14 +356,22 @@ export function init(deps) {
 export function routes(r, deps) {
   const { limits, services } = deps;
   const api = () => deps.workshop;
-  const full = (req) => services.state(req.user.id);
   const partial = (req) => services.state(req.user.id, { partial: true });
+  // Cartes dont le nombre d'exemplaires a changé : la carte vernie ou échangée et les doublons dépensés.
+  const touched = (result) => [result.trackId, ...(result.spent?.duplicates || []).map((p) => p.trackId)];
 
   r.get('/collection/vernir/:trackId', limits.read, (req, res) => res.json(api().vernirInfo(req.user.id, req.params.trackId)));
-  // Vernir et le Comptoir changent le nombre d'exemplaires de plusieurs cartes : état complet, comme le recyclage.
-  r.post('/collection/vernir', limits.write, (req, res) => res.json({ ...api().vernir(req.user.id, req.body.trackId, req.body.pay), state: full(req) }));
+  // Vernir et le Comptoir changent le nombre d'exemplaires de plusieurs cartes : état partiel et delta `cardCounts`
+  // (exemplaires après l'échange), que le site fusionne sans recharger l'état (P2-E).
+  r.post('/collection/vernir', limits.write, (req, res) => {
+    const result = api().vernir(req.user.id, req.body.trackId, req.body.pay);
+    res.json({ ...result, cardCounts: services.cardCounts(req.user.id, touched(result)), state: partial(req) });
+  });
   r.get('/collection/comptoir', limits.read, (req, res) => res.json(api().comptoirPage(req.user.id, req.query)));
-  r.post('/collection/comptoir', limits.write, (req, res) => res.json({ ...api().comptoir(req.user.id, req.body.trackId), state: full(req) }));
+  r.post('/collection/comptoir', limits.write, (req, res) => {
+    const result = api().comptoir(req.user.id, req.body.trackId);
+    res.json({ ...result, cardCounts: services.cardCounts(req.user.id, touched(result)), state: partial(req) });
+  });
   r.post('/me/boosters/buy', limits.write, (req, res) => res.json({ ...api().buyThemed(req.user.id, req.body.theme), state: partial(req) }));
   r.get('/albums/:id/deluxe', limits.read, (req, res) => res.json(api().deluxeStatus(req.user.id, req.params.id)));
 }

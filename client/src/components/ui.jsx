@@ -11,6 +11,7 @@ import CoverArt from './CoverArt.jsx';
 import { useAlbum } from '../state/catalog.js';
 import { useI18n } from '../i18n/index.jsx';
 import { AVATAR_COLORS } from '@shared/rules.js';
+import { frameStyle } from '@shared/cosmetics.js';
 
 // ---------- icônes ----------------------------------------------------------
 
@@ -141,8 +142,9 @@ export function avatarColor(user) {
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
-/** Cadres d'avatar dessinés par studio.css (cosmétiques de niveau, shared/cosmetics.js) ; un autre cadre (badge,
- * événement) prend l'anneau neutre. */
+/** Cadres d'avatar dessinés par studio.css (cosmétiques de niveau, shared/cosmetics.js) ; les cadres des coffrets et
+ * des événements (P2-D) sont dessinés par workshop.css (classe ws-frame--<dessin>) ; un cadre inconnu prend l'anneau
+ * neutre. */
 const FRAMES = new Set(['ivoire', 'neon', 'or', 'holo']);
 
 /**
@@ -162,7 +164,8 @@ export function Avatar({ user, size = 40, className = '', frame }) {
   const style = { width: size, height: size, fontSize: size * 0.44, '--ac': avatarColor(user) };
   let framed = '';
   if (chosen) {
-    framed = ` st-frame st-frame--${FRAMES.has(chosen) ? chosen : 'other'}`;
+    const drawn = frameStyle(chosen);
+    framed = ` st-frame st-frame--${FRAMES.has(chosen) ? chosen : 'other'}${drawn && !FRAMES.has(drawn) ? ` ws-frame ws-frame--${drawn}` : ''}`;
     // Épaisseur de l'anneau selon la taille : 2 px pour les petites pastilles, jusqu'à 5 px en tête du Studio.
     style['--st-ring'] = `${Math.max(2, Math.min(5, Math.round(size / 24)))}px`;
   }

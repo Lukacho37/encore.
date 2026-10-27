@@ -275,16 +275,16 @@ test('recherche d’albums dans toutes les écritures, avec ou sans accents', ()
   assert.equal(wcatalog.searchAlbums({ q: '   ' }).total, wcatalog.totals().albums);
 });
 
-test('index de recherche d’une version précédente : mis à niveau une seule fois au démarrage', () => {
+test('index de la recherche (P2-E) : un album importé est cherchable tout de suite, cat_search n’est plus utilisé', () => {
   const { wdb, wcatalog } = seedWorld();
   addImportedAlbum(wdb, wcatalog, { id: 'old1', artistId: 'a-old1', artist: 'Cœur de pirate', title: 'Roses' });
-  // Ligne indexée comme avant (sans forme repliée) et marqueur de mise à niveau absent.
-  wdb.prepare("UPDATE cat_search SET artist = 'Cœur de pirate' WHERE album_id = 'old1'").run();
-  wdb.prepare("DELETE FROM kv WHERE key = 'searchFold'").run();
-  assert.equal(wcatalog.searchAlbums({ q: 'coeur' }).total, 0);
+  // catalog.indexAlbum écrit le document de l'album dans search_docs (forme repliée comprise : « coeur » trouve « Cœur »).
+  assert.deepEqual(wcatalog.searchAlbums({ q: 'coeur' }).items.map((a) => a.id), ['old1']);
+  assert.equal(wdb.prepare('SELECT COUNT(*) AS n FROM cat_search').get().n, 0);
+  assert.ok(wdb.prepare("SELECT 1 FROM search_docs WHERE kind = 'album' AND ref_id = 'old1'").get());
+  // Un nouveau démarrage garde l'index tel quel.
   const again = createCatalog(wdb, { covers: () => true });
   assert.deepEqual(again.searchAlbums({ q: 'coeur' }).items.map((a) => a.id), ['old1']);
-  assert.ok(wdb.prepare("SELECT 1 FROM kv WHERE key = 'searchFold'").get());
 });
 
 test('mes cartes : recherche sans accents ni casse', () => {

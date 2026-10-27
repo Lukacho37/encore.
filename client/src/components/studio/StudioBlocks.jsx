@@ -20,7 +20,8 @@ import { Icon, Progress } from '../ui.jsx';
 import { EmptyState, LoadMore, Skeleton } from '../feedback.jsx';
 import { ArtistBadge } from '../search/ArtistBadge.jsx';
 import { RatedItemLink, ReviewList } from '../Rating.jsx';
-import { TurntableModal, Vinyl, VinylShelf } from '../Vinyl.jsx';
+import { EditionTags, TurntableModal, Vinyl, VinylShelf } from '../Vinyl.jsx';
+import { frameStyle } from '@shared/cosmetics.js';
 import { Grid9Block } from '../lists/Grid9.jsx';
 import { ListCard } from '../lists/ListCard.jsx';
 import { WishlistBlock } from '../game/WishlistToggle.jsx';
@@ -66,7 +67,7 @@ export function ShowcaseBlock({ profile, isSelf, onPickSlot, onRemoveSlot }) {
   const frame = isSelf ? user?.cosmetics?.frame : profile.user?.frame;
   if (!isSelf && !showcase.some(Boolean)) return null;
   return (
-    <section className={`studio st-showcase st-showcase--slots-${Math.min(8, slots)}${frame ? ` st-showcase--frame-${frame}` : ''}`} aria-labelledby="st-block-showcase">
+    <section className={`studio st-showcase st-showcase--slots-${Math.min(8, slots)}${frame ? ` st-showcase--frame-${frame} ws-showcase-frame--${frameStyle(frame) || 'other'}` : ''}`} aria-labelledby="st-block-showcase">
       <div className="studio__desk">
         <div className="studio__desk-head">
           <h2 className="studio__label" id="st-block-showcase">{isSelf ? t('studio.selection') : t('studio.selectionOther')}</h2>
@@ -128,7 +129,7 @@ function FeaturedText({ vinyl, rank, title, date, onPlay, onEdit }) {
       <span className="st-featured__facts small muted">
         {vinyl.at ? <span>{t('studio.featured.pressed', { date: date(vinyl.at) })}</span> : null}
         {rank ? <span className="mono">{t('studio.featured.pressing', { n: rank })}</span> : null}
-        {vinyl.edition === 'holo' && <span className="edition-tag edition-tag--holo">{t('vinyl.holo')}</span>}
+        <EditionTags edition={vinyl.edition} holo={vinyl.holo} />
       </span>
       <span className="st-featured__actions">
         <button type="button" className="btn btn--primary btn--sm" onClick={onPlay}><Icon name="disc" size={16} /> {t('studio.featured.play')}</button>

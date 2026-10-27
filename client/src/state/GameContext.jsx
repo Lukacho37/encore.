@@ -52,7 +52,7 @@ export function GameProvider({ children }) {
     if (!state || typeof state !== 'object' || applied.current.has(state)) return;
     applied.current.add(state);
     if (Number.isFinite(state.serverTime)) offset.current = state.serverTime - Date.now();
-    if (!state.partial || res.cards || res.albumDeltas) dropCollectionCaches();
+    if (!state.partial || res.cards || res.albumDeltas || res.cardCounts || res.dedupe) dropCollectionCaches();
     const next = mergeResponse(dataRef.current, res);
     // État partiel sans état de départ (session ouverte ailleurs, état pas encore chargé) : on recharge l'état complet.
     if (next === null) {

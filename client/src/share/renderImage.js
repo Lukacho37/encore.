@@ -478,6 +478,8 @@ function compose(canvas, spec, tiles, sources, tk) {
   ctx.fillStyle = pal.text;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
+  // Un bloc « text » mesuré à blanc a pu changer ctx.font : la police du titre est remise avant de l'écrire.
+  setFont(ctx, { weight: 800, size: titleSize, family: tk['--font-display'], stretch: true, spacing: -0.02 });
   titleLines.forEach((l, i) => ctx.fillText(l, pad, y + titleSize * 0.86 + i * titleSize * 1.04));
   if (spec.subtitle) {
     setFont(ctx, { weight: 600, size: subSize, family: tk['--font-mono'] });

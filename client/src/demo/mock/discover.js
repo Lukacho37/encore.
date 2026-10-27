@@ -248,6 +248,9 @@ function page(ctx) {
     { id: 'lists', to: '/lists' },
     { id: 'nine', to: '/nine', count: grid?.items?.length || 0 },
     { id: 'blindtest', to: '/blindtest' },
+    { id: 'passport', to: '/passport' },
+    { id: 'events', to: '/events' },
+    { id: 'sets', to: '/collection/sets' },
   ];
   const seeds = out.map((s) => s.titleVars?.albumId).filter(Boolean);
   const artistIds = out.map((s) => s.titleVars?.artistId).filter(Boolean);

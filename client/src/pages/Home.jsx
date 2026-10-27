@@ -20,6 +20,7 @@ import { ECONOMY, FOCUS_CHANCE } from '@shared/rules.js';
 import { useAlbums } from '../state/catalog.js';
 import { useBoosterFlow } from '../state/boosterFlow.js';
 import { SpecialBoosters } from '../components/game/SpecialBoosters.jsx';
+import { ComptoirButton } from '../components/game/VernirButton.jsx';
 import { BattleWidget, QuestStrip } from '../components/play/slots.jsx';
 import { EventChip } from '../components/sets/EventChip.jsx';
 import { SuggestedFriends, TasteMatchCard } from '../components/match/HomeCards.jsx';
@@ -267,6 +268,7 @@ export default function Home() {
           <button type="button" className="btn btn--ghost" disabled={busy || !duplicates} onClick={recycle}>
             {t('home.recycle')}
           </button>
+          <ComptoirButton />
         </article>
         <Link to="/blindtest" className="panel panel--bt">
           <span className="panel--bt__eq" aria-hidden="true"><i /><i /><i /><i /><i /></span>

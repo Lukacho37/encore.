@@ -103,7 +103,10 @@ test('boosters, doublons, pressage et succès', async () => {
 
   const rec = await call('POST', '/api/collection/recycle');
   assert.equal(rec.status, 200);
-  assert.ok(rec.body.state.cards.every((c) => c.c === 1));
+  // État partiel et delta `dedupe` (P2-E) : chaque carte revient à un exemplaire.
+  assert.equal(rec.body.state.partial, true);
+  assert.equal(rec.body.dedupe, true);
+  assert.ok((await call('GET', '/api/state')).body.cards.every((c) => c.c === 1));
 
   // Album presque complet : presser la dernière carte déclenche le succès.
   const album = TRACKS_BY_ALBUM['kind-of-blue'];

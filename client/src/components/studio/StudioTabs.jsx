@@ -4,7 +4,7 @@
 //   Vinyles    toute la vinylthèque, page par page (GET /api/users/:u/vinyls, curseur), les plus récents d'abord ;
 //   Listes, Badges, Posts : les emplacements des autres chantiers (UserLists P1-C, BadgeGrid P1-F, UserPosts P1-A),
 //   montés par Profile.jsx.
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useGame } from '../../state/GameContext.jsx';
 import { useI18n } from '../../i18n/index.jsx';
 import { useApi } from '../../state/catalog.js';
@@ -24,8 +24,12 @@ function RatingsSummary({ username, isSelf }) {
   // Change dès qu'une de mes notes change : la section se recharge alors (son propre Studio).
   const signature = useMemo(() => (isSelf ? [...ratings].map(([k, v]) => `${k}=${v}`).join('|') : ''), [ratings, isSelf]);
   const { data, error, reload } = useApi(`/users/${enc(username)}/ratings`, { keep: false });
+  // Au montage, useApi charge déjà : on ne recharge qu'au changement suivant (sans quoi la requête part deux fois).
+  const seenSignature = useRef(signature);
   useEffect(() => {
-    if (signature) reload();
+    if (seenSignature.current === signature) return;
+    seenSignature.current = signature;
+    reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature]);
   if (error) return <ErrorBox error={error} onRetry={reload} />;

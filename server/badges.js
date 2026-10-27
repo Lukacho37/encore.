@@ -84,6 +84,8 @@ export function init(deps) {
       WHERE p.user_id = ? AND al.id = p.album_id AND al.genre IS NOT NULL LIMIT ?)`, u, cap('eclectic')) }),
     genre_fan: (u, genre) => ({ value: n(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM achievements a CROSS JOIN cat_albums al
       WHERE a.user_id = ? AND a.key >= 'album:' AND a.key < 'album;' AND al.id = substr(a.key, 7) AND al.genre = ? LIMIT ?)`, u, genre, cap('genre_fan')) }),
+    deluxe: (u) => ({ value: n(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM achievements WHERE user_id = ? AND key >= 'deluxe:' AND key < 'deluxe;'
+      LIMIT ?)`, u, cap('deluxe')) }),
     critic: (u) => ({ value: n(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM ratings WHERE user_id = ? AND item_type = 'album' LIMIT ?)`, u, cap('critic')) }),
     pen: (u) => ({ value: n(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM ratings WHERE user_id = ? AND review_at IS NOT NULL AND hidden_at IS NULL
       AND length(review) >= ? LIMIT ?)`, u, PEN_MIN_CHARS, cap('pen')) }),
@@ -257,6 +259,8 @@ export function init(deps) {
     if (album?.genre && BADGE_GENRES.includes(album.genre)) evaluate(userId, 'genre_fan', album.genre);
   });
   on('artist.mastered', ({ userId }) => evaluate(userId, 'master'));
+  // Édition deluxe gagnée (module workshop, P2-D).
+  on('deluxe.earned', ({ userId }) => evaluate(userId, 'deluxe'));
   on('cards.added', ({ userId, cards = [], albumDeltas = [] }) => {
     if (cards.some((c) => c.newTrack && c.rarity === 'legendary')) evaluate(userId, 'legendary');
     if (cards.some((c) => c.newTrack && c.rarity === 'promo')) evaluate(userId, 'promo');

@@ -95,6 +95,7 @@ function measureAll(ctx, uid) {
     ['legendary|', { value: rarityCount('legendary') }],
     ['promo|', { value: rarityCount('promo') }],
     ['eclectic|', { value: new Set([...started].map((id) => album(id)?.genre).filter(Boolean)).size }],
+    ['deluxe|', { value: Object.keys(ach).filter((k) => k.startsWith('deluxe:')).length }],
     ['critic|', { value: ratings.filter((r) => r.type === 'album').length }],
     ['pen|', { value: reviews.filter((r) => [...r.review].length >= PEN_MIN_CHARS).length }],
     ['popular_review|', { value: Math.max(0, ...reviews.map((r) => r.likeCount || 0)) }],

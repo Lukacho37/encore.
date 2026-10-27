@@ -8,6 +8,8 @@
 //   ⚪ commune ≤ 34 · 🟢 peu commune 35-54 · 🔵 rare 55-69 · 🟣 super rare 70-81 · 🟠 ultra rare 82-91 · ⭐ légendaire ≥ 92
 // Les singles hors album sont des PROMOS 🟥 (rareté à part, voir PROMOS plus bas), quel que soit leur indice.
 
+import { POP_TIERS } from './rules.js';
+
 export const GENRES = ['rap', 'pop', 'rock', 'electro', 'soul', 'jazz', 'reggae', 'chanson'];
 
 export const ARTISTS = [
@@ -426,14 +428,8 @@ export const PROMOS = [
 ];
 
 /** Seuils de popularité de chaque rareté (du plus rare au plus commun). */
-export const POP_TIERS = [
-  { rarity: 'legendary', min: 92, max: 100 },
-  { rarity: 'ultra', min: 82, max: 91 },
-  { rarity: 'super', min: 70, max: 81 },
-  { rarity: 'rare', min: 55, max: 69 },
-  { rarity: 'uncommon', min: 35, max: 54 },
-  { rarity: 'common', min: 0, max: 34 },
-];
+// Seuils de popularité de chaque rareté : définis une fois dans shared/rules.js (publiés par le guide des raretés).
+export { POP_TIERS };
 
 export function rarityFromPop(pop) {
   return POP_TIERS.find((tier) => pop >= tier.min).rarity;

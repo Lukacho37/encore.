@@ -20,13 +20,16 @@ import '../styles/home.css';
 import '../styles/discover.css';
 
 const enc = encodeURIComponent;
-const TILE_ICONS = { battles: 'trophy', rankings: 'star', lists: 'list', nine: 'grid', blindtest: 'headphones' };
+const TILE_ICONS = { battles: 'trophy', rankings: 'star', lists: 'list', nine: 'grid', blindtest: 'headphones', passport: 'globe', events: 'star', sets: 'disc' };
 const DEFAULT_TILES = [
   { id: 'battles', to: '/battles' },
   { id: 'rankings', to: '/rankings' },
   { id: 'lists', to: '/lists' },
   { id: 'nine', to: '/nine' },
   { id: 'blindtest', to: '/blindtest' },
+  { id: 'passport', to: '/passport' },
+  { id: 'events', to: '/events' },
+  { id: 'sets', to: '/collection/sets' },
 ];
 const MARK = '\u0000';
 

@@ -17,7 +17,7 @@ import CoverArt from '../components/CoverArt.jsx';
 import { Avatar, Icon, Modal, Spinner, useToast } from '../components/ui.jsx';
 import { EmptyState, ErrorBox as LoadError } from '../components/feedback.jsx';
 import { AVATAR_COLORS, RARITIES, SHOWCASE_SLOTS } from '@shared/rules.js';
-import { isHoloComplete } from '../components/Vinyl.jsx';
+import { ownVinylEdition } from '../components/Vinyl.jsx';
 import { StudioHeader } from '../components/studio/StudioHeader.jsx';
 import { StudioBlocks, tabPath } from '../components/studio/StudioBlocks.jsx';
 import { StudioEditor } from '../components/studio/StudioEditor.jsx';
@@ -419,7 +419,7 @@ function useOwnProfile() {
       .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
     const vinyls = done.slice(0, VINYLS_MAX).reverse().map(([k, at]) => {
       const albumId = k.slice(6);
-      return { albumId, at, edition: isHoloComplete(albumId, owned, albums[albumId].total) ? 'holo' : 'black' };
+      return { albumId, at, ...ownVinylEdition(albumId, { achievements, owned, tracks: albums[albumId].total }) };
     });
     const masteredArtists = [...achievements.entries()].filter(([k]) => k.startsWith('artist:'))
       .sort((a, b) => b[1] - a[1]).map(([k]) => k.slice(7));

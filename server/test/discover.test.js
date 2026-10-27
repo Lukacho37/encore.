@@ -48,7 +48,7 @@ test('compte tout neuf : sections non vides, raisons, tuiles, aucune erreur', as
     assert.ok(Object.values(per).every((k) => k <= (s.kind === 'artist' || s.kind === 'complete' ? 3 : 2)), `2 par artiste au plus dans ${s.id}`);
   }
   assert.ok(sectionOf(r.body, 'cult'), 'albums cultes jamais notés');
-  assert.deepEqual(tiles.map((t) => t.id), ['battles', 'rankings', 'lists', 'nine', 'blindtest']);
+  assert.deepEqual(tiles.map((t) => t.id), ['battles', 'rankings', 'lists', 'nine', 'blindtest', 'passport', 'events', 'sets']);
   const shown = sections.flatMap(idsOf);
   assert.ok(shown.every((id) => catalog.albums.some((a) => a.id === id)), 'les albums montrés sont dans `catalog`');
   assert.equal(new Set(shown).size, shown.length, 'un album n’apparaît qu’une fois sur la page');

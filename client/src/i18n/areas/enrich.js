@@ -91,6 +91,7 @@ export default {
       detach_running: 'Un détachement est déjà en cours.',
       unknown_provider: 'Fournisseur inconnu.',
       unknown_artist: 'Cet artiste n’existe pas ou n’est plus au catalogue.',
+      archived_item: 'Cet élément est archivé.',
     },
   },
   en: {
@@ -177,6 +178,7 @@ export default {
       detach_running: 'A detachment is already running.',
       unknown_provider: 'Unknown provider.',
       unknown_artist: 'This artist doesn’t exist or is no longer in the catalog.',
+      archived_item: 'This item is archived.',
     },
   },
 };

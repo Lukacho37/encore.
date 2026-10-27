@@ -594,10 +594,14 @@ export function createCatalog(db, { covers = () => config.covers !== 'off', seed
     const lim = clampInt(limit, 1, 100, 48);
     const ctx = { filters, ids: !!ids, mine };
 
-    // Total : tous les albums du filtre (les segments d'un tri se partagent le catalogue).
+    // Total : tous les albums du filtre (les segments d'un tri se partagent le catalogue). Seuls les filtres du
+    // catalogue (genre, décennie, artiste) sont gardés : un texte ou « mes albums » se recomptent (quelques ms, et la
+    // collection du joueur change à chaque booster).
     const plain = !ids && !genre && (decade == null || decade === '') && !artistId && !mine;
+    const countSql = segmentSql({}, { ...ctx, count: true });
     const total = plain ? totals().albums
-      : countOf(JSON.stringify([ids ? params.ids : null, genre, decade, artistId, mine ? userId : null]), segmentSql({}, { ...ctx, count: true }), params);
+      : ids || mine ? q(countSql).get(params).n
+        : countOf(JSON.stringify([genre, decade, artistId]), countSql, params);
 
     // Position de départ : segment et clés du curseur, ou décalage à sauter segment par segment.
     let segIndex = 0;
@@ -664,17 +668,33 @@ export function createCatalog(db, { covers = () => config.covers !== 'off', seed
     return { total: totals().promos, items: rows.map(trackView) };
   }
 
+  // Collection en dessous de laquelle le filtre texte cherche chaque carte dans l'index (au-delà : un croisement).
+  const SMALL_COLLECTION = 1500;
+  // Ordre des cartes d'un joueur : les plus rares d'abord, puis les plus populaires.
+  const RARITY_RANK = `CASE t.rarity WHEN 'promo' THEN 7 WHEN 'legendary' THEN 6 WHEN 'ultra' THEN 5 WHEN 'super' THEN 4
+    WHEN 'rare' THEN 3 WHEN 'uncommon' THEN 2 ELSE 1 END DESC, t.pop DESC`;
+
   /**
-   * Cartes possédées par un joueur (choix pour le Studio), filtrables par texte et rareté, les plus rares d'abord.
-   * Le texte est comparé sans accents ni casse, dans toutes les écritures (« fete » trouve « Ta fête »). `trackIds` :
-   * morceaux déjà trouvés par le module search (index de la recherche globale) à la place du texte.
+   * Conditions du filtre des cartes d'un joueur : `trackIds` (morceaux déjà trouvés), `match` (expression FTS5 de
+   * l'index de la recherche, croisée en SQL avec ses cartes : exact, sans liste plafonnée), sinon le texte `q`
+   * comparé sans accents ni casse au titre, à l'artiste et à l'album (catalogue seul, sans module de recherche).
    */
-  function ownedTracks(userId, { q: text, trackIds = null, rarity, offset = 0, limit = 60 } = {}) {
+  function ownedFilter(userId, { q: text, trackIds = null, match = null, rarity }) {
     const where = ['c.user_id = ?'];
     const args = [userId];
+    let joins = '';
     if (trackIds) {
       where.push('c.track_id IN (SELECT value FROM json_each(?))');
       args.push(json(trackIds));
+    } else if (match) {
+      // Document de la recherche de chaque carte, puis : petite collection, une recherche dans l'index par carte ;
+      // grande collection, l'ensemble des morceaux trouvés croisé avec ses cartes (moins cher au-delà).
+      const cards = q('SELECT unique_cards AS n FROM users WHERE id = ?').get(userId)?.n ?? 0;
+      joins = "JOIN search_docs d ON d.kind = 'track' AND d.ref_id = c.track_id";
+      where.push(cards <= SMALL_COLLECTION
+        ? 'EXISTS (SELECT 1 FROM search_fts f WHERE f.search_fts MATCH ? AND f.rowid = d.id)'
+        : 'd.id IN (SELECT rowid FROM search_fts WHERE search_fts MATCH ?)');
+      args.push(match);
     } else {
       const words = foldText(text).trim().split(/\s+/).filter(Boolean).slice(0, 6);
       for (const w of words) {
@@ -682,20 +702,44 @@ export function createCatalog(db, { covers = () => config.covers !== 'off', seed
         const like = `%${w.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
         args.push(like, like, like);
       }
+      if (words.length) joins = 'JOIN cat_artists ar ON ar.id = t.artist_id LEFT JOIN cat_albums al ON al.id = t.album_id';
     }
     if (rarity) {
       where.push('t.rarity = ?');
       args.push(rarity);
     }
-    const base = `FROM cards c JOIN cat_tracks t ON t.id = c.track_id JOIN cat_artists ar ON ar.id = t.artist_id
-      LEFT JOIN cat_albums al ON al.id = t.album_id WHERE ${where.join(' AND ')}`;
-    const ids = q(`SELECT t.id, MAX(c.variant = 'holo') AS holo ${base} GROUP BY t.id
-      ORDER BY CASE t.rarity WHEN 'promo' THEN 7 WHEN 'legendary' THEN 6 WHEN 'ultra' THEN 5 WHEN 'super' THEN 4 WHEN 'rare' THEN 3 WHEN 'uncommon' THEN 2 ELSE 1 END DESC,
-        t.pop DESC LIMIT ? OFFSET ?`).all(...args, clampInt(limit, 1, 120, 60), clampInt(offset, 0, 1_000_000, 0));
-    const total = q(`SELECT COUNT(DISTINCT t.id) AS n ${base}`).get(...args).n;
-    const holo = new Set(ids.filter((r) => r.holo).map((r) => r.id));
-    const byId = new Map(tracks(ids.map((r) => r.id)).map((t) => [t.id, t]));
-    return { total, items: ids.map((r) => byId.get(r.id)).filter(Boolean).map((t) => ({ ...t, holo: holo.has(t.id) })) };
+    const plain = where.length === 1;
+    return { base: `FROM cards c JOIN cat_tracks t ON t.id = c.track_id ${joins} WHERE ${where.join(' AND ')}`, args, plain };
+  }
+
+  /** Cartes du joueur hydratées depuis leurs identifiants ordonnés ([[id, holo]]). */
+  function ownedItems(order) {
+    const byId = new Map(tracks(order.map((r) => r[0])).map((t) => [t.id, t]));
+    return order.map(([id, holo]) => (byId.has(id) ? { ...byId.get(id), holo: !!holo } : null)).filter(Boolean);
+  }
+
+  /**
+   * Toutes les cartes d'un joueur qui passent le filtre, dans l'ordre d'affichage : [[id, holo]] (une lecture, que
+   * l'appelant peut garder pour les pages suivantes d'un même filtre).
+   */
+  function ownedOrder(userId, filter = {}) {
+    const { base, args } = ownedFilter(userId, filter);
+    return q(`SELECT c.track_id AS id, MAX(c.variant = 'holo') AS holo ${base} GROUP BY c.track_id ORDER BY ${RARITY_RANK}`)
+      .all(...args).map((r) => [r.id, r.holo]);
+  }
+
+  /**
+   * Cartes possédées par un joueur (choix pour le Studio, onglet Mes cartes), filtrables par texte et rareté, les
+   * plus rares d'abord, paginées : { total, items }.
+   */
+  function ownedTracks(userId, { q: text, trackIds = null, match = null, rarity, offset = 0, limit = 60 } = {}) {
+    const { base, args, plain } = ownedFilter(userId, { q: text, trackIds, match, rarity });
+    const rows = q(`SELECT c.track_id AS id, MAX(c.variant = 'holo') AS holo ${base} GROUP BY c.track_id ORDER BY ${RARITY_RANK}
+      LIMIT ? OFFSET ?`).all(...args, clampInt(limit, 1, 120, 60), clampInt(offset, 0, 1_000_000, 0));
+    // Sans filtre : le nombre de morceaux distincts se lit dans la clé primaire des cartes, sans jointure.
+    const total = plain ? q('SELECT COUNT(DISTINCT track_id) AS n FROM cards WHERE user_id = ?').get(userId).n
+      : q(`SELECT COUNT(DISTINCT c.track_id) AS n ${base}`).get(...args).n;
+    return { total, items: ownedItems(rows.map((r) => [r.id, r.holo])) };
   }
 
   // ---------- progression d'un joueur ------------------------------------------------------
@@ -797,7 +841,7 @@ export function createCatalog(db, { covers = () => config.covers !== 'off', seed
   return {
     track, tracks, album, artist, albumTracks, artistAlbums, artistTracks, albumTrackIds, artistTrackIds,
     randomTrack, randomTracks, promoArtists, totals, rarityTotals, genres, decades, searchAlbums, matchAlbums, promos, stats, groupStats,
-    ownedTracks, collectionRows, rebuildIndex, refreshCounts, indexAlbum, setIndexer, nextCatalogNumber, decadeOf,
+    ownedTracks, ownedOrder, ownedItems, collectionRows, rebuildIndex, refreshCounts, indexAlbum, setIndexer, nextCatalogNumber, decadeOf,
     /** Taille de l'index des tirages (morceaux actifs), pour les mesures. */
     indexSize: () => ensureIndex().ids.length,
     invalidate() {

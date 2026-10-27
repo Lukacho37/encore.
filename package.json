@@ -16,6 +16,7 @@
     "start": "NODE_ENV=production node --disable-warning=ExperimentalWarning server/index.js",
     "test": "node --disable-warning=ExperimentalWarning --test server/test/*.test.js",
     "catalog:purge": "node --disable-warning=ExperimentalWarning scripts/purge-catalog.js",
+    "catalog:detach": "node --disable-warning=ExperimentalWarning scripts/detach-provider.js",
     "lint:css": "node scripts/css-lint.mjs",
     "scaffold": "node scripts/scaffold.mjs",
     "owners": "node scripts/check-owners.mjs",

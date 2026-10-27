@@ -1494,29 +1494,29 @@ export function createServices(db, catalog, { bus = null } = {}) {
     return catalog.promos({ offset: clampInt(query.offset, 0, 100_000, 0), limit: clampInt(query.limit, 1, 120, 60) });
   }
 
+  // Cartes d'un joueur qui passent un filtre texte, dans l'ordre d'affichage : gardées le temps de parcourir les pages
+  // (une lecture par filtre, même pour 60 000 cartes), jusqu'au prochain changement de sa collection.
+  const cardOrders = createLru({ max: 50, ttlMs: 2 * MINUTE });
+
   /**
-   * GET /api/catalog/mine : cartes du joueur. Le texte est cherché dans l'index de la recherche globale (début des mots
-   * du titre, de l'artiste ou de l'album) ; pour une requête trop large pour l'index (ou sans module search), le
-   * catalogue compare les textes lui-même.
+   * GET /api/catalog/mine : cartes du joueur, les plus rares d'abord. Le texte est cherché dans l'index de la recherche
+   * globale (début des mots du titre, de l'artiste ou de l'album), croisé en SQL avec ses cartes ; une seule lettre
+   * ne filtre pas (comme la recherche globale) ; sans module search, le catalogue compare les textes lui-même.
    */
   function myCards(userId, query) {
     const rarity = RARITIES.includes(query.rarity) ? query.rarity : null;
     const text = typeof query.q === 'string' ? query.q.slice(0, 80) : '';
-    let trackIds = null;
-    if (text.trim() && deps?.search?.trackMatches) {
-      const found = deps.search.trackMatches(text);
-      if (found && !found.capped) {
-        if (!found.ids.length) return { total: 0, items: [] };
-        trackIds = found.ids;
-      }
+    const offset = clampInt(query.offset, 0, 100_000, 0);
+    const limit = clampInt(query.limit, 1, 120, 60);
+    const found = text.trim() && deps?.search?.trackMatch ? deps.search.trackMatch(text) : null;
+    if (found?.short) return catalog.ownedTracks(userId, { rarity, offset, limit });
+    if (found) {
+      if (!found.match) return { total: 0, items: [] };
+      const key = JSON.stringify([userId, collectionEpoch.get(userId) || 0, rarity, found.match]);
+      const order = cardOrders.wrap(key, () => catalog.ownedOrder(userId, { match: found.match, rarity }));
+      return { total: order.length, items: catalog.ownedItems(order.slice(offset, offset + limit)) };
     }
-    return catalog.ownedTracks(userId, {
-      q: text,
-      trackIds,
-      rarity,
-      offset: clampInt(query.offset, 0, 100_000, 0),
-      limit: clampInt(query.limit, 1, 120, 60),
-    });
+    return catalog.ownedTracks(userId, { q: text, rarity, offset, limit });
   }
 
   function groups(userId, by) {

@@ -12,7 +12,7 @@
 // tâche de nuit « search-weights » recalcule les popularités. Un album importé est indexé tout de suite (le
 // catalogue appelle deps.search.upsert par catalog.indexAlbum). Les éléments archivés (P2-C) sortent de l'index à la
 // reconstruction suivante ; d'ici là, ils sont écartés des résultats. API interne (deps.search) : upsert, remove,
-// refresh, rebuild, refreshWeights, status, suggest, search, albumMatches et trackMatches (filtres texte de la
+// refresh, rebuild, refreshWeights, status, suggest, search, albumMatches et trackMatch (filtres texte de la
 // navigation : /catalog/albums?q=, /catalog/mine?q=, P2-E), forget.
 // Sans module (catalogue seul : scripts, tests) : indexRow(db, kind, refId) écrit un document avec les mêmes règles.
 import {
@@ -73,9 +73,8 @@ const LIST_KINDS = "('list','grid9')";
 /** Classement d'une page de résultats gardé une minute par joueur (pages suivantes, retour sur un onglet). */
 const PAGE_TTL = 60_000;
 const NO_CATALOG = Object.freeze({ tracks: [], albums: [], artists: [] });
-/** Filtres texte de la navigation : albums trouvés au plus (les plus populaires d'abord), morceaux lus au plus. */
+/** Filtre texte de la navigation : albums trouvés au plus (les plus populaires d'abord). */
 export const BROWSE_CAP = 5000;
-export const TRACK_MATCH_CAP = 20_000;
 /** Tables des types du catalogue (statut des éléments archivés). */
 const STATUS_TABLE = { album: 'cat_albums', track: 'cat_tracks', artist: 'cat_artists' };
 
@@ -611,16 +610,17 @@ export function createSearchIndex(deps) {
   }
 
   /**
-   * Filtre texte des cartes d'un joueur (/catalog/mine?q=) : morceaux dont chaque mot tapé commence un mot du titre ou
-   * du contexte (artiste, album). Renvoie { ids, capped } (`capped` : plus de `cap` morceaux, la liste n'est pas
-   * complète et l'appelant compare alors les textes lui-même) ; null quand la requête n'a rien de cherchable.
+   * Filtre texte des cartes d'un joueur (/catalog/mine?q=) : expression FTS5 des morceaux dont chaque mot tapé commence
+   * un mot du titre ou du contexte (artiste, album), que le catalogue croise avec ses cartes en SQL (résultat exact,
+   * sans liste plafonnée). Renvoie { match } (match null : aucun mot de l'index ne commence ainsi, rien ne correspond) ;
+   * { short: true } pour une seule lettre (pas de filtre, comme la recherche globale) ; null quand la requête n'a rien
+   * de cherchable.
    */
-  function trackMatches(rawQ, { cap = TRACK_MATCH_CAP } = {}) {
+  function trackMatch(rawQ) {
     const parsed = browseBody(rawQ);
     if (!parsed) return null;
-    if (!parsed.body) return { ids: [], capped: false };
-    const ids = q(ST_REFS).all(`k:ktrack AND {name context}: (${parsed.body})`, cap + 1).map((r) => r.ref);
-    return { ids: ids.slice(0, cap), capped: ids.length > cap };
+    if (parsed.fq.length < MIN_QUERY) return { short: true };
+    return { match: parsed.body ? `k:ktrack AND {name context}: (${parsed.body})` : null };
   }
 
   /** Albums, morceaux (par leur album) et artistes dont le joueur a déjà des cartes, parmi ces candidats. */
@@ -863,7 +863,7 @@ export function createSearchIndex(deps) {
   }
 
   return {
-    rebuild, refresh, upsert, remove, refreshWeights, status, suggest, search, albumMatches, trackMatches, kindsOf, forget,
+    rebuild, refresh, upsert, remove, refreshWeights, status, suggest, search, albumMatches, trackMatch, kindsOf, forget,
     loadTerms: () => terms.load(),
   };
 }

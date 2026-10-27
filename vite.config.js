@@ -3,13 +3,42 @@ import react from '@vitejs/plugin-react';
 import { viteSingleFile } from 'vite-plugin-singlefile';
 import path from 'node:path';
 
+/**
+ * Garde-fou du paquet de démarrage (PLAN.md 8.3, P2.7) : le catalogue de base (shared/catalog.js, les 20 albums de la
+ * graine et leurs morceaux) ne sert qu'au serveur et à la démo. S'il se retrouve dans le script chargé au démarrage du
+ * site (le point d'entrée et ce qu'il importe directement), la compilation le signale avec le chemin à corriger.
+ */
+function seedCatalogGuard() {
+  const seed = /[\\/]shared[\\/]catalog\.js$/;
+  return {
+    name: 'am-seed-catalog-guard',
+    apply: 'build',
+    generateBundle(_options, bundle) {
+      const chunks = Object.values(bundle).filter((c) => c.type === 'chunk');
+      const byFile = new Map(chunks.map((c) => [c.fileName, c]));
+      const initial = new Set();
+      const visit = (chunk) => {
+        if (!chunk || initial.has(chunk)) return;
+        initial.add(chunk);
+        for (const file of chunk.imports || []) visit(byFile.get(file));
+      };
+      for (const chunk of chunks) if (chunk.isEntry) visit(chunk);
+      const hit = [...initial].filter((c) => (c.moduleIds || Object.keys(c.modules || {})).some((id) => seed.test(id)));
+      if (hit.length) {
+        this.warn(`le catalogue de base (shared/catalog.js) est dans le paquet de démarrage (${hit.map((c) => c.fileName).join(', ')}) : `
+          + 'les constantes de jeu viennent de @shared/rules.js (POP_TIERS du guide des raretés compris)');
+      }
+    },
+  };
+}
+
 // `npm run build` : site complet servi par le serveur Node.
-// `npm run build:demo` : démo autonome en un seul fichier HTML (données simulées dans le navigateur).
+// `npm run build:demo` : démo autonome en un seul fichier HTML (données simulées dans le navigateur, polices comprises).
 export default defineConfig(({ mode }) => {
   const demo = mode === 'demo';
   return {
     root: 'client',
-    plugins: [react(), demo && viteSingleFile()].filter(Boolean),
+    plugins: [react(), demo ? viteSingleFile() : seedCatalogGuard()],
     define: { __DEMO__: JSON.stringify(demo) },
     resolve: { alias: { '@shared': path.resolve('shared') } },
     server: {

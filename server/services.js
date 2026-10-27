@@ -5,10 +5,10 @@
 // cartes ; les événements du domaine (cards.added, album.completed…) partent sur le bus APRÈS la validation.
 import { config } from './config.js';
 import { tx } from './db.js';
-import { clampInt } from './catalog.js';
+import { clampInt, BadCursor, ROW } from './catalog.js';
 import { newId, secureRandom } from './security.js';
 import { createLru } from './lru.js';
-import { decodeCursor, keysetPage } from './paging.js';
+import { decodeCursor, encodeCursor, keysetPage } from './paging.js';
 import { dayStart as parisDayStart } from '../shared/periods.js';
 import {
   rollPack, rollAlbumPack, newAchievements, xpForCard, newCardRoyalties, recycleValue, pressCost, levelFromXp,
@@ -39,6 +39,80 @@ export const LISTEN_PLATFORMS = ['deezer', 'spotify', 'apple'];
 /** Durée pendant laquelle un joueur dont la demande d'ami a été refusée ne peut pas la renvoyer. */
 export const FRIEND_COOLDOWN_MS = 7 * 86_400_000;
 const MINUTE = 60_000;
+/**
+ * Au-delà de ce nombre de lignes de cartes (un gros collectionneur), l'état complet envoie sa collection compactée
+ * (`packed`, voir packCollection) ; le site la déplie (client/src/state/mergeState.js, unpackState).
+ */
+export const PACK_FROM = 2000;
+/** Versions d'une carte (colonne cards.variant). */
+const VARIANTS = ['std', 'holo'];
+/** Suffixe d'identifiant gardé tel quel dans la collection compactée (« 07 » de « dz123:07 »). */
+const PACK_SUFFIX = /^[A-Za-z0-9_-]+$/;
+/** Chiffres en base 36 (position d'une version ou d'une rareté). */
+const CODES = Array.from({ length: 36 }, (_, i) => i.toString(36));
+
+/**
+ * Collection compactée d'un gros collectionneur dans l'état complet (PLAN.md 7.3, P2-E) : environ 5 fois moins
+ * d'octets, le même contenu. Format (v 1) :
+ *   variants, rarities : versions et raretés, référencées par leur position (un chiffre en base 36) ;
+ *   t0 : plus ancienne date d'obtention ;
+ *   cards : { préfixe d'identifiant (« dz1015000: », l'album) : « entrée,entrée… » } ; entrée = suffixe « . » version
+ *     rareté [exemplaires si > 1] [« ~ » écart de date (ms, base 36, signé) avec l'entrée précédente du groupe, t0
+ *     pour la première ; absent quand il est nul] ;
+ *   rest : cartes qui ne rentrent pas dans ce format ([{ t, v, c, at, r }], comme l'état normal) ;
+ *   achievements : [[clé, date, rang]] ; albums, artists : [[id, possédées, total]] (stats.albums, stats.artists).
+ * `rows` : catalog.collectionRows (tableaux ROW, dans l'ordre des identifiants : chaque préfixe d'un seul tenant).
+ */
+export function packCollection(rows, achievements, stats) {
+  const variants = [];
+  const rarities = [];
+  const code = (list, value) => {
+    let i = list.indexOf(value);
+    if (i < 0 && list.length < 36) i = list.push(value) - 1;
+    return i;
+  };
+  let t0 = Infinity;
+  for (const r of rows) if (Number.isInteger(r[ROW.at]) && r[ROW.at] < t0) t0 = r[ROW.at];
+  if (!Number.isFinite(t0)) t0 = 0;
+  const groups = new Map();
+  const rest = [];
+  let prefix = null;
+  let group = null;
+  for (const r of rows) {
+    const [t, variant, count, at, rarity] = r;
+    const cut = t.lastIndexOf(':') + 1;
+    const suffix = t.slice(cut);
+    const v = code(variants, variant);
+    const k = code(rarities, rarity);
+    if (!PACK_SUFFIX.test(suffix) || v < 0 || k < 0 || !Number.isInteger(at) || !Number.isInteger(count) || count < 1) {
+      rest.push({ t, v: variant, c: count, at, r: rarity });
+      continue;
+    }
+    // Préfixe de la ligne précédente (cas courant) : pas de recherche dans la table des groupes.
+    if (prefix === null || cut !== prefix.length || !t.startsWith(prefix)) {
+      prefix = t.slice(0, cut);
+      group = groups.get(prefix);
+      if (!group) groups.set(prefix, (group = { parts: [], prev: t0 }));
+    }
+    const gap = at - group.prev;
+    group.prev = at;
+    group.parts.push(`${suffix}.${CODES[v]}${CODES[k]}${count > 1 ? count : ''}${gap ? `~${gap.toString(36)}` : ''}`);
+  }
+  const cards = {};
+  for (const [key, g] of groups) cards[key] = g.parts.join(',');
+  const triples = (map) => Object.entries(map || {}).map(([id, x]) => [id, x.owned, x.total]);
+  return {
+    v: 1,
+    variants,
+    rarities,
+    t0,
+    cards,
+    rest,
+    achievements: achievements.map((a) => [a.key, a.at, a.rank ?? null]),
+    albums: triples(stats.albums),
+    artists: triples(stats.artists),
+  };
+}
 
 /** JSON d'une colonne TEXT : objet lu, ou `fallback` si la valeur est absente ou illisible (PLAN.md 3.1). */
 export function parseJson(text, fallback) {
@@ -56,6 +130,7 @@ export function parseJson(text, fallback) {
  * initialisés (`services.bind(deps)`) : règles d'accès (deps.access), notifications (deps.notifications).
  */
 export function createServices(db, catalog, { bus = null } = {}) {
+
   const q = (sql) => db.prepare(sql);
   const json = (list) => JSON.stringify(list);
   let deps = null;
@@ -105,21 +180,27 @@ export function createServices(db, catalog, { bus = null } = {}) {
     };
   }
 
-  // Statistiques de collection : calculées en base, gardées une minute ou jusqu'à la prochaine carte obtenue.
+  // Statistiques de collection : calculées depuis les cartes du joueur (une lecture, `rows` si l'appelant l'a déjà
+  // faite), gardées une minute ou jusqu'à la prochaine carte obtenue.
   const statsCache = new Map();
-  function statsFor(userId) {
+  function statsFor(userId, rows) {
     const hit = statsCache.get(userId);
     if (hit && Date.now() - hit.at < 60_000) return hit.stats;
-    const stats = catalog.stats(userId);
+    const stats = rows ? catalog.stats(userId, rows) : catalog.stats(userId);
     statsCache.set(userId, { stats, at: Date.now() });
     if (statsCache.size > 5000) statsCache.delete(statsCache.keys().next().value);
     return stats;
   }
   // Profil public d'un joueur (sans la relation avec celui qui regarde) : 30 s, oublié dès que sa collection change.
   const profileCache = createLru({ max: 2000, ttlMs: 30_000 });
+  // Version de la collection de chaque joueur : les curseurs de navigation gardés pour lui (tri « progression ») ne
+  // servent plus dès qu'elle change.
+  const collectionEpoch = new Map();
   const dropStats = (userId) => {
     statsCache.delete(userId);
     profileCache.delete(userId);
+    if (collectionEpoch.size > 50_000) collectionEpoch.clear();
+    collectionEpoch.set(userId, (collectionEpoch.get(userId) || 0) + 1);
   };
 
   /**
@@ -256,7 +337,9 @@ export function createServices(db, catalog, { bus = null } = {}) {
   }
 
   /**
-   * État du joueur connecté. Complet (GET /api/state, connexion) : collection, succès, notes, statistiques.
+   * État du joueur connecté. Complet (GET /api/state, connexion) : collection, succès, notes, statistiques ; pour un
+   * gros collectionneur (PACK_FROM lignes de cartes ou plus), collection, succès et progression par album et par
+   * artiste compactés dans `packed` (packCollection), sans `cards` ni `achievements` en clair.
    * Partiel (`{ partial: true }`, réponses des actions, PLAN.md 4.1.1) : { partial, user, packs, counts,
    * stats: { summary }, serverTime } ; le reste se déduit des deltas de la réponse (client/src/state/mergeState.js).
    */
@@ -270,29 +353,57 @@ export function createServices(db, catalog, { bus = null } = {}) {
     if (partial) {
       return { partial: true, user: self, packs: packInfo(user), counts, stats: { summary: statsSummary(user) }, serverTime: Date.now() };
     }
-    // r : rareté, pour que le site compte doublons et raretés sans charger chaque carte.
-    const cards = q('SELECT c.track_id, c.variant, c.count, c.first_at, t.rarity FROM cards c JOIN cat_tracks t ON t.id = c.track_id WHERE c.user_id = ?').all(userId)
-      .map((r) => ({ t: r.track_id, v: r.variant, c: r.count, at: r.first_at, r: r.rarity }));
+    // Une seule lecture de la collection (avec rareté, artiste et album de chaque morceau) : la liste des cartes et
+    // les statistiques en sortent. r : rareté, pour que le site compte doublons et raretés sans charger chaque carte.
+    const rows = catalog.collectionRows(userId);
+    const stats = statsFor(userId, rows);
     // Les badges (clés « badge:… », PLAN.md 5.7) ont leur propre route (/api/badges) : l'état ne garde que les albums
     // complétés et les artistes maîtrisés, comme les deltas des actions que le site y fusionne.
     const achievements = q("SELECT key, created_at, rank FROM achievements WHERE user_id = ? AND NOT (key >= 'badge:' AND key < 'badge;')").all(userId)
       .map((r) => ({ key: r.key, at: r.created_at, rank: r.rank ?? null }));
     const ratings = q('SELECT item_type, item_id, score FROM ratings WHERE user_id = ?').all(userId)
       .map((r) => ({ t: r.item_type, i: r.item_id, s: r.score }));
-    return {
+    const out = {
       user: self,
       packs: packInfo(user),
-      cards,
-      achievements,
       ratings,
       counts,
       // Ancien nom de counts.pendingFriends, gardé pendant P0.
       pendingFriends: counts.pendingFriends,
-      stats: statsFor(userId),
+      stats,
       catalog: refs({ trackIds: self.showcase.filter(Boolean), albumIds: [avatarAlbum(self.avatar)].filter(Boolean) }),
       serverTime: Date.now(),
       partial: false,
     };
+    if (rows.length < PACK_FROM) {
+      out.cards = rows.map((r) => ({ t: r[ROW.track], v: r[ROW.variant], c: r[ROW.count], at: r[ROW.at], r: r[ROW.rarity] }));
+      out.achievements = achievements;
+      return out;
+    }
+    const { albums: _albums, artists: _artists, ...summary } = stats;
+    out.stats = summary;
+    out.packed = packCollection(rows, achievements, stats);
+    return out;
+  }
+
+  /**
+   * Nombre d'exemplaires de chaque version de ces cartes, après une action qui en retire ou en change (Vernir,
+   * Comptoir) : [{ t, v, c, at, r }] pour chaque version, c = 0 quand elle n'est plus possédée. C'est le delta
+   * `cardCounts` des réponses, que le site fusionne sans recharger l'état (client/src/state/mergeState.js).
+   */
+  function cardCounts(userId, trackIds) {
+    const ids = [...new Set((trackIds || []).filter(idOf))].slice(0, 200);
+    if (!ids.length) return [];
+    const have = new Map(q(`SELECT c.track_id, c.variant, c.count, c.first_at, t.rarity FROM cards c JOIN cat_tracks t ON t.id = c.track_id
+      WHERE c.user_id = ? AND c.track_id IN (SELECT value FROM json_each(?))`).all(userId, json(ids)).map((r) => [`${r.track_id}|${r.variant}`, r]));
+    const out = [];
+    for (const t of ids) {
+      for (const v of VARIANTS) {
+        const r = have.get(`${t}|${v}`);
+        out.push(r ? { t, v, c: r.count, at: r.first_at, r: r.rarity } : { t, v, c: 0 });
+      }
+    }
+    return out;
   }
 
   // ----- cartes ---------------------------------------------------------------
@@ -613,6 +724,8 @@ export function createServices(db, catalog, { bus = null } = {}) {
     const id = idOf(albumId);
     const album = id && catalog.album(id);
     if (!album) throw new HttpError(404, 'unknown_album');
+    // Album archivé (détachement d'un fournisseur, P2-C) : ses cartes restent, il ne se tire plus.
+    if (album.archived) throw new HttpError(409, 'archived_item');
     return atomic(() => {
       const user = getUser(userId);
       const cost = isAdmin(user) ? 0 : ECONOMY.albumPackPrice;
@@ -664,7 +777,9 @@ export function createServices(db, catalog, { bus = null } = {}) {
       if (parsed?.kind === 'album' || parsed?.kind === 'choice') {
         target = parsed.kind === 'album' ? parsed.value : idOf(albumId);
         if (!target) throw new HttpError(400, 'album_required');
-        if (!catalog.album(target)) throw new HttpError(404, 'unknown_album');
+        const album = catalog.album(target);
+        if (!album) throw new HttpError(404, 'unknown_album');
+        if (album.archived) throw new HttpError(409, 'archived_item');
         cards = rollAlbumPack(secureRandom, catalog, target, ownedAmong(userId, catalog.albumTrackIds(target)));
         pity = resetPityOnHit(user, cards);
       } else {
@@ -694,9 +809,12 @@ export function createServices(db, catalog, { bus = null } = {}) {
     });
   }
 
-  /** Recycle tous les doublons (on garde un exemplaire de chaque variante). */
+  /**
+   * Recycle tous les doublons (on garde un exemplaire de chaque variante). Delta de la réponse : `dedupe: true`
+   * (chaque carte revient à un exemplaire), que le site applique sans recharger l'état.
+   */
   function recycleDuplicates(userId) {
-    return tx(db, () => {
+    const result = tx(db, () => {
       const rows = q(`SELECT t.rarity, c.variant, SUM(c.count - 1) AS n FROM cards c JOIN cat_tracks t ON t.id = c.track_id
         WHERE c.user_id = ? AND c.count > 1 GROUP BY t.rarity, c.variant`).all(userId);
       let royalties = 0;
@@ -709,6 +827,8 @@ export function createServices(db, catalog, { bus = null } = {}) {
       q('UPDATE users SET royalties = royalties + ? WHERE id = ?').run(royalties, userId);
       return { royalties, recycled };
     });
+    dropStats(userId);
+    return { ...result, dedupe: true };
   }
 
   /**
@@ -733,8 +853,8 @@ export function createServices(db, catalog, { bus = null } = {}) {
     return {
       trackId: id,
       cost: isAdmin(user) ? 0 : base,
-      pressable: !owned && (base != null || isAdmin(user)),
-      reason: owned ? 'owned' : base == null ? 'promo_locked' : null,
+      pressable: !owned && !track.archived && (base != null || isAdmin(user)),
+      reason: owned ? 'owned' : track.archived ? 'archived' : base == null ? 'promo_locked' : null,
       artistId: track.artistId,
     };
   }
@@ -744,6 +864,7 @@ export function createServices(db, catalog, { bus = null } = {}) {
     const id = idOf(trackId);
     const track = id && catalog.track(id);
     if (!track) throw new HttpError(404, 'unknown_track');
+    if (track.archived) throw new HttpError(409, 'archived_item');
     return atomic(() => {
       const user = getUser(userId);
       const admin = isAdmin(user);
@@ -1296,6 +1417,16 @@ export function createServices(db, catalog, { bus = null } = {}) {
 
   const idList = (raw, max) => String(raw || '').split(',').map((x) => x.trim()).filter((x) => x && x.length <= 80).slice(0, max);
 
+  // Pages par décalage (?offset=, l'onglet Albums de la Collection) : la page suivante d'une page déjà servie reprend
+  // au curseur de celle-ci (keyset) au lieu de relire toutes les lignes sautées. Clé : joueur, version de sa collection
+  // (le tri « progression » en dépend), filtres et décalage.
+  const browseCursors = createLru({ max: 5000, ttlMs: 10 * MINUTE });
+
+  /**
+   * GET /api/catalog/albums (PLAN.md 4.3, P2-E) : albums filtrés (texte cherché dans l'index de la recherche globale,
+   * genre, décennie, artiste, `mine`), triés (popular, progress, title, year, recent), avec la progression du joueur.
+   * Pages par curseur (?cursor=, keyset) ou par décalage (?offset=) → { total, items, nextCursor }.
+   */
   function browseAlbums(userId, query) {
     // ?ids=a,b,c : ces albums précis (vignettes de l'accueil, du profil...), avec la progression du joueur.
     if (query.ids != null) {
@@ -1309,9 +1440,33 @@ export function createServices(db, catalog, { bus = null } = {}) {
     const decade = /^\d{4}$/.test(String(query.decade ?? '')) ? Number(query.decade) : null;
     const artistId = idOf(query.artist);
     const sort = SORTS.has(query.sort) ? query.sort : 'popular';
+    const mine = query.mine === '1' || query.mine === 'true';
     const offset = clampInt(query.offset, 0, 10_000, 0);
     const limit = clampInt(query.limit, 1, 60, 36);
-    return catalog.searchAlbums({ q: text, genre, decade, artistId, sort, mine: query.mine === '1' || query.mine === 'true', offset, limit, userId });
+    const given = decodeCursor(query.cursor);
+    const key = JSON.stringify([userId, collectionEpoch.get(userId) || 0, text.trim(), genre, decade, artistId, sort, mine]);
+    const cursor = given || (offset > 0 ? browseCursors.get(`${key}|${offset}`) ?? null : null);
+
+    // Texte : albums trouvés par le module search (préfixes, puis fautes de frappe) ; sans lui, le catalogue cherche
+    // lui-même dans l'index.
+    let albumIds = null;
+    if (text.trim() && deps?.search?.albumMatches) {
+      const found = deps.search.albumMatches(text);
+      if (!found || !found.ids.length) return { total: 0, items: [] };
+      albumIds = found.ids;
+    }
+    let page;
+    try {
+      page = catalog.searchAlbums({
+        q: albumIds ? null : text, albumIds, genre, decade, artistId, sort, mine, cursor, offset: cursor ? 0 : offset, limit, userId,
+      });
+    } catch (err) {
+      if (err instanceof BadCursor) throw new HttpError(400, 'invalid_input', { field: 'cursor' });
+      throw err;
+    }
+    if (!('nextCursor' in page)) return page;
+    if (!given && page.nextCursor) browseCursors.set(`${key}|${offset + page.items.length}`, page.nextCursor);
+    return { ...page, nextCursor: page.nextCursor ? encodeCursor(page.nextCursor) : null };
   }
 
   function albumDetail(id) {
@@ -1339,10 +1494,25 @@ export function createServices(db, catalog, { bus = null } = {}) {
     return catalog.promos({ offset: clampInt(query.offset, 0, 100_000, 0), limit: clampInt(query.limit, 1, 120, 60) });
   }
 
+  /**
+   * GET /api/catalog/mine : cartes du joueur. Le texte est cherché dans l'index de la recherche globale (début des mots
+   * du titre, de l'artiste ou de l'album) ; pour une requête trop large pour l'index (ou sans module search), le
+   * catalogue compare les textes lui-même.
+   */
   function myCards(userId, query) {
     const rarity = RARITIES.includes(query.rarity) ? query.rarity : null;
+    const text = typeof query.q === 'string' ? query.q.slice(0, 80) : '';
+    let trackIds = null;
+    if (text.trim() && deps?.search?.trackMatches) {
+      const found = deps.search.trackMatches(text);
+      if (found && !found.capped) {
+        if (!found.ids.length) return { total: 0, items: [] };
+        trackIds = found.ids;
+      }
+    }
     return catalog.ownedTracks(userId, {
-      q: typeof query.q === 'string' ? query.q.slice(0, 80) : '',
+      q: text,
+      trackIds,
       rarity,
       offset: clampInt(query.offset, 0, 100_000, 0),
       limit: clampInt(query.limit, 1, 120, 60),
@@ -1362,7 +1532,7 @@ export function createServices(db, catalog, { bus = null } = {}) {
   return {
     // forget(userId) : oublie les statistiques et le profil gardés en cache d'un joueur (après un changement fait ailleurs).
     forget: dropStats,
-    bind, atomic, getUser, isAdmin, refs, syncPacks, state, openPacks, openAlbumPack, openSpecialPack, buyPack, recycleDuplicates,
+    bind, atomic, getUser, isAdmin, refs, syncPacks, state, cardCounts, openPacks, openAlbumPack, openSpecialPack, buyPack, recycleDuplicates,
     pressCard, pressInfo, promoUnlocked, addCards, refreshProgress, focusAlbums, wishlistAlbumIds, packFocus,
     gainXp, addXp, insertBooster, unlockedCosmeticIds, parseJson,
     setAvatar, setShowcase, setLang, setPrefs, publicProfile, userSummaries, summaryAlbums,

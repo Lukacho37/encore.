@@ -9,11 +9,15 @@
 // SEARCH_VERSION (une fois, quelques secondes pour 268 000 documents). Ensuite : un minuteur de 5 minutes indexe les
 // nouvelles lignes du catalogue (import Deezer) et les comptes nouvellement confirmés ; un compte est aussi indexé dès
 // sa confirmation (événement user.verified), une liste à chaque list.saved (P1-C) et retirée à content.removed ; la
-// tâche de nuit « search-weights » recalcule les popularités. API interne (deps.search) : upsert, remove, refresh,
-// rebuild, refreshWeights, status, suggest, search.
+// tâche de nuit « search-weights » recalcule les popularités. Un album importé est indexé tout de suite (le
+// catalogue appelle deps.search.upsert par catalog.indexAlbum). Les éléments archivés (P2-C) sortent de l'index à la
+// reconstruction suivante ; d'ici là, ils sont écartés des résultats. API interne (deps.search) : upsert, remove,
+// refresh, rebuild, refreshWeights, status, suggest, search, albumMatches et trackMatches (filtres texte de la
+// navigation : /catalog/albums?q=, /catalog/mine?q=, P2-E), forget.
+// Sans module (catalogue seul : scripts, tests) : indexRow(db, kind, refId) écrit un document avec les mêmes règles.
 import {
-  SEARCH_KINDS, QUOTAS, SCOPE_QUOTA, COUNT_CAP, RESULTS_CAP, TYPO_MIN_LENGTH, TYPO_MIN_SIM, SUGGEST_MIN_SIM,
-  normalize, prepareQuery, ftsBody, trigrams, queryGrams, similarity, textScore, typoScore, finalScore, byScore, betterTop,
+  SEARCH_KINDS, QUOTAS, SCOPE_QUOTA, COUNT_CAP, RESULTS_CAP, TYPO_MIN_LENGTH, TYPO_MIN_SIM, SUGGEST_MIN_SIM, MIN_QUERY, MAX_TOKENS,
+  normalize, prepareQuery, tokensOf, ftsBody, trigrams, queryGrams, similarity, textScore, typoScore, finalScore, byScore, betterTop,
   fansWeight, userWeight, listWeight, cleanQuery,
 } from '../shared/search.js';
 
@@ -69,6 +73,11 @@ const LIST_KINDS = "('list','grid9')";
 /** Classement d'une page de résultats gardé une minute par joueur (pages suivantes, retour sur un onglet). */
 const PAGE_TTL = 60_000;
 const NO_CATALOG = Object.freeze({ tracks: [], albums: [], artists: [] });
+/** Filtres texte de la navigation : albums trouvés au plus (les plus populaires d'abord), morceaux lus au plus. */
+export const BROWSE_CAP = 5000;
+export const TRACK_MATCH_CAP = 20_000;
+/** Tables des types du catalogue (statut des éléments archivés). */
+const STATUS_TABLE = { album: 'cat_albums', track: 'cat_tracks', artist: 'cat_artists' };
 
 const kvGet = (db, key) => db.prepare('SELECT value FROM kv WHERE key = ?').get(key)?.value ?? null;
 const kvSet = (db, key, value) => db.prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
@@ -104,6 +113,77 @@ const SOURCES = {
 };
 /** Clé de la ligne source d'un document (upsert d'un seul document relu depuis la base). */
 const SOURCE_KEY = { album: 'al.id', track: 't.id', artist: 'ar.id', user: 'u.id', list: 'l.id' };
+
+// Fonctions SQL de la normalisation et des poids (shared/search.js), déclarées une fois par base.
+const withFunctions = new WeakSet();
+function sqlFunctions(db) {
+  if (withFunctions.has(db)) return;
+  withFunctions.add(db);
+  db.function('am_norm', { deterministic: true }, (s) => normalize(s ?? ''));
+  db.function('am_fw', { deterministic: true }, (fans, max, avgPop) => fansWeight(Number(fans) || 0, Number(max) || 0, Number(avgPop) || 0));
+  db.function('am_uw', { deterministic: true }, (n) => userWeight(Number(n) || 0));
+  db.function('am_lw', { deterministic: true }, (n) => listWeight(Number(n) || 0));
+}
+
+const maximaOf = (q) => ({
+  maxAlbumFans: q('SELECT COALESCE(MAX(fans), 0) AS m FROM cat_albums').get().m,
+  maxArtistFans: q('SELECT COALESCE(MAX(fans), 0) AS m FROM cat_artists').get().m,
+});
+/** Paramètres nommés de la requête source d'un type (node:sqlite refuse un paramètre inconnu). */
+function sourceParams(q, kind, m = null) {
+  if (kind === 'album') return { maxAlbumFans: (m || maximaOf(q)).maxAlbumFans };
+  if (kind === 'artist') return { maxArtistFans: (m || maximaOf(q)).maxArtistFans };
+  return {};
+}
+
+/**
+ * Écrit un document (search_docs, search_fts, search_tri) dans la transaction de l'appelant. Un nouveau document
+ * prend la suite de la plage de son type ; un document existant garde son numéro. `q(sql)` : requête préparée.
+ */
+function writeDocWith(q, kind, ref, folded, ftsName, context, weight, now) {
+  const existing = q('SELECT id FROM search_docs WHERE kind = ? AND ref_id = ?').get(kind, ref);
+  let id;
+  if (existing) {
+    id = existing.id;
+    q('DELETE FROM search_fts WHERE rowid = ?').run(id);
+    q('DELETE FROM search_tri WHERE rowid = ?').run(id);
+    q('UPDATE search_docs SET folded = ?, weight = ?, updated_at = ? WHERE id = ?').run(folded, weight, now, id);
+  } else {
+    const [lo, hi] = rangeOf(kind);
+    id = (q('SELECT MAX(id) AS m FROM search_docs WHERE id BETWEEN ? AND ?').get(lo, hi).m ?? lo - 1) + 1;
+    q('INSERT INTO search_docs (id, kind, ref_id, folded, weight, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, kind, ref, folded, weight, now);
+  }
+  q('INSERT INTO search_fts (rowid, name, context, k) VALUES (?, ?, ?, ?)').run(id, ftsName, context, `k${kind}`);
+  q('INSERT INTO search_tri (rowid, name) VALUES (?, ?)').run(id, folded);
+}
+
+function removeDocWith(q, kind, ref) {
+  const row = q('SELECT id FROM search_docs WHERE kind = ? AND ref_id = ?').get(kind, String(ref));
+  if (!row) return false;
+  q('DELETE FROM search_fts WHERE rowid = ?').run(row.id);
+  q('DELETE FROM search_tri WHERE rowid = ?').run(row.id);
+  q('DELETE FROM search_docs WHERE id = ?').run(row.id);
+  return true;
+}
+
+/** Lignes source d'un type qui vérifient `where`, avec les règles d'indexation (nom normalisé, contexte, poids). */
+const sourceRows = (q, kind, where, params) => q(`${SOURCES[kind](where)} ORDER BY weight DESC`).all({ ...sourceParams(q, kind), ...params });
+
+/**
+ * Indexe une ligne relue depuis la base (album importé, morceau, artiste, membre, liste), dans la transaction de
+ * l'appelant ; une ligne qui ne doit pas être indexée (archivée, compte non confirmé, liste privée) est retirée.
+ * Sert au catalogue seul (sans module de recherche) ; le module, lui, passe par son upsert (dictionnaire des mots).
+ */
+export function indexRow(db, kind, refId) {
+  if (!SEARCH_KINDS.includes(kind) || refId == null || refId === '') return false;
+  sqlFunctions(db);
+  const q = (sql) => db.prepare(sql);
+  const key = kind === 'user' || kind === 'list' ? Number(refId) : String(refId);
+  const row = sourceRows(q, kind, `AND ${SOURCE_KEY[kind]} = :ref`, { ref: key })[0];
+  if (!row?.folded) return removeDocWith(q, kind, refId) && false;
+  writeDocWith(q, kind, String(refId), row.folded, row.name || row.folded, row.context || '', row.weight || 0, Date.now());
+  return true;
+}
 
 /** Mots de l'index (colonnes nom et contexte), triés : développement des préfixes tapés en mots exacts. */
 export function createTermIndex(db) {
@@ -177,21 +257,9 @@ export function createSearchIndex(deps) {
     return st;
   };
 
-  db.function('am_norm', { deterministic: true }, (s) => normalize(s ?? ''));
-  db.function('am_fw', { deterministic: true }, (fans, max, avgPop) => fansWeight(Number(fans) || 0, Number(max) || 0, Number(avgPop) || 0));
-  db.function('am_uw', { deterministic: true }, (n) => userWeight(Number(n) || 0));
-  db.function('am_lw', { deterministic: true }, (n) => listWeight(Number(n) || 0));
-
-  const maxima = () => ({
-    maxAlbumFans: q('SELECT COALESCE(MAX(fans), 0) AS m FROM cat_albums').get().m,
-    maxArtistFans: q('SELECT COALESCE(MAX(fans), 0) AS m FROM cat_artists').get().m,
-  });
-  /** Paramètres nommés de la requête source d'un type (node:sqlite refuse un paramètre inconnu). */
-  const paramsFor = (kind, m = null) => {
-    if (kind === 'album') return { maxAlbumFans: (m || maxima()).maxAlbumFans };
-    if (kind === 'artist') return { maxArtistFans: (m || maxima()).maxArtistFans };
-    return {};
-  };
+  sqlFunctions(db);
+  const maxima = () => maximaOf(q);
+  const paramsFor = (kind, m = null) => sourceParams(q, kind, m);
   /** Transaction, sauf si l'appelant en a déjà ouvert une (un autre module qui indexe dans la sienne). */
   const inTx = (fn) => (db.isTransaction ? fn() : deps.tx(fn));
 
@@ -200,10 +268,32 @@ export function createSearchIndex(deps) {
   const terms = createTermIndex(db);
   // Fréquence (plafonnée) des trigrammes dans l'index, pour choisir les plus rares d'une requête approchée.
   const gramCache = new Map();
-  /** L'index a changé : classements et fréquences gardés en mémoire oubliés. */
+  // Éléments archivés encore dans l'index (détachement d'un fournisseur depuis la dernière reconstruction) : null tant
+  // que ce n'est pas vérifié ; false après une reconstruction (elle ne garde que les éléments actifs).
+  let staleWithdrawn = null;
+  /** L'index ou le catalogue a changé : classements et fréquences gardés en mémoire oubliés. */
   function forget() {
     pageCache.clear();
     gramCache.clear();
+    staleWithdrawn = null;
+  }
+  /** Le catalogue a-t-il des éléments archivés que l'index pourrait encore citer ? (vérifié une fois après chaque oubli) */
+  function mayHaveWithdrawn() {
+    if (staleWithdrawn === null) {
+      // Morceaux d'un album archivé : archivés avec lui (P2-C) ; reste à voir les albums, les artistes et les promos.
+      staleWithdrawn = !!(q("SELECT 1 FROM cat_albums WHERE status <> 'active' LIMIT 1").get()
+        || q("SELECT 1 FROM cat_artists WHERE status <> 'active' LIMIT 1").get()
+        || q("SELECT 1 FROM cat_tracks WHERE kind = 'promo' AND status <> 'active' LIMIT 1").get());
+    }
+    return staleWithdrawn;
+  }
+  /** Retire des candidats d'un type les éléments archivés (jusqu'à la reconstruction suivante de l'index). */
+  function dropWithdrawn(kind, rows) {
+    const table = STATUS_TABLE[kind];
+    if (!table || !rows.length || !mayHaveWithdrawn()) return rows;
+    const gone = new Set(q(`SELECT id FROM ${table} WHERE id IN (SELECT value FROM json_each(?)) AND status <> 'active'`)
+      .all(JSON.stringify(rows.map((r) => r.ref))).map((r) => r.id));
+    return gone.size ? rows.filter((r) => !gone.has(r.ref)) : rows;
   }
 
   let lastRefresh = Number(kvGet(db, 'search:refreshed_at')) || null;
@@ -211,20 +301,7 @@ export function createSearchIndex(deps) {
   // ---------- écriture ----------
 
   function writeDoc(kind, ref, folded, ftsName, context, weight, now) {
-    const existing = q('SELECT id FROM search_docs WHERE kind = ? AND ref_id = ?').get(kind, ref);
-    let id;
-    if (existing) {
-      id = existing.id;
-      q('DELETE FROM search_fts WHERE rowid = ?').run(id);
-      q('DELETE FROM search_tri WHERE rowid = ?').run(id);
-      q('UPDATE search_docs SET folded = ?, weight = ?, updated_at = ? WHERE id = ?').run(folded, weight, now, id);
-    } else {
-      const [lo, hi] = rangeOf(kind);
-      id = (q('SELECT MAX(id) AS m FROM search_docs WHERE id BETWEEN ? AND ?').get(lo, hi).m ?? lo - 1) + 1;
-      q('INSERT INTO search_docs (id, kind, ref_id, folded, weight, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, kind, ref, folded, weight, now);
-    }
-    q('INSERT INTO search_fts (rowid, name, context, k) VALUES (?, ?, ?, ?)').run(id, ftsName, context, `k${kind}`);
-    q('INSERT INTO search_tri (rowid, name) VALUES (?, ?)').run(id, folded);
+    writeDocWith(q, kind, ref, folded, ftsName, context, weight, now);
     terms.add(ftsName);
     terms.add(context);
   }
@@ -233,7 +310,7 @@ export function createSearchIndex(deps) {
   function indexWhere(kind, where, params = {}) {
     const now = Date.now();
     let n = 0;
-    for (const r of q(`${SOURCES[kind](where)} ORDER BY weight DESC`).all({ ...paramsFor(kind), ...params })) {
+    for (const r of sourceRows(q, kind, where, params)) {
       if (!r.folded) continue;
       writeDoc(kind, r.ref, r.folded, r.name || r.folded, r.context || '', r.weight || 0, now);
       n += 1;
@@ -241,14 +318,7 @@ export function createSearchIndex(deps) {
     return n;
   }
 
-  function removeDoc(kind, ref) {
-    const row = q('SELECT id FROM search_docs WHERE kind = ? AND ref_id = ?').get(kind, String(ref));
-    if (!row) return false;
-    q('DELETE FROM search_fts WHERE rowid = ?').run(row.id);
-    q('DELETE FROM search_tri WHERE rowid = ?').run(row.id);
-    q('DELETE FROM search_docs WHERE id = ?').run(row.id);
-    return true;
-  }
+  const removeDoc = (kind, ref) => removeDocWith(q, kind, ref);
 
   /** Repères de l'indexation incrémentale : dernières lignes du catalogue indexées, dernière confirmation de compte. */
   function marks() {
@@ -327,6 +397,8 @@ export function createSearchIndex(deps) {
     kvSet(db, 'search:built', JSON.stringify(built));
     terms.load();
     forget();
+    // Les sources ne lisent que les éléments actifs : plus rien d'archivé dans l'index.
+    staleWithdrawn = false;
     return built;
   }
 
@@ -500,7 +572,55 @@ export function createSearchIndex(deps) {
         take(q(ST_TRI_CAPPED).all(grams.slice(0, TYPO_GRAMS).map(([g]) => `"${g}"`).join(' OR ')));
       }
     }
-    return { lists, matched, ftsHits, typo };
+    // Éléments archivés depuis la dernière reconstruction de l'index : jamais proposés.
+    if (!mayHaveWithdrawn()) return { lists, matched, ftsHits, typo };
+    for (const kind of kinds) lists[kind] = dropWithdrawn(kind, lists[kind]);
+    const kept = new Set(kinds.flatMap((k) => lists[k]));
+    return { lists, matched, ftsHits, typo: typo.filter((r) => kept.has(r)) };
+  }
+
+  const ST_REFS = `SELECT d.ref_id AS ref FROM (SELECT rowid AS rid FROM search_fts WHERE search_fts MATCH ? LIMIT ?) m
+    JOIN search_docs d ON d.id = m.rid`;
+
+  /** Corps FTS5 d'un filtre texte de la navigation (une lettre suffit : préfixe tel quel), ou null si rien de cherchable. */
+  function browseBody(rawQ) {
+    const fq = tokensOf(normalize(cleanQuery(rawQ))).slice(0, MAX_TOKENS).join(' ');
+    if (!fq) return null;
+    const tokens = tokensOf(fq);
+    return { fq, body: fq.length >= MIN_QUERY ? matchBody(tokens) : ftsBody(tokens) };
+  }
+
+  /**
+   * Filtre texte de l'onglet Albums de la Collection et de /catalog/albums?q= (PLAN.md 4.3, P2-E) : albums dont chaque
+   * mot tapé commence un mot du titre ou du contexte (artiste, année), les plus populaires d'abord (BROWSE_CAP au
+   * plus) ; quand aucun ne commence ainsi, ceux qui ressemblent à la requête (fautes de frappe), les plus proches
+   * d'abord. Renvoie { ids, typo } ; null quand la requête n'a rien de cherchable.
+   */
+  function albumMatches(rawQ, { cap = BROWSE_CAP } = {}) {
+    const parsed = browseBody(rawQ);
+    if (!parsed) return null;
+    if (parsed.body) {
+      const ids = q(ST_REFS).all(`k:kalbum AND {name context}: (${parsed.body})`, cap).map((r) => r.ref);
+      if (ids.length) return { ids, typo: false };
+    }
+    const prepared = prepareQuery(parsed.fq);
+    if (!prepared || prepared.compact.length < TYPO_MIN_LENGTH) return { ids: [], typo: false };
+    const rows = candidates(prepared, ['album'], () => SCOPE_QUOTA).lists.album.filter((r) => r.typo)
+      .sort((a, b) => b.sim - a.sim || b.weight - a.weight);
+    return { ids: rows.slice(0, cap).map((r) => r.ref), typo: rows.length > 0 };
+  }
+
+  /**
+   * Filtre texte des cartes d'un joueur (/catalog/mine?q=) : morceaux dont chaque mot tapé commence un mot du titre ou
+   * du contexte (artiste, album). Renvoie { ids, capped } (`capped` : plus de `cap` morceaux, la liste n'est pas
+   * complète et l'appelant compare alors les textes lui-même) ; null quand la requête n'a rien de cherchable.
+   */
+  function trackMatches(rawQ, { cap = TRACK_MATCH_CAP } = {}) {
+    const parsed = browseBody(rawQ);
+    if (!parsed) return null;
+    if (!parsed.body) return { ids: [], capped: false };
+    const ids = q(ST_REFS).all(`k:ktrack AND {name context}: (${parsed.body})`, cap + 1).map((r) => r.ref);
+    return { ids: ids.slice(0, cap), capped: ids.length > cap };
   }
 
   /** Albums, morceaux (par leur album) et artistes dont le joueur a déjà des cartes, parmi ces candidats. */
@@ -742,7 +862,10 @@ export function createSearchIndex(deps) {
     };
   }
 
-  return { rebuild, refresh, upsert, remove, refreshWeights, status, suggest, search, kindsOf, forget, loadTerms: () => terms.load() };
+  return {
+    rebuild, refresh, upsert, remove, refreshWeights, status, suggest, search, albumMatches, trackMatches, kindsOf, forget,
+    loadTerms: () => terms.load(),
+  };
 }
 
 export function init(deps) {
@@ -761,6 +884,8 @@ export function init(deps) {
     }
   }
 
+  // Album importé (catalog.indexAlbum, server/importer.js) : indexé tout de suite, dictionnaire des mots compris.
+  deps.catalog?.setIndexer?.((albumId) => index.upsert('album', String(albumId)));
   // Événements : compte confirmé, liste enregistrée (P1-C) ou retirée.
   deps.bus.on('user.verified', ({ userId }) => index.upsert('user', String(userId)));
   deps.bus.on('list.saved', ({ listId }) => index.upsert('list', String(listId)));

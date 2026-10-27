@@ -262,6 +262,166 @@ test('temps par requête < 20 ms (meilleur de trois, serveur chargé par les aut
   assert.deepEqual(slow, []);
 });
 
+// ---------- navigation dans les albums sur l'index de la recherche (P2-E, PLAN.md 4.3, 7.3, 8.3 P2.7) ----------
+
+const { encodeCursor } = await import('../paging.js');
+const one = (sql, ...args) => app.db.prepare(sql).get(...args);
+const all = (sql, ...args) => app.db.prepare(sql).all(...args);
+
+/** Toutes les pages d'une navigation par curseur : identifiants dans l'ordre, total annoncé, nombre de pages. */
+async function walk(who, query, limit = 60) {
+  const ids = [];
+  let cursor = null;
+  let total = null;
+  let pages = 0;
+  do {
+    const r = await api(app.base, who.cookie, 'GET', `/catalog/albums?${query}&limit=${limit}${cursor ? `&cursor=${cursor}` : ''}`);
+    assert.equal(r.status, 200, JSON.stringify(r.body).slice(0, 300));
+    total ??= r.body.total;
+    ids.push(...r.body.items.map((a) => a.id));
+    cursor = r.body.nextCursor;
+    pages += 1;
+    assert.ok(pages < 200, 'pagination sans fin');
+  } while (cursor);
+  return { ids, total, pages };
+}
+
+test('navigation : /catalog/albums?q= servi par l’index de la recherche (préfixes, puis fautes de frappe) ; cat_search retiré', async () => {
+  const browse = (q, extra = '') => api(app.base, alice.cookie, 'GET', `/catalog/albums?q=${encodeURIComponent(q)}${extra}`);
+  assert.equal((await browse('discov')).body.items[0].id, 'discovery');
+  // Aucun album ne commence ainsi : les albums approchés (« Vouliez-vous dire »), les plus proches d'abord.
+  assert.equal((await browse('dicovery')).body.items[0].id, 'discovery');
+  // Chaque mot commence un mot du titre ou du contexte (artiste, année) : « nuit fire 2 », « nuit fire 18 »…
+  const two = await browse('nuit fir', '&limit=60');
+  assert.equal(two.body.total, 120, '« nuit fire n » et « fire nuit n »');
+  for (const a of two.body.items) {
+    const words = normalize(`${a.title} ${a.artist} ${a.year ?? ''}`).split(' ');
+    assert.ok(['nuit', 'fir'].every((t) => words.some((w) => w.startsWith(t))), `${a.title} · ${a.artist}`);
+  }
+  assert.deepEqual((await browse('!!!')).body, { total: 0, items: [] });
+  assert.deepEqual((await browse('zzzzqx')).body, { total: 0, items: [] });
+
+  // Album importé : cherchable tout de suite (catalog.indexAlbum → index de la recherche, dictionnaire des mots compris).
+  const now = Date.now();
+  app.db.prepare("INSERT INTO cat_artists (id, name, genre, fans, source, created_at) VALUES ('dz8888', 'Orchestre Zanzibar', 'jazz', 4000, 'deezer', ?)").run(now);
+  app.db.prepare(`INSERT INTO cat_albums (id, artist_id, title, year, genre, catalog, track_count, fans, source, created_at)
+    VALUES ('dz8888001', 'dz8888', 'Lagunes électriques', 2023, 'jazz', 8888, 1, 700, 'deezer', ?)`).run(now);
+  app.catalog.indexAlbum('dz8888001');
+  // Totaux du catalogue recalculés (l'import le fait à son calibrage suivant).
+  app.catalog.invalidate();
+  assert.equal(search.suggest(alice.user.id, 'zanzibar lagu').groups.album[0]?.id, 'dz8888001');
+  assert.deepEqual((await browse('lagunes electr')).body.items.map((a) => a.id), ['dz8888001']);
+  assert.equal(one('SELECT COUNT(*) AS n FROM cat_search').n, 0, 'cat_search n’est plus écrit');
+});
+
+test('navigation : pages par curseur sur chaque tri, sans doublon ni trou ; les décalages reprennent au curseur', async () => {
+  const active = one("SELECT COUNT(*) AS n FROM cat_albums WHERE status = 'active'").n;
+  for (const sort of ['popular', 'progress', 'title', 'year', 'recent']) {
+    const { ids, total } = await walk(alice, `sort=${sort}`, 60);
+    assert.equal(total, active, sort);
+    assert.equal(ids.length, total, `${sort} : tous les albums`);
+    assert.equal(new Set(ids).size, total, `${sort} : aucun doublon`);
+  }
+  // Ordres attendus, comparés à la même requête faite d'un bloc.
+  const titles = (await walk(alice, 'sort=title')).ids;
+  assert.deepEqual(titles, all("SELECT id FROM cat_albums WHERE status = 'active' ORDER BY title COLLATE NOCASE, rowid").map((r) => r.id));
+  const recent = (await walk(alice, 'sort=recent')).ids;
+  assert.deepEqual(recent, all("SELECT id FROM cat_albums WHERE status = 'active' ORDER BY created_at DESC, rowid DESC").map((r) => r.id));
+  const years = (await walk(alice, 'sort=year')).ids;
+  assert.deepEqual(years, all("SELECT id FROM cat_albums WHERE status = 'active' ORDER BY year DESC, title COLLATE NOCASE, rowid").map((r) => r.id));
+  // Populaires : les albums de la graine d'abord (première requête), puis les importés par fans décroissants.
+  const popular = (await walk(alice, 'sort=popular')).ids;
+  const seeds = all("SELECT id FROM cat_albums WHERE source = 'seed'").map((r) => r.id);
+  assert.deepEqual(new Set(popular.slice(0, seeds.length)), new Set(seeds));
+  const fans = popular.slice(seeds.length).map((id) => one('SELECT fans FROM cat_albums WHERE id = ?', id).fans);
+  assert.ok(fans.every((f, i) => i === 0 || fans[i - 1] >= f), 'fans décroissants');
+  // Progression : les albums commencés d'abord (Discovery, 5 / 14 depuis un test précédent).
+  const progress = await api(app.base, alice.cookie, 'GET', '/catalog/albums?sort=progress&limit=3');
+  assert.equal(progress.body.items[0].id, 'discovery');
+  assert.equal(progress.body.items[0].owned, 5);
+  const mine = await walk(alice, 'sort=progress&mine=1');
+  assert.deepEqual(mine.ids, ['discovery']);
+
+  // Décalages (client de la Collection) : mêmes pages que par curseur, la page suivante reprenant au curseur gardé.
+  const byOffset = [];
+  for (let offset = 0; offset < 240; offset += 60) {
+    const r = await api(app.base, alice.cookie, 'GET', `/catalog/albums?sort=title&limit=60&offset=${offset}`);
+    byOffset.push(...r.body.items.map((a) => a.id));
+  }
+  assert.deepEqual(byOffset, titles.slice(0, 240));
+  const jump = await api(app.base, alice.cookie, 'GET', '/catalog/albums?sort=popular&limit=10&offset=500');
+  assert.deepEqual(jump.body.items.map((a) => a.id), popular.slice(500, 510), 'décalage sans page précédente');
+
+  // Filtres : genre et décennie, total exact.
+  const rock = await walk(alice, 'sort=year&genre=rock', 40);
+  assert.equal(rock.total, one("SELECT COUNT(*) AS n FROM cat_albums WHERE genre = 'rock' AND status = 'active'").n);
+  assert.equal(rock.ids.length, rock.total);
+  const nineties = await walk(alice, 'sort=popular&decade=1990', 40);
+  assert.equal(nineties.ids.length, one("SELECT COUNT(*) AS n FROM cat_albums WHERE year >= 1990 AND year < 2000 AND status = 'active'").n);
+  // Curseur illisible ou d'un autre tri : 400.
+  assert.equal((await api(app.base, alice.cookie, 'GET', '/catalog/albums?cursor=%%%')).status, 400);
+  assert.equal((await api(app.base, alice.cookie, 'GET', `/catalog/albums?sort=title&cursor=${encodeCursor([0, 'x'])}`)).status, 400);
+  assert.equal((await api(app.base, alice.cookie, 'GET', `/catalog/albums?sort=title&cursor=${encodeCursor([4, 'x', 1])}`)).status, 400);
+});
+
+test('éléments archivés (P2-C) : hors navigation, recherche, totaux et tirages ; lisibles un par un ; ni booster d’album ni pressage', async () => {
+  const albumId = 'dz1000005';
+  const title = one('SELECT title FROM cat_albums WHERE id = ?', albumId).title;
+  const trackIds = all('SELECT id FROM cat_tracks WHERE album_id = ?', albumId).map((r) => r.id);
+  // Point de départ à jour (des tests précédents ont ajouté des lignes au catalogue).
+  app.catalog.invalidate();
+  app.catalog.rebuildIndex();
+  const before = { total: app.catalog.totals(), index: app.catalog.indexSize() };
+  const browseTotal = async () => (await api(app.base, alice.cookie, 'GET', '/catalog/albums?limit=1')).body.total;
+  const totalBefore = await browseTotal();
+  const archive = (status) => {
+    app.db.prepare('UPDATE cat_albums SET status = ? WHERE id = ?').run(status, albumId);
+    app.db.prepare('UPDATE cat_tracks SET status = ? WHERE album_id = ?').run(status, albumId);
+    // Comme le détachement (server/enrich.js) : caches du catalogue et de la recherche oubliés.
+    app.catalog.invalidate();
+    app.catalog.rebuildIndex();
+    search.forget();
+  };
+  try {
+    archive('withdrawn');
+    assert.equal(await browseTotal(), totalBefore - 1);
+    assert.equal(app.catalog.totals().albums, before.total.albums - 1);
+    assert.equal(app.catalog.indexSize(), before.index - trackIds.length, 'ses morceaux ne sortent plus des boosters');
+    for (let i = 0; i < 300; i++) assert.ok(!trackIds.includes(app.catalog.randomTrack({ rarity: 'common' })?.id));
+    const found = await api(app.base, alice.cookie, 'GET', `/catalog/albums?q=${encodeURIComponent(title)}&limit=60`);
+    assert.ok(!found.body.items?.some((a) => a.id === albumId), 'hors du filtre texte');
+    assert.ok(!search.suggest(alice.user.id, title, 'album').groups.album.some((a) => a.id === albumId), 'hors des suggestions avant la reconstruction');
+    // Toujours lisible (collections, notes, listes) avec sa marque « archivé ».
+    const page = await api(app.base, alice.cookie, 'GET', `/catalog/albums/${albumId}`);
+    assert.equal(page.status, 200);
+    assert.equal(page.body.album.archived, true);
+    assert.ok(page.body.tracks.every((t) => t.archived === true));
+    app.db.prepare('UPDATE users SET royalties = 100000 WHERE id = ?').run(alice.user.id);
+    const pack = await api(app.base, alice.cookie, 'POST', '/packs/album', { albumId });
+    assert.equal(pack.status, 409);
+    assert.equal(pack.body.error, 'archived_item');
+    const press = await api(app.base, alice.cookie, 'POST', '/collection/press', { trackId: trackIds[0] });
+    assert.equal(press.body.error, 'archived_item');
+    assert.equal((await api(app.base, alice.cookie, 'GET', `/me/press/${encodeURIComponent(trackIds[0])}`)).body.reason ?? 'archived', 'archived');
+  } finally {
+    archive('active');
+  }
+  assert.equal(await browseTotal(), totalBefore);
+  assert.equal(app.catalog.indexSize(), before.index);
+});
+
+test('cartes du joueur : le texte est cherché dans l’index (début des mots du titre, de l’artiste ou de l’album)', async () => {
+  const ins = app.db.prepare("INSERT OR IGNORE INTO cards (user_id, track_id, variant, count, first_at) VALUES (?, ?, 'std', 1, 1)");
+  for (const id of app.catalog.albumTrackIds('discovery')) ins.run(fan.user.id, id);
+  for (const id of app.catalog.albumTrackIds('dz1000001')) ins.run(fan.user.id, id);
+  const mine = async (q) => (await api(app.base, fan.cookie, 'GET', `/catalog/mine?q=${encodeURIComponent(q)}&limit=100`)).body;
+  assert.equal((await mine('discovery')).total, app.catalog.albumTrackIds('discovery').length, 'titre de l’album');
+  assert.deepEqual((await mine('one more')).items.map((t) => t.title), ['One More Time']);
+  assert.equal((await mine('daft')).total, app.catalog.albumTrackIds('discovery').length, 'artiste');
+  assert.deepEqual(await mine('zzzzqx'), { total: 0, items: [] });
+  assert.equal((await mine('')).total, app.catalog.albumTrackIds('discovery').length + app.catalog.albumTrackIds('dz1000001').length);
+});
+
 const FIXTURE = process.env.FIXTURE;
 test('grand catalogue (FIXTURE) : index construit en 15 s au plus, requêtes < 20 ms au 95e centile', { skip: !FIXTURE && 'FIXTURE non défini' }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-search-'));

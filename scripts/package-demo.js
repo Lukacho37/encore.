@@ -7,17 +7,16 @@
 // - un petit script classique, chargé en premier, affiche toute erreur de démarrage à l'écran ;
 // - si l'application se vide, un message de secours en CSS pur prend le relais ;
 // - l'application est un script classique (pas de module), pour les lecteurs intégrés plus stricts.
+// Les polices (Archivo, Figtree, Martian Mono, déclarées dans client/src/main.jsx) sont embarquées dans le script par
+// vite-plugin-singlefile, chaque fichier une fois : la démo s'affiche avec les bonnes polices hors ligne, sans requête
+// vers Google Fonts.
 import fs from 'node:fs';
 
 const src = fs.readFileSync('dist-demo/index.html', 'utf8');
 const pick = (re) => [...src.matchAll(re)].map((m) => m[0]);
 
 const title = pick(/<title>[\s\S]*?<\/title>/g)[0] || '<title>AlbumMania</title>';
-const links = pick(/<link[^>]+(?:fonts\.googleapis|fonts\.gstatic|rel="icon")[^>]*>/g);
-// La feuille Google Fonts est placée après les scripts : la page étant dans <body>, une feuille de style en attente
-// bloquerait l'analyse du HTML, donc l'écran de chargement, le garde-fou et l'application.
-const fontSheets = links.filter((l) => /rel="stylesheet"/.test(l));
-const headLinks = links.filter((l) => !fontSheets.includes(l));
+const headLinks = pick(/<link[^>]+rel="icon"[^>]*>/g);
 const styles = pick(/<style[\s\S]*?<\/style>/g).map((s) => s.replace(/^<style[^>]*>/, '<style>'));
 const bodies = pick(/<script[^>]*>[\s\S]*?<\/script>/g).map((s) => s.replace(/^<script[^>]*>/, '').replace(/<\/script>$/, ''));
 
@@ -107,8 +106,13 @@ const out = [
   fallback,
   guard,
   `<script>${app}</script>`,
-  ...fontSheets,
 ].join('\n');
 
+// Polices : toutes dans le fichier (data:font/woff2), aucune adresse extérieure.
+if (/fonts\.(googleapis|gstatic)\.com/.test(out)) throw new Error('La démo cite encore Google Fonts : les polices doivent être embarquées');
+const fonts = [...out.matchAll(/data:font\/woff2;base64,([A-Za-z0-9+/=]+)/g)].map((m) => m[1].length);
+if (fonts.length < 9) throw new Error(`Polices embarquées : ${fonts.length} fichiers trouvés, 9 attendus (client/src/main.jsx)`);
+
 fs.writeFileSync('dist-demo/albummania-demo.html', out);
-console.log(`dist-demo/albummania-demo.html (${Math.round(out.length / 1024)} Ko)`);
+const kb = (n) => Math.round(n / 1024);
+console.log(`dist-demo/albummania-demo.html (${kb(out.length)} Ko, dont ${fonts.length} polices embarquées : ${kb(fonts.reduce((a, b) => a + b, 0))} Ko)`);

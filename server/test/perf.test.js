@@ -5,6 +5,9 @@
 //   2. Avec PERF_DB (copie de design/schema-proto/old.db : 5 000 joueurs, 786 000 cartes, 341 000 notes) : profil du
 //      plus gros collectionneur (60 000 cartes, 3 000 vinyles) < 50 ms, profil d'un joueur ordinaire < 10 ms, réponse
 //      d'un booster du gros collectionneur < 10 Ko, liste d'amis et vue admin en quelques millisecondes.
+//   3. P2-E (PLAN.md 7.3, 8.3 P2.7) : navigation dans les albums par curseur sur les index (aucun parcours, aucun tri
+//      de tout le catalogue), état complet compacté d'un gros collectionneur (aller-retour exact) ; sur PERF_DB : état
+//      complet du gros collectionneur ≤ 1,2 Mo, navigation en quelques ms, index des tirages compact (< 30 Mo).
 //   PERF_DB=/tmp/am-p0-a/perf.db node --test server/test/perf.test.js   (la base est recopiée : PERF_DB n'est pas modifiée)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,6 +20,8 @@ const { openDb } = await import('../db.js');
 const { createCatalog } = await import('../catalog.js');
 const { createServices } = await import('../services.js');
 const { pressCost } = await import('../../shared/rules.js');
+const { packCollection, PACK_FROM } = await import('../services.js');
+const { unpackState } = await import('../../client/src/state/mergeState.js');
 
 // Tables qu'un chemin de joueur ne doit jamais parcourir en entier (les autres sont minuscules : kv, covers…).
 const GUARDED = new Set(['users', 'sessions', 'email_tokens', 'cards', 'achievements', 'friendships', 'pack_openings',
@@ -157,6 +162,86 @@ test('plans de requêtes : tables des niveaux suivants et suppressions en cascad
   db.close();
 });
 
+test('navigation dans les albums (P2-E) : chaque tri et chaque filtre servis par un index, sans parcours ni tri du catalogue', async () => {
+  const app = await startApp();
+  try {
+    const { db, services } = app;
+    const p = await signupVerified(app, { username: 'plan_browse' });
+    services.adminCompleteCollection(p.user.id, 'discovery');
+    const sqls = await capture(db, async () => {
+      for (const sort of ['popular', 'progress', 'title', 'year', 'recent']) {
+        const first = services.browseAlbums(p.user.id, { sort, limit: 5 });
+        services.browseAlbums(p.user.id, { sort, limit: 5, offset: 5 });
+        services.browseAlbums(p.user.id, { sort, limit: 5, offset: 13 });
+        services.browseAlbums(p.user.id, { sort, limit: 5, offset: 25 });
+        if (first.nextCursor) services.browseAlbums(p.user.id, { sort, limit: 5, cursor: first.nextCursor });
+        services.browseAlbums(p.user.id, { sort, genre: 'electro', limit: 5 });
+        services.browseAlbums(p.user.id, { sort, decade: '1990', limit: 5 });
+        services.browseAlbums(p.user.id, { sort, mine: '1', limit: 5 });
+        services.browseAlbums(p.user.id, { sort, q: 'daft', limit: 5 });
+      }
+    });
+    const browse = sqls.filter((sql) => /FROM (cat_albums al|json_each\(:ids\) j|user_album_progress p CROSS JOIN cat_albums al)/.test(sql));
+    assert.ok(browse.length >= 10, `${browse.length} requêtes de navigation relevées`);
+    // Paramètres nommés (:uid, :genre…) et valeurs du curseur (?) : valeurs de remplacement pour EXPLAIN.
+    const named = (sql) => {
+      const names = [...new Set([...sql.matchAll(/:(\w+)/g)].map((m) => m[1]))];
+      const values = { uid: p.user.id, genre: 'electro', y0: 1990, y1: 2000, ids: '["discovery","thriller"]', artist: 'daft-punk', lim: 6, off: 0 };
+      return [Object.fromEntries(names.map((n) => [n, values[n] ?? 1])), ...Array((sql.match(/\?/g) || []).length).fill(1)];
+    };
+    const planOf = (sql) => db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...named(sql)).map((r) => r.detail);
+    const bad = [];
+    for (const sql of browse) {
+      const plan = planOf(sql);
+      const orderedWalk = /\bLIMIT\b/.test(sql) && !plan.some((d) => d.includes('TEMP B-TREE FOR ORDER BY'));
+      for (const d of plan) {
+        const short = sql.replace(/\s+/g, ' ').slice(0, 200);
+        if (/^SCAN (al|cat_albums)\b/.test(d) && !(d.includes('USING') && orderedWalk)) bad.push(`${d} ← ${short}`);
+        if (/^SCAN (p|c|x)\b/.test(d)) bad.push(`${d} ← ${short}`);
+      }
+    }
+    assert.deepEqual(bad, []);
+    // Sans filtre, les tris titre et récents se lisent dans l'ordre de leur index (aucun tri temporaire) ; les
+    // populaires importés partent de l'index des fans.
+    for (const [needle, index] of [['ORDER BY al.title COLLATE NOCASE, al.rowid', /cat_albums_title/],
+      ['ORDER BY al.created_at DESC, al.rowid DESC', /cat_albums_created/], ["al.source <> 'seed' ORDER BY al.fans DESC", /cat_albums_fans/]]) {
+      const sql = browse.find((x) => x.replace(/\s+/g, ' ').includes(needle) && !/:genre|:y0|json_each|user_album_progress p CROSS/.test(x));
+      assert.ok(sql, `requête « ${needle} » non exécutée`);
+      const plan = planOf(sql).join(' | ');
+      assert.match(plan, index, needle);
+      if (!needle.includes('fans')) assert.doesNotMatch(plan, /TEMP B-TREE/, needle);
+    }
+  } finally {
+    await app.close();
+  }
+});
+
+test('état complet compacté (P2-E) : aller-retour exact, cartes hors format comprises', () => {
+  const rows = [
+    ['dz1:01', 'std', 3, 1_700_000_000_000, 'common', 'a1'],
+    ['dz1:01', 'holo', 1, 1_700_000_100_000, 'common', 'a1'],
+    ['dz1:02', 'std', 1, 1_699_999_000_000, 'rare', 'a1'],
+    ['dz2:10', 'std', 12, 1_700_000_000_000, 'ultra', 'a2'],
+    ['promo:skyfall', 'std', 1, 1_700_000_500_000, 'promo', 'a3'],
+    ['étrange,id', 'std', 1, 1_700_000_600_000, 'common', 'a4'],
+    ['sans-deux-points', 'holo', 2, 1_700_000_700_000, 'legendary', 'a5'],
+  ];
+  const achievements = [{ key: 'album:dz1', at: 1_700_000_100_000, rank: 3 }, { key: 'artist:a3', at: 1_700_000_500_000, rank: null }];
+  const stats = { albums: { dz1: { owned: 2, total: 2, pct: 1 } }, artists: { a1: { owned: 2, total: 9, pct: 2 / 9 } } };
+  const packed = packCollection(rows, achievements, stats);
+  assert.equal(packed.rest.length, 1, 'identifiant hors format gardé en clair');
+  const open = unpackState({ user: {}, stats: { total: { owned: 6 } }, packed });
+  const key = (c) => `${c.t}|${c.v}`;
+  const sort = (list) => [...list].sort((a, b) => (key(a) < key(b) ? -1 : 1));
+  assert.deepEqual(sort(open.cards), sort(rows.map(([t, v, c, at, r]) => ({ t, v, c, at, r }))));
+  assert.deepEqual(open.achievements, achievements);
+  assert.deepEqual(open.stats.albums, stats.albums);
+  assert.deepEqual(open.stats.artists, stats.artists);
+  assert.deepEqual(open.stats.total, { owned: 6 });
+  assert.equal(open.packed, undefined);
+  assert.ok(PACK_FROM >= 1000, 'les petites collections restent en clair');
+});
+
 const PERF_DB = process.env.PERF_DB;
 test('base peuplée (PERF_DB) : profil du gros collectionneur < 50 ms, booster < 10 Ko, amis et admin en quelques ms', { skip: !PERF_DB && 'PERF_DB non défini' }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-perf-'));
@@ -237,6 +322,63 @@ test('base peuplée (PERF_DB) : profil du gros collectionneur < 50 ms, booster <
       ON p.user_id = ? AND p.album_id = substr(v.key, 7)`;
     assert.deepEqual(scans(db, vinylSql), []);
     console.log(`  base peuplée : ${report.join(' · ')}`);
+    db.close();
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('base peuplée (PERF_DB, P2-E) : état complet du gros collectionneur compacté, navigation par curseur, index des tirages < 30 Mo', { skip: !PERF_DB && 'PERF_DB non défini' }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-perf-e-'));
+  const file = path.join(dir, 'perf.db');
+  try {
+    fs.copyFileSync(PERF_DB, file);
+    const v8 = await import('node:v8');
+    const vm = await import('node:vm');
+    v8.setFlagsFromString('--expose_gc');
+    const gc = vm.runInNewContext('gc');
+    const db = openDb(file);
+    gc();
+    const heap0 = process.memoryUsage().heapUsed;
+    const catalog = createCatalog(db);
+    gc();
+    const indexMb = (process.memoryUsage().heapUsed - heap0) / 1e6;
+    const report = [`catalogue et index des tirages ${indexMb.toFixed(1)} Mo pour ${catalog.indexSize()} morceaux`];
+    assert.ok(indexMb < 30, report.at(-1));
+    const services = createServices(db, catalog);
+    const ms = (fn, runs = 3) => {
+      let best = Infinity;
+      let result;
+      for (let i = 0; i < runs; i++) {
+        const started = performance.now();
+        result = fn();
+        best = Math.min(best, performance.now() - started);
+      }
+      return [best, result];
+    };
+    const whale = db.prepare('SELECT id FROM users ORDER BY unique_cards DESC, id LIMIT 1').get().id;
+    services.state(42);
+    const [stateMs, state] = ms(() => {
+      services.forget(whale);
+      return services.state(whale);
+    });
+    const bytes = Buffer.byteLength(JSON.stringify(state));
+    report.push(`état complet du gros collectionneur ${(bytes / 1e6).toFixed(2)} Mo en ${stateMs.toFixed(0)} ms`);
+    assert.ok(state.packed && !state.cards, 'collection compactée');
+    assert.ok(bytes < 1_200_000, report.at(-1));
+    assert.ok(stateMs < 400, report.at(-1));
+    const open = unpackState(JSON.parse(JSON.stringify(state)));
+    assert.equal(open.cards.length, db.prepare('SELECT COUNT(*) AS n FROM cards WHERE user_id = ?').get(whale).n);
+    assert.equal(Object.keys(open.stats.albums).length, db.prepare('SELECT COUNT(*) AS n FROM user_album_progress WHERE user_id = ? AND owned > 0').get(whale).n);
+
+    for (const sort of ['popular', 'progress', 'title', 'year', 'recent']) {
+      const [firstMs, first] = ms(() => services.browseAlbums(whale, { sort, limit: 36 }));
+      const [nextMs] = ms(() => services.browseAlbums(whale, { sort, limit: 36, cursor: first.nextCursor }));
+      const [farMs] = ms(() => services.browseAlbums(whale, { sort, limit: 36, offset: 4800 }));
+      report.push(`${sort} ${firstMs.toFixed(1)} / ${nextMs.toFixed(1)} / ${farMs.toFixed(1)} ms`);
+      assert.ok(firstMs < 25 && nextMs < 25 && farMs < 40, report.at(-1));
+    }
+    console.log(`  base peuplée (P2-E) : ${report.join(' · ')}`);
     db.close();
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

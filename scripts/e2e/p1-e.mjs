@@ -8,8 +8,8 @@
 //   - Taste Match : ami aux goûts proches → /match/:pseudo (grand pourcentage, confiance, barres expliquées, albums en
 //     commun, différences, recommandations) → « Partager » : image composée dans le navigateur ; carte de l'accueil ;
 //     Studio privé d'un inconnu → « Comparaison indisponible ».
-//   - Découvrir : sections avec leur raison, tuiles Battles · Classements · Listes · Mes 9 albums · Blind test,
-//     « Voir plus ».
+//   - Découvrir : sections avec leur raison, tuiles Battles · Classements · Listes · Mes 9 albums · Blind test (P1),
+//     puis Passeport · Événements · Coffrets (P2), « Voir plus ».
 //   - Démo autonome (dist-demo/albummania-demo.html) : premiers pas, Découvrir et Taste Match avec les joueurs fictifs.
 //   Zéro erreur de console (hors images Deezer bloquées par le bac à sable), pas de défilement horizontal.
 //   BASE=http://localhost:5115 OUT=/tmp/am-p1-e/shots node scripts/e2e/p1-e.mjs
@@ -247,8 +247,9 @@ async function player(name, viewport) {
     if (sections < 3) fail(`[${label}] ${sections} sections dans Découvrir (3 au moins attendues)`);
     const reasons = await page.locator('.dc-shelf[data-section] .dc-shelf__reason').count();
     if (reasons !== sections) fail(`[${label}] ${sections - reasons} section(s) sans raison`);
-    const tiles = await page.locator('.dc-tile').count();
-    if (tiles !== 5) fail(`[${label}] ${tiles} tuiles (5 attendues)`);
+    const tiles = (await page.locator('.dc-tile').evaluateAll((els) => els.map((el) => el.dataset.tile))).join(' ');
+    const expected = 'battles rankings lists nine blindtest passport events sets';
+    if (tiles !== expected) fail(`[${label}] tuiles « ${tiles} » (attendues : ${expected})`);
     if (await page.locator('[data-discover="invite"]').count()) fail(`[${label}] invitation aux premiers pas dans Découvrir après le parcours`);
     await shot(page, `${p}-40-discover`);
     const more = page.locator('[data-more]').first();

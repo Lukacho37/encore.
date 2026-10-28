@@ -1,9 +1,8 @@
 // Textes de la zone « workshop » (P2-D) : l'atelier — Vernir, le Comptoir, l'édition deluxe, les boosters thématiques
 // à acheter. Fusionnés dans fr.js / en.js au chargement (i18n/index.jsx) ; une clé d'ici peut aussi préciser une clé
 // existante. Chaque clé existe en FR et en EN (tutoiement, espace fine insécable avant ; : ! ? % et dans « »).
-// Espace de noms : workshop. Clés précisées ou ajoutées ailleurs (zone chargée en dernier) : home.dupHint (la rangée
-// Doublons renvoie au Comptoir), vinyl.holoHint, rarityGuide.holoBody et .specialBody (chaque règle de l'atelier est
-// publiée dans le guide des raretés), game.special.intro, cosmetics.title.deluxe, notify.kinds.deluxe_earned,
+// Espace de noms : workshop. Clés précisées ou ajoutées ailleurs (zone chargée en dernier) : vinyl.holoHint,
+// rarityGuide.holoBody et .specialBody (chaque règle de l'atelier est publiée dans le guide des raretés), game.special.intro, cosmetics.title.deluxe, notify.kinds.deluxe_earned,
 // badges.f.deluxe (famille de médailles des éditions deluxe), et les erreurs des routes de server/workshop.js sous errors.*.
 const N = ' ';
 
@@ -91,9 +90,8 @@ export default {
         themed: 'Booster thématique : {price} royalties, un genre, une décennie ou « À ton goût » ; mêmes chances par carte qu’un booster normal. Rien ne s’achète en argent réel.',
       },
     },
-    home: {
-      dupHint: 'Recycle-les en royalties, ou échange-les au Comptoir contre une carte qui te manque dans tes albums recherchés.',
-    },
+    // Rangée Boutique / Doublons / Blind test de l'accueil : texte des Doublons inchangé (DESIGN-OVERRIDE.md), seul le
+    // lien « Échanger au Comptoir » s'y ajoute (ComptoirButton).
     vinyl: {
       holoHint: 'Réunis toutes les cartes de l’album en holo (le vernis de l’atelier peut aider) pour l’édition holo ; note l’album et chacun de ses morceaux pour l’édition deluxe.',
     },
@@ -211,9 +209,6 @@ export default {
         deluxe: 'Deluxe edition: a completed album, its rating and the rating of each of its tracks give its vinyl in deluxe edition (an AlbumMania colour, never the cover) and {xp} XP. The holo edition stays shown for those who collected it. At {title} deluxe editions, the “Deluxe ear” title.',
         themed: 'Themed pack: {price} royalties, a genre, a decade or “Your taste”; same odds per card as a regular pack. Nothing is ever sold for real money.',
       },
-    },
-    home: {
-      dupHint: 'Recycle them into royalties, or trade them at the Counter for a card you’re missing in your wanted albums.',
     },
     vinyl: {
       holoHint: 'Collect every card of the album in holo (the workshop’s varnish can help) for the holo edition; rate the album and each of its tracks for the deluxe edition.',

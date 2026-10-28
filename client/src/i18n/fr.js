@@ -451,6 +451,7 @@ export default {
     coversRunning: 'Recherche en cours…',
     coversError: 'Dernière erreur : {e}',
     coversDemo: 'Dans la démo, les vraies pochettes ne peuvent pas s’afficher : la page est coupée d’Internet. Elles apparaissent sur le site en ligne.',
+    coversDemoEmbedded: 'Démo : {n} vraies pochettes Deezer sont copiées dans la page, qui ne peut charger aucune image d’un autre site. Le site en ligne les affiche directement depuis Deezer.',
   },
   footer: {
     legal: 'Les pochettes affichées sont des visuels originaux générés par AlbumMania. Titres et noms d’artistes sont cités à titre d’information.',

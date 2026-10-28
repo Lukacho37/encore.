@@ -237,24 +237,25 @@ function deezerProvider(cfg, fetchImpl, pause) {
     return { cover, coverW: r.cover_xl ? 1000 : 500, thumb, thumbW: thumb === cover && r.cover_xl ? 1000 : 500 };
   };
 
-  async function search(kind, item, field) {
+  // Recherche stricte d'abord, large ensuite si aucun résultat strict ne convient : pour « Thriller », la recherche
+  // stricte ne renvoie que des reprises d'autres artistes, l'album de Michael Jackson n'arrive qu'en recherche large.
+  async function find(kind, item, field, pick) {
     const strict = encodeURIComponent(`artist:"${item.artist}" ${field}:"${item.title.replace(/\*+/g, '')}"`);
-    const data = await get(`/search/${kind}?q=${strict}&limit=10`);
-    if (data.data?.length) return data.data;
+    const best = pick((await get(`/search/${kind}?q=${strict}&limit=10`)).data || []);
+    if (best) return best;
     await pause();
     const loose = encodeURIComponent(`${item.artist} ${item.title.replace(/\*+/g, '')}`);
-    return (await get(`/search/${kind}?q=${loose}&limit=10`)).data || [];
+    return pick((await get(`/search/${kind}?q=${loose}&limit=10`)).data || []);
   }
 
   return {
     id: 'deezer',
     async album(item) {
-      const results = await search('album', item, 'album');
-      const best = pickBest(results, item.title, item.artist, {
+      const best = await find('album', item, 'album', (results) => pickBest(results, item.title, item.artist, {
         names: (r) => [r.artist?.name],
         name: (r) => r.title,
         bonus: (r) => (r.record_type === 'album' ? 1 : 0),
-      });
+      }));
       const img = best && images(best);
       if (!img || !https(best.link)) return null;
       await pause();
@@ -263,11 +264,10 @@ function deezerProvider(cfg, fetchImpl, pause) {
       return { ...img, url: best.link, tracks: mapTracks(item.tracks, theirs) };
     },
     async track(item) {
-      const results = await search('track', item, 'track');
-      const best = pickBest(results, item.title, item.artist, {
+      const best = await find('track', item, 'track', (results) => pickBest(results, item.title, item.artist, {
         names: (r) => [r.artist?.name],
         name: (r) => r.title,
-      });
+      }));
       const img = best && images(best.album);
       const url = best && https(best.link);
       return img && url ? { ...img, url, tracks: { [item.key]: url } } : null;

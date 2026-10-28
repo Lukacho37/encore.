@@ -1,7 +1,10 @@
 // Jumeau de démo du module « legal » (server/legal.js, P0-D, PLAN.md 4.1.5) : mêmes routes, mêmes formes.
 // GET /legal/info : coordonnées vides (la démo n'a pas d'éditeur déclaré : les pages affichent « non renseigné »),
-// version des CGU, aucune plateforme (la démo n'affiche que des visuels générés et le catalogue de base).
+// version des CGU, plateformes : Deezer quand les vraies pochettes sont intégrées à la page (../covers.js), aucune sinon
+// (visuels générés et catalogue de base).
 // POST /legal/accept : enregistre l'acceptation de la version en vigueur (409 terms_outdated sinon).
+import { DEMO_COVERS } from '../covers.js';
+
 export const name = 'legal';
 
 /** Version des CGU de la démo : la même que celle du cœur (client/src/demo/mockServer.js, TERMS_VERSION). */
@@ -15,8 +18,8 @@ export function legalInfo() {
     contactEmail: null,
     termsVersion: TERMS_VERSION,
     termsUpdatedAt: TERMS_VERSION,
-    shareCovers: false,
-    providers: [],
+    shareCovers: !!DEMO_COVERS,
+    providers: DEMO_COVERS ? ['deezer'] : [],
   };
 }
 

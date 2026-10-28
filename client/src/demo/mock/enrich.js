@@ -6,8 +6,10 @@
 //   POST /admin/providers/:source/detach    simulation seulement (la démo n'a aucun album importé de Deezer).
 // La démo est coupée d'Internet : aucun appel à MusicBrainz ni à Wikidata. Les identifiants Spotify ci-dessous sont
 // ceux des albums de la graine tels que Wikidata les référence : le panneau d'écoute montre donc le lecteur Spotify
-// (chargé seulement après le clic, comme sur le site). Le reste (Deezer, Apple Music, YouTube) ouvre une recherche.
+// (chargé seulement après le clic, comme sur le site). Deezer ouvre l'album ou le morceau quand les vraies pochettes
+// sont intégrées à la page (../covers.js : leurs liens viennent avec). Le reste (Apple Music, YouTube) ouvre une recherche.
 import { LISTEN_PROVIDERS, embedFor, searchUrl, sourceUrl } from '@shared/ids.js';
+import { deezerLink } from '../covers.js';
 
 export const name = 'enrich';
 
@@ -109,9 +111,12 @@ function listen(ctx, type, rawId) {
   if (!item) return ctx.fail(404, `unknown_${type}`);
   const spotify = type === 'album' ? SPOTIFY_ALBUMS[id] : null;
   const text = `${item.artist} ${item.title}`.trim();
-  const links = LISTEN_PROVIDERS.map((provider) => (provider === 'spotify' && spotify
-    ? { provider, url: sourceUrl('spotify', 'album', spotify), direct: true }
-    : { provider, url: searchUrl(provider, text), direct: false }));
+  const deezer = deezerLink(type, id);
+  const links = LISTEN_PROVIDERS.map((provider) => {
+    if (provider === 'spotify' && spotify) return { provider, url: sourceUrl('spotify', 'album', spotify), direct: true };
+    if (provider === 'deezer' && deezer) return { provider, url: deezer, direct: true };
+    return { provider, url: searchUrl(provider, text), direct: false };
+  });
   return {
     type,
     id,

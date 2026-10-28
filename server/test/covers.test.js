@@ -220,6 +220,30 @@ test('les pochettes ne couvrent que le catalogue actuel', () => {
   db.close();
 });
 
+test('Deezer : recherche large quand la recherche stricte ne renvoie que des reprises (Thriller)', async () => {
+  const db = openDb(':memory:');
+  const queries = [];
+  const deezer = async (url) => {
+    const u = new URL(url);
+    const q = u.searchParams.get('q') || '';
+    if (u.pathname === '/search/album' && q.includes('Thriller')) {
+      queries.push(q);
+      if (q.startsWith('artist:')) return json({ data: [{ id: 9, title: 'Thriller (Acoustic Cover)', link: 'https://www.deezer.test/album/9', record_type: 'single', artist: { name: 'Arvin Minaskan' }, cover_xl: 'https://cdn.deezer.test/cover.jpg' }] });
+      return json({ data: [
+        { id: 7, title: 'Thriller 25 Super Deluxe Edition', link: 'https://www.deezer.test/album/7', record_type: 'album', artist: { name: 'Michael Jackson' }, cover_xl: 'https://cdn.deezer.test/25.jpg' },
+        { id: 8, title: 'Thriller', link: 'https://www.deezer.test/album/8', record_type: 'album', artist: { name: 'Michael Jackson' }, cover_xl: 'https://cdn.deezer.test/thriller.jpg', cover_big: 'https://cdn.deezer.test/thriller-500.jpg' },
+      ] });
+    }
+    if (u.pathname === '/album/8/tracks') return json({ data: [] });
+    return json({ data: [] });
+  };
+  const covers = createCovers(db, { cfg: { ...BASE, spotify: null }, fetchImpl: deezer, pauseMs: 0 });
+  await covers.warm();
+  assert.equal(queries.length, 2);
+  assert.equal(covers.snapshot().items.thriller.cover, 'https://cdn.deezer.test/thriller.jpg');
+  db.close();
+});
+
 test('crédits des plateformes : U.S.A. for Africa, duo Mark Ronson, état « introuvable » ou « en attente »', async () => {
   const db = openDb(':memory:');
   const deezer = async (url) => {

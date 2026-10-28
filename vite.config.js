@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { viteSingleFile } from 'vite-plugin-singlefile';
+import fs from 'node:fs';
 import path from 'node:path';
 
 /**
@@ -32,13 +33,32 @@ function seedCatalogGuard() {
   };
 }
 
+/**
+ * Vraies pochettes de la démo publiée (scripts/demo-covers.mjs) : `DEMO_COVERS=<fichier JSON>` les intègre à la page,
+ * qui ne peut charger aucune image d'un autre site. Sans la variable, le module vaut null : visuels générés.
+ */
+function demoCovers() {
+  const id = 'virtual:demo-covers';
+  return {
+    name: 'am-demo-covers',
+    resolveId: (source) => (source === id ? `\0${id}` : null),
+    load(resolved) {
+      if (resolved !== `\0${id}`) return null;
+      const file = process.env.DEMO_COVERS;
+      if (!file) return 'export default null;';
+      const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+      return `export default ${JSON.stringify({ items: data.items || {}, tracks: data.tracks || {} })};`;
+    },
+  };
+}
+
 // `npm run build` : site complet servi par le serveur Node.
 // `npm run build:demo` : démo autonome en un seul fichier HTML (données simulées dans le navigateur, polices comprises).
 export default defineConfig(({ mode }) => {
   const demo = mode === 'demo';
   return {
     root: 'client',
-    plugins: [react(), demo ? viteSingleFile() : seedCatalogGuard()],
+    plugins: [react(), demoCovers(), demo ? viteSingleFile() : seedCatalogGuard()],
     define: { __DEMO__: JSON.stringify(demo) },
     resolve: { alias: { '@shared': path.resolve('shared') } },
     server: {

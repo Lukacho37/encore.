@@ -52,6 +52,15 @@ npm run build:demo
 
 Produit `dist-demo/albummania-demo.html` : tout le jeu dans un seul fichier, avec un faux serveur qui tourne dans le navigateur (données dans le `localStorage`, e-mail de confirmation affiché à l'écran, joueurs fictifs avec leurs notes pour tester les amis et les critiques). Dans la démo, l'accès admin se déverrouille avec un code secret (menu de la photo de profil).
 
+Vraies pochettes dans la démo : une page hébergée sur claude.ai ne peut charger aucune image venue d'un autre site. Il faut donc intégrer des copies réduites des pochettes à la page, ce que le site en ligne ne fait jamais (il les affiche directement depuis Deezer) :
+
+```bash
+node scripts/demo-covers.mjs                               # cherche les 34 pochettes chez Deezer → data/demo-covers.json
+DEMO_COVERS=data/demo-covers.json npm run build:demo      # démo avec ces pochettes (environ 5 Mo)
+```
+
+Le fichier reste hors du dépôt (`data/` n'est pas versionné) : les pochettes appartiennent à leurs ayants droit. Derrière un proxy, lance le script avec `NODE_USE_ENV_PROXY=1`. Sans `DEMO_COVERS`, la démo garde ses visuels générés.
+
 ## Mettre en ligne
 
 Le guide pas à pas est dans **[DEPLOIEMENT.md](DEPLOIEMENT.md)** (Render + Brevo, environ une heure). En résumé :

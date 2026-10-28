@@ -38,7 +38,7 @@ function CoversPanel({ status, onRefresh }) {
   const active = !status.demo && status.providers.length > 0;
   const served = Object.entries(status.served || {}).map(([p, n]) => `${n} ${PROVIDERS[p] || p}`).join(' · ');
   let summary;
-  if (status.demo) summary = <p className="small muted">{t('admin.coversDemo')}</p>;
+  if (status.demo) summary = <p className="small muted">{status.found ? t('admin.coversDemoEmbedded', { n: status.found }) : t('admin.coversDemo')}</p>;
   else if (status.modeInvalid) summary = <p className="small">{t('admin.coversInvalid', { v: status.modeInvalid })}</p>;
   else if (status.mode === 'off') summary = <p className="small">{t('admin.coversOff')}</p>;
   else if (!active) summary = <p className="small">{t('admin.coversNoKeys')}</p>;

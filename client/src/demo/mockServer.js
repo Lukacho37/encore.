@@ -15,6 +15,7 @@ import {
 import { cleanSelection, cosmeticsBetween, cosmeticsForLevel, levelCosmetic } from '@shared/cosmetics.js';
 import { dayStart as parisDayStart } from '@shared/periods.js';
 import MODULES from './mock/index.js';
+import { DEMO_COVERS, coversSnapshot } from './covers.js';
 
 const KEY = 'albummania.demo.v1';
 const REGEN_MS = 30 * 60_000;
@@ -943,11 +944,15 @@ function catalogStatus() {
 
 // ---------- routes ----------
 
-// La démo est coupée d'Internet : pas de vraies pochettes, les visuels générés restent affichés.
-const coverStatus = () => ({ mode: 'off', providers: [], spotifyKeys: false, total: 34, found: 0, missing: [], running: false, lastRun: null, lastError: null, demo: true });
+// La démo est coupée d'Internet : ses vraies pochettes sont celles intégrées à la page au build (./covers.js), sinon
+// les visuels générés restent affichés.
+const coverStatus = () => ({
+  mode: DEMO_COVERS ? 'deezer' : 'off', providers: DEMO_COVERS ? ['deezer'] : [], spotifyKeys: false, total: 34,
+  found: DEMO_COVERS ? Object.keys(DEMO_COVERS.items).length : 0, missing: [], running: false, lastRun: null, lastError: null, demo: true,
+});
 
 const routes = [
-  ['GET', /^\/covers$/, () => ({ providers: [], items: {}, tracks: {} })],
+  ['GET', /^\/covers$/, () => coversSnapshot()],
   ['GET', /^\/auth\/username-available$/, ({ query }) => {
     const u = query.get('u') || '';
     const error = validateUsername(u);

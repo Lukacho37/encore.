@@ -175,9 +175,16 @@ test('quêtes d\'événement : progression dans la fenêtre, votes marqués, ré
   assert.equal((await call2('POST', `/quests/${encodeURIComponent('e:french-touch')}/0/reroll`)).body.error, 'no_reroll');
   // Bonus : badge or de l'événement, cadre, booster thématique, une seule fois.
   const bonusPacks = services.getUser(p.user.id).bonus_packs;
+  const medals = [];
+  const off = deps.bus.on('badge.earned', (e) => e.userId === p.user.id && medals.push(e));
   res = await call2('POST', '/events/french-touch/bonus');
+  off();
   assert.equal(res.status, 200, JSON.stringify(res.body));
   assert.equal(res.body.reward.badge, 'badge:event:french-touch:gold');
+  // Médaille de la page Badges (famille externe « event ») : message du site, et le fil la publie (or).
+  assert.deepEqual(medals.map((e) => [e.key, e.family, e.variant, e.tier]), [['badge:event:french-touch:gold', 'event', 'french-touch', 'gold']]);
+  assert.ok(res.body.badgesEarned.some((b) => b.key === 'badge:event:french-touch:gold'));
+  assert.ok(db.prepare("SELECT 1 FROM activity WHERE actor_id = ? AND verb = 'badge' AND object_id = 'badge:event:french-touch:gold'").get(p.user.id));
   assert.ok(db.prepare('SELECT 1 FROM achievements WHERE user_id = ? AND key = ?').get(p.user.id, 'badge:event:french-touch:gold'));
   assert.equal(db.prepare('SELECT source FROM user_cosmetics WHERE user_id = ? AND cosmetic_id = ?').get(p.user.id, 'frame:french-touch')?.source, 'event:french-touch');
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM user_boosters WHERE user_id = ? AND theme = 'event:french-touch' AND opened_at IS NULL").get(p.user.id).n, 1);

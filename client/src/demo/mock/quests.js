@@ -1,5 +1,6 @@
 // Jumeau de démo du module « quests » (server/quests.js, P1-F, PLAN.md 4.2.6, 5.6, 6.7) : mêmes routes, mêmes formes.
-//   GET  /quests                               → { daily, weekly, firstSteps, serverTime }
+//   GET  /quests                               → { daily, weekly, firstSteps, event?, events, serverTime } (événements
+//                                                 en cours : mock/events.js)
 //   POST /quests/:periodKey/:slot/claim        → { reward, quest, levelUp, badgesEarned, state }
 //   POST /quests/:periodKey/:slot/reroll       → { quest, rerollsLeft } (une relance gratuite par jour)
 //   POST /quests/bonus/:periodKey              → { reward, badgesEarned, state } (les 3 quêtes de la période réclamées)
@@ -17,6 +18,7 @@ import {
 } from '@shared/quests.js';
 import { currentPeriod, periodBounds } from '@shared/periods.js';
 import { evaluateBadges, playLog } from './badges.js';
+import { questEvents } from './events.js';
 
 export const name = 'quests';
 
@@ -219,6 +221,7 @@ function list(ctx, u) {
     daily: periodView(ctx, u, 'daily', now.daily),
     weekly: periodView(ctx, u, 'weekly', now.weekly),
     firstSteps: firstDone ? [] : first.map((r) => questView(ctx, u, r, windowOf(FIRST_KEY))).filter(Boolean),
+    ...questEvents(ctx, u),
     serverTime: Date.now(),
   };
 }

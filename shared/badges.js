@@ -27,7 +27,8 @@ export const PEN_MIN_CHARS = 140;
  * Familles (ordre d'affichage). `tiers` : [{ tier, target, metric? }] du plus facile au plus dur (`metric` quand un
  * palier ne mesure pas la même chose que le premier, comme l'Explorateur) ; `variants` : liste des variantes ;
  * `hiddenUntilEarned` : variantes montrées seulement une fois gagnées ; `events` : événements du bus qui la font
- * réévaluer ; `cosmetic` : titre offert au palier platine ; `group` : rubrique de la page Badges.
+ * réévaluer ; `cosmetic` : titre offert au palier platine ; `group` : rubrique de la page Badges ; `external` : médaille
+ * donnée par un autre module, une variante par coffret ou événement (clé badge:<famille>:<identifiant>:<palier>).
  */
 export const FAMILIES = [
   { id: 'vinyl', group: 'collect', icon: 'disc', events: ['album.completed'], cosmetic: 'title:vinylophile',
@@ -69,6 +70,11 @@ export const FAMILIES = [
     tiers: [{ tier: 'bronze', target: 50 }, { tier: 'silver', target: 250 }, { tier: 'gold', target: 1000 }] },
   { id: 'steady', group: 'play', icon: 'check', events: ['quest.claimed'],
     tiers: [{ tier: 'silver', target: 7 }, { tier: 'gold', target: 30 }] },
+  // Médailles données par d'autres modules (P2-B) : un coffret aux 3/4 (server/sets.js, badge:set:<id>:bronze) et les
+  // 3 quêtes d'un événement (server/events.js, badge:event:<slug>:gold). Une variante par coffret ou par événement,
+  // jamais réévaluées ici (ni mesure, ni rattrapage) : la page Badges montre seulement celles qui sont gagnées.
+  { id: 'set', group: 'collect', icon: 'disc', external: true, events: [], tiers: [{ tier: 'bronze', target: 1 }] },
+  { id: 'event', group: 'play', icon: 'star', external: true, events: [], tiers: [{ tier: 'gold', target: 1 }] },
 ];
 
 // Les familles « platine » sans palier platine (critique, juge) offrent leur titre au palier le plus haut.
@@ -77,6 +83,9 @@ for (const f of FAMILIES) f.top = f.tiers[f.tiers.length - 1].tier;
 export const BADGE_GROUPS = ['collect', 'rate', 'social', 'play'];
 const BY_ID = new Map(FAMILIES.map((f) => [f.id, f]));
 export const familyOf = (id) => BY_ID.get(id) || null;
+
+/** Variante d'une médaille externe : identifiant d'un coffret ou slug d'un événement. */
+const EXTERNAL_VARIANT = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
 /** Clé d'un badge : badge:<famille>[:<variante>]:<palier>. */
 export const badgeKey = (family, variant, tier) => (variant == null || variant === '' ? `badge:${family}:${tier}` : `badge:${family}:${variant}:${tier}`);
@@ -89,6 +98,8 @@ export function parseBadgeKey(key) {
   if (!f) return null;
   const tier = parts[parts.length - 1];
   if (!f.tiers.some((t) => t.tier === tier)) return null;
+  // Coffret ou événement : la variante est son identifiant (ed-…, g-rock-1970, french-touch).
+  if (f.external) return parts.length === 4 && EXTERNAL_VARIANT.test(parts[2]) ? { family: f.id, variant: parts[2], tier } : null;
   if (parts.length === 3) return f.variants ? null : { family: f.id, variant: null, tier };
   if (!f.variants) return null;
   const raw = parts[2];
@@ -133,7 +144,11 @@ export function metricCap(familyId, metric = 'value') {
   return f ? Math.max(1, ...f.tiers.filter((t) => tierMetric(t) === metric).map((t) => t.target)) : 1;
 }
 
-/** Toutes les médailles affichables : [{ family, variant }] (variantes cachées comprises, à filtrer à l'affichage). */
+/**
+ * Toutes les médailles affichables : [{ family, variant }] (variantes cachées comprises, à filtrer à l'affichage), hors
+ * médailles externes (coffrets, événements : leurs variantes sont celles que le joueur a gagnées).
+ */
 export function allMedals() {
-  return FAMILIES.flatMap((f) => (f.variants ? f.variants.map((v) => ({ family: f.id, variant: v })) : [{ family: f.id, variant: null }]));
+  return FAMILIES.filter((f) => !f.external)
+    .flatMap((f) => (f.variants ? f.variants.map((v) => ({ family: f.id, variant: v })) : [{ family: f.id, variant: null }]));
 }

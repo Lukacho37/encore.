@@ -6173,6 +6173,17 @@ button.card.card--cover:hover {
   color: var(--ink);
 }
 
+/* Morceau archivé (fournisseur détaché) : étiquette discrète du pied de carte, comme la pastille .chip--quiet. */
+.card__tag--archived {
+  background: var(--stage-2);
+  color: var(--paper-dim);
+}
+
+/* Album archivé : la pastille passe sous le titre de la vignette, jamais sur la pochette. */
+.album-tile__archived {
+  align-self: flex-start;
+}
+
 .vinyl__sleeve:has(.cover--real) .vinyl__wear {
   display: none;
 }

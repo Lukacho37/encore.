@@ -6,6 +6,8 @@ import { Icon, RoyaltyIcon } from '../ui.jsx';
 import { METRICS } from '@shared/quests.js';
 import { familyOf } from '@shared/badges.js';
 import { parseCategory } from '@shared/battles.js';
+import { codeSet, generatedRule } from '@shared/sets.js';
+import { eventDef } from '@shared/events.js';
 import '../../styles/play.css';
 
 export const enc = encodeURIComponent;
@@ -128,11 +130,35 @@ export function CategoryName({ category, variant = 'long', name }) {
 /** Classe de la médaille selon son meilleur palier (or par défaut, holo pour le platine). */
 export const medalTone = (tier) => (tier === 'platinum' ? 'medal--holo' : tier === 'silver' ? 'medal--silver' : tier === 'bronze' ? 'medal--bronze' : tier ? '' : 'medal--locked');
 
-/** Nom d'une médaille (« Explorateur des années 90 », « Fan de jazz »). */
-export function medalName(t, medal) {
+/**
+ * Nom du coffret ou de l'événement d'une médaille externe (variante : son identifiant), dans la langue du site ; un
+ * coffret généré se recompose comme sur sa page (« Électro · Années 1990 »). '' s'il est inconnu.
+ */
+function externalName(t, lang, medal) {
+  const id = medal.variant;
+  if (!id) return '';
+  if (medal.id === 'event') {
+    const ev = eventDef(id);
+    return ev?.title?.[lang] || ev?.title?.fr || '';
+  }
+  const rule = generatedRule(id);
+  if (rule) return t('sets.generatedTitle', { genre: t(`genre.${rule.genre}`), decade: t('decade', { d: rule.decade }) });
+  const def = codeSet(id);
+  return def?.title?.[lang] || def?.title?.fr || '';
+}
+
+/**
+ * Nom d'une médaille (« Explorateur des années 90 », « Fan de jazz », « Coffret · Les classiques du bac »). `lang` :
+ * langue du site, pour le nom d'un coffret ou d'un événement (médailles externes).
+ */
+export function medalName(t, medal, lang = 'fr') {
   const vars = {};
   if (medal.id === 'explorer') vars.d = decadeLabel(medal.variant);
   if (medal.id === 'genre_fan') vars.genre = t(`genre.${medal.variant}`);
+  if (familyOf(medal.id)?.external) {
+    const name = externalName(t, lang, medal);
+    if (name) return t(`badges.f.${medal.id}.named`, { name });
+  }
   return t(`badges.f.${medal.id}.name`, vars);
 }
 
@@ -151,11 +177,11 @@ export const nextTier = (medal) => medal.tiers.find((x) => !x.earnedAt) || null;
  * `onClick` en fait un bouton (détail des paliers).
  */
 export function Medal({ medal, onClick, small = false }) {
-  const { t, date } = useI18n();
+  const { t, date, lang } = useI18n();
   const best = medal.best;
   const next = nextTier(medal);
   const icon = familyOf(medal.id)?.icon || 'trophy';
-  const name = medalName(t, medal);
+  const name = medalName(t, medal, lang);
   const sub = best
     ? <span className="medal__date">{medal.earnedAt ? date(medal.earnedAt) : t(`badges.tiers.${best}`)}</span>
     : next && next.progress != null
@@ -172,9 +198,10 @@ export function Medal({ medal, onClick, small = false }) {
     </>
   );
   const cls = `medal ${medalTone(best)}${small ? ' medal--sm' : ''}`;
-  if (!onClick) return <div className={cls} data-medal={medal.id}>{inner}</div>;
+  const variant = medal.variant ?? undefined;
+  if (!onClick) return <div className={cls} data-medal={medal.id} data-variant={variant}>{inner}</div>;
   return (
-    <button type="button" className={cls} data-medal={medal.id} onClick={() => onClick(medal)} aria-label={t('badges.detail', { name })}>
+    <button type="button" className={cls} data-medal={medal.id} data-variant={variant} onClick={() => onClick(medal)} aria-label={t('badges.detail', { name })}>
       {inner}
     </button>
   );

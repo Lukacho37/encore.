@@ -13,10 +13,11 @@
 // joueur sur tous les coffrets est une lecture de set_albums avec deux sondes de clé primaire par album (≈ 1 000
 // sondes, indépendant de la taille de sa collection).
 // API interne (deps.sets) : list, detail, summaryFor(userId, setId), refresh() (définitions + générés),
-// checkRewards(userId, setIds). Événement : set.reward { userId, setId, reward: 'badge' | 'frame' }.
+// checkRewards(userId, setIds). Événements : set.reward { userId, setId, reward: 'badge' | 'frame' }, et badge.earned
+// (famille « set », variante = le coffret) pour le badge, médaille de la page Badges.
 import {
   CODE_SETS, GENERATED_DECADES, GENERATED_GENRES, GENERATED_SIZE, MAX_SET_ALBUMS, MIN_SET_ALBUMS, SET_BADGE_TIER, SET_KINDS,
-  generatedId, generatedRule, generatedTitles, isSetId, kindRank, setRewards,
+  generatedId, generatedRule, generatedTitles, isSetId, kindRank, setBadgeKey, setRewards,
 } from '../shared/sets.js';
 import { TIER_REWARDS } from '../shared/badges.js';
 import { daysUntil, resolveCalendar } from '../shared/events.js';
@@ -287,6 +288,11 @@ export function init(deps) {
     for (const w of won) {
       deps.notify?.(userId, 'set_reward', { groupKey: `set:${day}`, data: { setId: w.setId, reward: w.reward } });
       deps.bus.emit('set.reward', { userId, setId: w.setId, reward: w.reward });
+      // Le badge est aussi une médaille de la page Badges (famille externe « set », shared/badges.js) : le fil le
+      // publie comme les autres (première médaille seulement, le bronze n'y passe pas sinon).
+      if (w.reward === 'badge') {
+        deps.bus.emit('badge.earned', { userId, key: setBadgeKey(w.setId), family: 'set', variant: w.setId, tier: SET_BADGE_TIER });
+      }
     }
     return won;
   }

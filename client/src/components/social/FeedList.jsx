@@ -195,12 +195,12 @@ function ListActivity({ item, onChange }) {
 
 /** Médaille (or, platine, première) : la pastille de la médaille et le lien vers les médailles du joueur. */
 function BadgeActivity({ item }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const tier = item.data?.tier;
   const tierLabel = tier ? t(`feed.tiers.${tier}`) : t('feed.badge');
   // Nom de la médaille (« Explorateur des années 90 ») lu dans sa clé badge:<famille>[:<variante>]:<palier> (P1-F).
   const parsed = item.object?.type === 'badge' ? parseBadgeKey(item.object.id) : null;
-  const name = parsed ? medalName(t, { id: parsed.family, variant: parsed.variant }) : null;
+  const name = parsed ? medalName(t, { id: parsed.family, variant: parsed.variant }, lang) : null;
   return (
     <article className="post so-act" data-feed="badge">
       <ActivityHead item={item} headline={item.data?.first ? t('feed.badgeFirst') : t('feed.badge')} />

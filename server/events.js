@@ -113,10 +113,14 @@ export function init(deps) {
     if (bonus.frame) deps.collection?.grantCosmetic?.(userId, bonus.frame, `event:${slug}`);
   }
 
-  /** Après la transaction du bonus : notification et événement du bus. */
+  /**
+   * Après la transaction du bonus : notification et événements du bus (event.completed, et badge.earned : le badge est
+   * une médaille de la page Badges, famille externe « event », que le fil publie comme les autres médailles d'or).
+   */
   function afterBonus(userId, slug, reward) {
     deps.notify?.(userId, 'event_reward', { groupKey: `event:${slug}`, data: { slug, badge: reward?.badge || null, frame: reward?.frame || null } });
     deps.bus.emit('event.completed', { userId, slug });
+    if (reward?.badge) deps.bus.emit('badge.earned', { userId, key: reward.badge, family: 'event', variant: slug, tier: EVENT_BADGE_TIER });
   }
 
   // ----- vues --------------------------------------------------------------------------------------------------
@@ -205,17 +209,22 @@ export function routes(r, deps) {
   const { limits, services } = deps;
   const api = () => deps.events;
   const partial = (req) => services.state(req.user.id, { partial: true });
+  /** Badges gagnés pendant la requête (celui de l'événement avec le bonus), pour le message « Nouvelle médaille ! ». */
+  const earned = (req, since) => deps.badges?.earnedSince?.(req.user.id, since) ?? [];
   r.get('/events', limits.read, (req, res) => res.json(api().overview(req.user.id)));
   r.get('/events/:slug', limits.read, (req, res) => res.json(api().view(req.user.id, req.params.slug)));
-  // Réclamer une quête et le bonus d'un événement depuis sa page : mêmes règles que /quests/e:<slug>/… (module quests).
+  // Réclamer une quête et le bonus d'un événement depuis sa page : mêmes règles et mêmes réponses que
+  // /quests/e:<slug>/… (module quests).
   r.post('/events/:slug/quests/:slot/claim', limits.write, (req, res) => {
     if (!isEventSlug(req.params.slug)) throw new deps.HttpError(404, 'event_not_found');
+    const since = Date.now();
     const result = deps.quests.claim(req.user.id, eventPeriodKey(req.params.slug), req.params.slot);
-    res.json({ ...result, state: partial(req) });
+    res.json({ ...result, badgesEarned: earned(req, since), state: partial(req) });
   });
   r.post('/events/:slug/bonus', limits.write, (req, res) => {
     if (!isEventSlug(req.params.slug)) throw new deps.HttpError(404, 'event_not_found');
+    const since = Date.now();
     const result = deps.quests.claimBonus(req.user.id, eventPeriodKey(req.params.slug));
-    res.json({ ...result, state: partial(req) });
+    res.json({ ...result, badgesEarned: earned(req, since), state: partial(req) });
   });
 }

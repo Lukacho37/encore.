@@ -124,6 +124,13 @@ test('détachement : confirmés gardés, le reste archivé, les joueurs gardent 
   const state = await call(player, 'GET', '/state');
   assert.ok(state.body.cards.some((c) => c.t === tracksOf(withdrawnAlbum.id)[0]), 'cartes archivées dans l’état');
   assert.equal((await call(player, 'GET', `/catalog/albums/${withdrawnAlbum.id}`)).status, 200);
+  // Hors de la navigation du catalogue, mais toujours dans « Mes albums » du joueur, marqué archivé.
+  const browse = (await call(player, 'GET', '/catalog/albums?sort=title&limit=100')).body;
+  assert.ok(!browse.items.some((a) => a.id === withdrawnAlbum.id), 'plus dans la navigation');
+  const mineList = (await call(player, 'GET', '/catalog/albums?mine=1&sort=progress&limit=100')).body;
+  const archivedMine = mineList.items.find((a) => a.id === withdrawnAlbum.id);
+  assert.equal(archivedMine?.archived, true, 'toujours dans « Mes albums », marqué archivé');
+  assert.equal(mineList.total, mineList.items.length);
   const listPage = await call(player, 'GET', `/lists/${list.body.list.id}`);
   assert.equal(listPage.status, 200);
   assert.equal(listPage.body.items.length, 2);

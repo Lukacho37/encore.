@@ -9,6 +9,8 @@
 // Gagner un badge : récompense du palier dans la même transaction (XP par services.gainXp, royalties, booster bonus,
 // titre au dernier palier par deps.collection.grantCosmetic), notification badge_earned, événement badge.earned
 // (feed.js publie l'or, le platine et la première médaille), message sur le site (POST /badges/seen, `badgesEarned`).
+// Familles externes (coffrets, événements, P2-B) : leurs badges sont donnés par server/sets.js et server/events.js ;
+// ici, ni mesure ni rattrapage, la page les liste (une médaille par coffret ou événement gagné).
 // API interne (deps.badges) : evaluate(userId, family, variant?), backfill(userId), earnedSince(userId, since),
 // summary(userId).
 import {
@@ -219,6 +221,8 @@ export function init(deps) {
     }
     const list = [];
     for (const f of FAMILIES) {
+      // Coffrets et événements : donnés par leurs modules, rien à mesurer ici.
+      if (f.external) continue;
       if (f.variants) {
         for (const [variant, values] of measureVariants(userId, f.id)) list.push({ family: f.id, variant, values });
       } else {
@@ -239,7 +243,7 @@ export function init(deps) {
     const uid = Number(userId);
     if (!Number.isInteger(uid) || uid <= 0) return [];
     const f = familyOf(family);
-    if (!f || (f.variants && !f.variants.includes(variant))) return [];
+    if (!f || f.external || (f.variants && !f.variants.includes(variant))) return [];
     backfill(uid);
     if (allTiers(uid, family, variant)) return [];
     return grantReached(uid, [{ family, variant, values: MEASURES[family](uid, variant) }]);
@@ -308,6 +312,10 @@ export function init(deps) {
     evaluate(userId, 'friendly');
     evaluate(friendId, 'friendly');
   });
+  // Médaille donnée par un autre module (coffret, événement) : la page Badges du joueur est relue.
+  on('badge.earned', ({ userId, family }) => {
+    if (familyOf(family)?.external) pageCache.delete(Number(userId));
+  });
 
   // ----- lecture -----------------------------------------------------------------------------------------
 
@@ -346,6 +354,18 @@ export function init(deps) {
   }
 
   /**
+   * Médailles d'une famille externe (coffrets, événements) : une par variante gagnée, la plus récente d'abord ; aucune
+   * gagnée et `placeholder` : la médaille verrouillée de la famille (sans variante), pour montrer qu'elle existe.
+   */
+  function externalViews(f, earned, { placeholder = false } = {}) {
+    const views = [];
+    for (const [k, tiers] of earned) if (k.startsWith(`${f.id}|`)) views.push(medalView(f, k.slice(f.id.length + 1), tiers, null));
+    views.sort((a, b) => (b.earnedAt || 0) - (a.earnedAt || 0));
+    if (!views.length && placeholder) views.push(medalView(f, null, null, null));
+    return views;
+  }
+
+  /**
    * GET /api/badges : toutes les médailles du joueur, gagnées (avec la date) ou à gagner (avec la progression).
    * « Fan de… » : les genres gagnés, plus le genre le plus avancé. Rattrapage au premier appel.
    */
@@ -355,6 +375,10 @@ export function init(deps) {
       const earned = earnedOf(userId);
       const families = [];
       for (const f of FAMILIES) {
+        if (f.external) {
+          families.push(...externalViews(f, earned, { placeholder: true }));
+          continue;
+        }
         if (!f.variants) {
           families.push(medalView(f, null, earned.get(`${f.id}|`), MEASURES[f.id](userId)));
           continue;
@@ -384,6 +408,10 @@ export function init(deps) {
     const earned = earnedOf(target.id);
     const families = [];
     for (const f of FAMILIES) {
+      if (f.external) {
+        families.push(...externalViews(f, earned));
+        continue;
+      }
       for (const variant of f.variants || [null]) {
         const got = earned.get(`${f.id}|${variant ?? ''}`);
         if (!got) continue;

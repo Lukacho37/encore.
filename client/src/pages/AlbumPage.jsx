@@ -513,7 +513,10 @@ function AlbumView({ id }) {
   const eyebrow = [album.code, genre && genre !== `genre.${album.genre}` ? genre : null, album.year].filter(Boolean).join(' · ');
   const mastered = achievements.has(`artist:${album.artistId}`);
   // Cartes manquantes pressables (cartes d'album : barème de shared/rules.js), dans l'ordre de l'album.
-  const missing = tracks ? tracks.filter((tr) => !owned.has(tr.id) && (isAdmin || pressCost(tr.rarity) != null)) : [];
+  // Album archivé (fournisseur détaché, P2-C) : plus de booster d'album ni de pressage (le serveur les refuse, 409
+  // archived_item) ; la page reste ouverte avec la collection, les notes et les listes.
+  const archived = !!album.archived;
+  const missing = tracks && !archived ? tracks.filter((tr) => !owned.has(tr.id) && (isAdmin || pressCost(tr.rarity) != null)) : [];
   const chooseView = (v) => {
     setView(v);
     storage.set('albummania.albumView', v);
@@ -554,7 +557,7 @@ function AlbumView({ id }) {
           <CompletionLine albumId={id} />
           {doneAt && <EditionTags edition={edition} holo={holoEdition} />}
           {doneAt && <DeluxeLine albumId={id} />}
-          {!doneAt && (
+          {!doneAt && !archived && (
             <div className="reward-box">
               <span className="label">{t('album.reward')}</span>
               <p>{t('album.rewardBody', { r: reward.royalties, x: reward.xp })}</p>
@@ -566,7 +569,7 @@ function AlbumView({ id }) {
         </div>
       </header>
 
-      <AlbumBooster album={album} complete={complete} onOpen={() => booster.openAlbum(album)} />
+      {!archived && <AlbumBooster album={album} complete={complete} onOpen={() => booster.openAlbum(album)} />}
 
       {/* Tracklist (ou cartes) sur deux tiers, « Tes amis » sur le dernier tiers à partir de 1080 px (studio.css). */}
       <div className={`st-album-main${view === 'cards' ? ' st-album-main--cards' : ''}`}>
@@ -592,8 +595,8 @@ function AlbumView({ id }) {
               </>
             )
           ) : view === 'cards'
-            ? <TrackGrid tracks={tracks} onPress={setPressing} />
-            : <Tracklist tracks={tracks} trackRatings={ratingsApi.data?.tracks} onPress={setPressing} />}
+            ? <TrackGrid tracks={tracks} onPress={archived ? null : setPressing} />
+            : <Tracklist tracks={tracks} trackRatings={ratingsApi.data?.tracks} onPress={archived ? null : setPressing} />}
         </div>
         <FriendsAside ratings={ratingsApi.data} />
       </div>

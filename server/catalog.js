@@ -574,7 +574,9 @@ export function createCatalog(db, { covers = () => config.covers !== 'off', seed
     }
     if (ids && !ids.length) return { total: 0, items: [] };
     const params = { uid: userId ?? -1 };
-    const filters = ["al.status = 'active'"];
+    // Albums archivés (P2-C) : hors de la navigation du catalogue, mais toujours dans « Mes albums » du joueur (sa
+    // collection), avec la pastille « Archivé » ; le texte cherché (`ids`) les exclut déjà.
+    const filters = mine ? [] : ["al.status = 'active'"];
     if (ids) params.ids = json(ids.slice(0, TEXT_CAP));
     if (genre) {
       filters.push('al.genre = :genre');

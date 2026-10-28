@@ -2,8 +2,8 @@
 // PLAN.md 4.3, 6.9) : mêmes routes, mêmes formes.
 //   GET  /events                           → { current, upcoming, past, soon, serverTime }
 //   GET  /events/:slug                     → { event, quests, set, battle, rewards, catalog }
-//   POST /events/:slug/quests/:slot/claim  → { reward, quest, levelUp, state }
-//   POST /events/:slug/bonus               → { reward, levelUp, state } (badge, cadre, booster thématique)
+//   POST /events/:slug/quests/:slot/claim  → { reward, quest, levelUp, badgesEarned, state }
+//   POST /events/:slug/bonus               → { reward, levelUp, badgesEarned, state } (badge, cadre, booster thématique)
 // Le calendrier est celui du code (shared/events.js). Propre à la démo : quand aucun événement n'est en cours, le
 // prochain est montré « en cours » (aperçu : commencé il y a deux jours, encore douze), pour qu'un nouveau compte voie
 // un événement vivant ; ses dates réelles restent celles du calendrier sur le serveur.
@@ -19,6 +19,7 @@ import {
 } from '@shared/events.js';
 import { notify } from './notifications.js';
 import { demoBadges, setSummaryFor } from './sets.js';
+import { evaluateBadges } from './badges.js';
 
 export const name = 'events';
 
@@ -165,6 +166,17 @@ function eventView(ctx, u, ev) {
   };
 }
 
+/**
+ * Événements en cours pour GET /quests (même forme que le serveur) : `event`, le premier en cours (hors Rétro s'il y en
+ * a un autre), et `events`, tous.
+ */
+export function questEvents(ctx, u) {
+  const live = demoCalendar().filter((e) => e.status === 'current' && e.quests.length);
+  const events = live.map((ev) => eventView(ctx, u, ev));
+  const main = events.find((e) => live.find((x) => x.slug === e.slug)?.kind === 'event') || events[0] || null;
+  return { ...(main ? { event: main } : {}), events };
+}
+
 function summaryOf(ctx, u, ev, now = Date.now()) {
   ensure(ctx.db);
   const claimed = rowsOf(ctx.db, u.id, ev.slug).filter((r) => r.slot < EVENT_SLOTS && r.claimedAt != null).length;
@@ -230,6 +242,7 @@ function grant(ctx, u, reward, source) {
 
 function claim(ctx, rawSlug, rawSlot) {
   const u = ctx.me();
+  const since = Date.now();
   const ev = liveEvent(ctx, rawSlug);
   const slot = SLOT_RE.test(String(rawSlot)) ? Number(rawSlot) : -1;
   if (slot < 0 || slot >= EVENT_SLOTS) ctx.fail(404, 'quest_not_found');
@@ -245,7 +258,8 @@ function claim(ctx, rawSlug, rawSlot) {
   row.claimedAt = Date.now();
   row.reward = reward;
   const levelUp = grant(ctx, u, reward, 'quest:e');
-  return { reward, quest: questView(ctx, u, ev, def, slot, row), levelUp, state: ctx.partialState() };
+  const badgesEarned = evaluateBadges(ctx, u.id, { since });
+  return { reward, quest: questView(ctx, u, ev, def, slot, row), levelUp, badgesEarned, state: ctx.partialState() };
 }
 
 function claimBonus(ctx, rawSlug) {
@@ -262,7 +276,8 @@ function claimBonus(ctx, rawSlug) {
   demoBadges(ctx.db, u.id)[reward.badge] = now;
   if (reward.frame) ctx.collection.grantCosmetic(u.id, reward.frame, `event:${ev.slug}`);
   notify(ctx.db, u.id, 'event_reward', { groupKey: `event:${ev.slug}`, data: { slug: ev.slug, badge: reward.badge, frame: reward.frame || null } });
-  return { reward, levelUp, state: ctx.partialState() };
+  // Le badge de l'événement est aussi une médaille de la page Badges (message « Nouvelle médaille ! »).
+  return { reward, levelUp, badgesEarned: evaluateBadges(ctx, u.id, { since: now }), state: ctx.partialState() };
 }
 
 export const routes = [

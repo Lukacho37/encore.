@@ -87,8 +87,11 @@ function Card({ trackId, variant = 'std', count = 0, ghost = false, badge, badge
   // Une carte non obtenue garde le visuel généré : la vraie pochette se révèle quand on l'obtient. Une pochette retirée
   // par l'admin (art.coverBlocked) redonne le visuel généré, et la mise en page qui va avec.
   const showsCover = !ghost && !!shownCover(art, covers);
-  // Sur une vraie pochette, « Nouveau » et le nombre d'exemplaires vont dans le pied de carte.
-  const footTags = showsCover && (!!badge || count > 1);
+  // Morceau archivé (fournisseur détaché, P2-C) : « Archivé » dans le pied de carte, jamais sur l'image.
+  const archived = !!track.archived;
+  // Sur une vraie pochette, « Nouveau » et le nombre d'exemplaires vont aussi dans le pied de carte.
+  const coverTags = showsCover && (!!badge || count > 1);
+  const footTags = coverTags || archived;
   const Tag = onClick ? 'button' : 'div';
   const number = track.kind === 'promo' ? `P${pad(track.n)}` : `${pad(track.n)}/${pad(track.total)}`;
 
@@ -124,8 +127,9 @@ function Card({ trackId, variant = 'std', count = 0, ghost = false, badge, badge
           </span>
           {footTags && (
             <span className="card__foot-tags">
-              {badge && <span className={`card__tag${badgeTone ? ` card__tag--${badgeTone}` : ''}`}>{badge}</span>}
-              {count > 1 && <span className="card__tag card__tag--count">×{count}</span>}
+              {archived && <span className="card__tag card__tag--archived">{t('enrich.archived')}</span>}
+              {coverTags && badge && <span className={`card__tag${badgeTone ? ` card__tag--${badgeTone}` : ''}`}>{badge}</span>}
+              {coverTags && count > 1 && <span className="card__tag card__tag--count">×{count}</span>}
             </span>
           )}
           {track.pop != null

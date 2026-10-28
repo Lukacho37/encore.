@@ -84,6 +84,7 @@ export default {
     settings: {
       embedsAlways: `Les lecteurs que tu as choisi de «${NNBSP}Toujours charger${NNBSP}» (Deezer, Spotify, Apple Music) se chargent tout de suite.`,
       embedsAsk: `Les lecteurs Deezer, Spotify et Apple Music se chargent seulement quand tu le demandes${NNBSP}: ils déposent leurs cookies à ce moment-là.`,
+      embedsDone: 'Les lecteurs se chargeront de nouveau à la demande.',
     },
     errors: {
       confirm_required: 'Tape le nom du fournisseur pour confirmer.',
@@ -171,6 +172,7 @@ export default {
     settings: {
       embedsAlways: 'The players you chose to “Always load” (Deezer, Spotify, Apple Music) load right away.',
       embedsAsk: 'The Deezer, Spotify and Apple Music players only load when you ask for them: that is when they set their cookies.',
+      embedsDone: 'The players will load on demand again.',
     },
     errors: {
       confirm_required: 'Type the provider’s name to confirm.',

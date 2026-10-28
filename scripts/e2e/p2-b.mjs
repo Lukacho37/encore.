@@ -113,6 +113,19 @@ for (const [name, viewport] of Object.entries(VIEWPORTS)) {
     await page.waitForSelector('.toast');
     await page.screenshot({ path: `${OUT}/${p}-21-event-claimed.png` });
 
+    // Page Quêtes : panneau « Quêtes de l'événement » (ses 3 quêtes, lien vers sa page).
+    await page.goto(`${BASE}/quests`);
+    const evPanel = page.locator('[data-period="event"][data-event="french-touch"]');
+    await evPanel.locator('.quest[data-quest]').first().waitFor({ timeout: 15_000 });
+    if ((await evPanel.locator('.quest[data-quest]').count()) !== 3) fail(`[${label}] page Quêtes : le panneau de l'événement n'a pas 3 quêtes`);
+    if (!(await evPanel.locator('[data-quest="ft-battles"].quest--claimed').count())) fail(`[${label}] page Quêtes : la quête des battles n'est pas réclamée`);
+    if (!(await evPanel.locator('a[href="/events/french-touch"]').count())) fail(`[${label}] page Quêtes : pas de lien vers l'événement`);
+    await evPanel.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `${OUT}/${p}-23-quests-event.png` });
+    if (name === 'phone') await checkNoHorizontalScroll(page, `${label} quêtes`);
+    await page.goto(`${BASE}/events/french-touch`);
+    await page.waitForSelector('[data-page="event"] .set-ev-hero, [data-page="event"] .quest[data-quest]');
+
     // Calendrier.
     await page.locator('.back-link').first().click();
     await page.waitForSelector('[data-page="events"] .set-ev-hero[data-event="french-touch"]');
@@ -152,7 +165,8 @@ for (const [name, viewport] of Object.entries(VIEWPORTS)) {
 
     // Genres : l'onglet reste ; lien vers le passeport quand sa page existe.
     await page.goto(`${BASE}/collection/genres`);
-    await page.waitForSelector('.rows .row');
+    // Les lignes vides du chargement (.coll-skel-row) ne comptent pas : on attend les vraies.
+    await page.waitForSelector('.rows .row:not(.coll-skel-row)');
     const passport = fs.existsSync(path.join(ROOT, 'client/src/pages/Passport.jsx'));
     if (passport && !(await page.locator('[data-passport-link="genre"] a[href="/passport#pp-dist"]').count())) fail(`[${label}] pas de lien vers le passeport`);
   });
@@ -186,6 +200,18 @@ await run('p2-b-rewards', VIEWPORTS.desktop, async (page) => {
   // La liste des coffrets montre le coffret complet en tête.
   await page.goto(`${BASE}/collection/sets`);
   await page.waitForSelector('[data-tab="sets"] .set-card--done[data-set="ed-classiques"]');
+  // Le badge du coffret est une médaille de la page Badges (famille « set »), avec le nom du coffret.
+  await page.goto(`${BASE}/badges`);
+  const medal = page.locator('.pl-badges [data-medal="set"][data-variant="ed-classiques"]');
+  await medal.waitFor({ timeout: 15_000 });
+  if (await medal.evaluate((el) => el.classList.contains('medal--locked'))) fail(`[${label}] médaille du coffret verrouillée`);
+  const medalText = await medal.innerText();
+  if (!/Les classiques du bac/.test(medalText)) fail(`[${label}] médaille du coffret sans son nom : ${medalText}`);
+  await medal.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${OUT}/d-42-set-medal.png` });
+  await medal.click();
+  await page.waitForSelector('.pl-medal-detail');
+  await page.screenshot({ path: `${OUT}/d-43-set-medal-detail.png` });
 });
 
 // ---------- accueil en décembre : la pastille du Rétro (P2-A) à côté de celle de l'événement ----------

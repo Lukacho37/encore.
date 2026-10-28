@@ -154,8 +154,9 @@ export default {
               h: 'Destinataires et sous-traitants',
               ul: [
                 'L’hébergeur du site (voir les mentions légales) et le prestataire d’envoi des e-mails.',
-                'Pochettes : les images sont chargées par ton navigateur depuis les serveurs de Deezer, qui reçoivent alors ton adresse IP.',
-                'Lecteur intégré : le lecteur Deezer n’est chargé qu’à ta demande ; il peut alors déposer ses propres cookies.',
+                'Pochettes : les images sont chargées par ton navigateur depuis les serveurs de Deezer (ou de Spotify), qui reçoivent alors ton adresse IP.',
+                'Lecteurs intégrés : les lecteurs Deezer, Spotify et Apple Music ne sont chargés qu’à ta demande (ou si tu as choisi « Toujours charger » pour ce lecteur) ; chacun peut alors déposer ses propres cookies, jamais avant.',
+                'Données musicales : les pays des artistes et les identifiants MusicBrainz, Spotify et Apple Music sont lus par nos serveurs sur MusicBrainz et Wikidata, des sources de données libres (CC0) ; aucune donnée te concernant ne leur est transmise.',
                 'Polices de caractères : hébergées sur nos serveurs, sans aucune requête vers un service tiers.',
               ],
             },
@@ -218,13 +219,14 @@ export default {
           sections: [
             {
               h: 'Stockage sur ton appareil',
-              p: ['La langue, le son, l’échelle de notation affichée et le choix « Toujours charger » du lecteur Deezer sont gardés dans le stockage local de ton navigateur. Ils ne quittent pas ton appareil.'],
+              p: ['La langue, le son, l’échelle de notation affichée et le choix « Toujours charger » de chaque lecteur intégré (Deezer, Spotify, Apple Music) sont gardés dans le stockage local de ton navigateur. Ils ne quittent pas ton appareil.'],
             },
             {
               h: 'Services tiers',
               p: [
-                'Le lecteur Deezer n’est chargé que lorsque tu cliques sur « Charger le lecteur » (ou si tu as choisi « Toujours charger ») ; il peut alors déposer ses propres cookies, régis par la politique de Deezer. Tu peux revenir sur ce choix dans Paramètres, rubrique « Lecteurs intégrés ».',
-                'Les pochettes sont chargées depuis les serveurs de Deezer, sans cookie déposé par AlbumMania ; les polices sont hébergées sur nos serveurs.',
+                'Les lecteurs Deezer, Spotify et Apple Music ne sont chargés que lorsque tu cliques sur « Charger le lecteur » (ou si tu as choisi « Toujours charger » pour ce lecteur) : avant, aucune requête ne part vers eux. Une fois chargé, chacun peut déposer ses propres cookies, régis par la politique de Deezer, de Spotify ou d’Apple. Tu peux revenir sur ce choix dans Paramètres, rubrique « Lecteurs intégrés ».',
+                'Les pochettes sont chargées depuis les serveurs de Deezer (ou de Spotify), sans cookie déposé par AlbumMania ; les polices sont hébergées sur nos serveurs.',
+                'Les pays des artistes et les identifiants des œuvres viennent de MusicBrainz et de Wikidata (données libres CC0) : nos serveurs les lisent, ton navigateur ne contacte jamais ces services.',
               ],
             },
           ],
@@ -381,8 +383,9 @@ export default {
               h: 'Recipients and processors',
               ul: [
                 'The site host (see the legal notice) and the email delivery provider.',
-                'Covers: images are loaded by your browser from Deezer’s servers, which then receive your IP address.',
-                'Embedded player: the Deezer player only loads when you ask for it; it may then set its own cookies.',
+                'Covers: images are loaded by your browser from Deezer’s (or Spotify’s) servers, which then receive your IP address.',
+                'Embedded players: the Deezer, Spotify and Apple Music players only load when you ask for them (or if you chose “Always load” for that player); each may then set its own cookies, never before.',
+                'Music data: artist countries and MusicBrainz, Spotify and Apple Music identifiers are read by our servers from MusicBrainz and Wikidata, open data sources (CC0); no data about you is sent to them.',
                 'Fonts: hosted on our own servers, with no request to any third party.',
               ],
             },
@@ -445,13 +448,14 @@ export default {
           sections: [
             {
               h: 'Storage on your device',
-              p: ['Language, sound, the rating scale shown and the “Always load” choice for the Deezer player are kept in your browser’s local storage. They never leave your device.'],
+              p: ['Language, sound, the rating scale shown and the “Always load” choice for each embedded player (Deezer, Spotify, Apple Music) are kept in your browser’s local storage. They never leave your device.'],
             },
             {
               h: 'Third-party services',
               p: [
-                'The Deezer player only loads when you click “Load the player” (or if you chose “Always load”); it may then set its own cookies, governed by Deezer’s policy. You can change this choice in Settings, under “Embedded players”.',
-                'Covers are loaded from Deezer’s servers, without any cookie set by AlbumMania; fonts are hosted on our own servers.',
+                'The Deezer, Spotify and Apple Music players only load when you click “Load the player” (or if you chose “Always load” for that player): before that, no request is sent to them. Once loaded, each may set its own cookies, governed by Deezer’s, Spotify’s or Apple’s policy. You can change this choice in Settings, under “Embedded players”.',
+                'Covers are loaded from Deezer’s (or Spotify’s) servers, without any cookie set by AlbumMania; fonts are hosted on our own servers.',
+                'Artist countries and work identifiers come from MusicBrainz and Wikidata (CC0 open data): our servers read them, your browser never contacts these services.',
               ],
             },
           ],

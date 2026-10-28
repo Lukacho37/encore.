@@ -6,7 +6,8 @@
 //   sizes    : attribut `sizes` de l'image (vraie pochette) ;
 //   className.
 // `progress` : { owned, total } ; sans lui, `owned` puis album.owned (résultats de recherche). Sans `album` : emplacement
-// de chargement de même taille. Styles : app.css (.album-tile*).
+// de chargement de même taille. Un album archivé (album.archived, fournisseur détaché, P2-C) porte la pastille
+// « Archivé » sous son titre, jamais sur la pochette. Styles : app.css (.album-tile*).
 import { memo } from 'react';
 import { Link } from 'react-router';
 import CoverArt, { shownCover } from './CoverArt.jsx';
@@ -64,6 +65,7 @@ export const AlbumTile = memo(function AlbumTile({ album, progress, owned: owned
       <span className="album-tile__meta">
         <span className="album-tile__title">{album.title}</span>
         <span className="album-tile__artist">{album.artist}{album.year ? <> · <span className="mono">{album.year}</span></> : null}</span>
+        {album.archived && <span className="chip chip--sm chip--quiet album-tile__archived">{t('enrich.archived')}</span>}
         {discover ? (
           <span className="album-tile__info">
             {genre && genre !== `genre.${album.genre}` ? `${genre} · ` : ''}{t('home.tracks', { n: total })}

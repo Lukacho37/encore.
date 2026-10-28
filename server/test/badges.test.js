@@ -331,8 +331,10 @@ test('badges des autres : gagnés seulement, Studio privé 403, blocage 404', as
 });
 
 test('clés et paliers : chaque famille a des seuils croissants, une clé par palier', () => {
+  // Médailles externes (coffrets, événements) : la variante est l'identifiant du coffret ou de l'événement.
+  const sample = { set: 'g-rock-1970', event: 'french-touch' };
   for (const f of FAMILIES) {
-    const variant = f.variants ? f.variants[0] : null;
+    const variant = f.external ? sample[f.id] : f.variants ? f.variants[0] : null;
     for (const t of f.tiers) assert.ok(parseBadgeKey(badgeKey(f.id, variant, t.tier)), `${f.id} ${t.tier}`);
     const byMetric = new Map();
     for (const t of f.tiers) {
@@ -341,4 +343,44 @@ test('clés et paliers : chaque famille a des seuils croissants, une clé par pa
       byMetric.set(m, t.target);
     }
   }
+});
+
+test('médailles des coffrets et des événements : clés à 4 parties, jamais réévaluées ici, listées une fois gagnées', async () => {
+  assert.deepEqual(parseBadgeKey('badge:set:g-rock-1970:bronze'), { family: 'set', variant: 'g-rock-1970', tier: 'bronze' });
+  assert.deepEqual(parseBadgeKey('badge:event:french-touch:gold'), { family: 'event', variant: 'french-touch', tier: 'gold' });
+  assert.equal(parseBadgeKey('badge:set:bronze'), null, 'un badge de coffret a toujours son coffret');
+  assert.equal(parseBadgeKey('badge:set:g-rock-1970:gold'), null, 'palier inconnu de la famille');
+  assert.equal(parseBadgeKey('badge:event:Pas_Un_Slug:gold'), null);
+  const me = await player();
+  const other = await player();
+  assert.deepEqual(evaluate(me, 'set', 'g-rock-1970'), [], 'donnés par le module sets, pas par badges');
+  // Aucune gagnée : une médaille verrouillée par famille (pour montrer qu'elle existe), sans variante.
+  let r = await call(me, 'GET', '/badges');
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.families.filter((m) => m.id === 'set' || m.id === 'event').map((m) => [m.id, m.variant, m.best]),
+    [['set', null, null], ['event', null, null]]);
+  // Gagnées (comme le font server/sets.js et server/events.js) : une médaille par coffret, par événement.
+  const now = Date.now();
+  const give = (who, key, at) => db.prepare('INSERT INTO achievements (user_id, key, created_at, data) VALUES (?, ?, ?, ?)')
+    .run(who.user.id, key, at, JSON.stringify({ value: 1, at }));
+  for (const who of [me, other]) {
+    give(who, 'badge:set:g-rock-1970:bronze', now - 2000);
+    give(who, 'badge:set:g-jazz-1960:bronze', now - 1000);
+    give(who, 'badge:event:french-touch:gold', now);
+  }
+  deps.bus.emit('badge.earned', { userId: me.user.id, key: 'badge:event:french-touch:gold', family: 'event', variant: 'french-touch', tier: 'gold' });
+  r = await call(me, 'GET', '/badges');
+  assert.deepEqual(r.body.families.filter((m) => m.id === 'set' || m.id === 'event').map((m) => [m.id, m.variant, m.best, m.group]), [
+    ['set', 'g-jazz-1960', 'bronze', 'collect'], ['set', 'g-rock-1970', 'bronze', 'collect'], ['event', 'french-touch', 'gold', 'play'],
+  ], 'la page n’attend pas la fin du cache après une médaille d’un autre module');
+  const seen = await call(me, 'POST', '/badges/seen');
+  assert.ok(seen.body.items.some((b) => b.key === 'badge:event:french-touch:gold' && b.reward.boosters === 1));
+  const theirs = await call(me, 'GET', `/users/${other.username}/badges`);
+  assert.equal(theirs.status, 200);
+  assert.deepEqual(theirs.body.families.map((m) => [m.id, m.variant]).sort(),
+    [['event', 'french-touch'], ['set', 'g-jazz-1960'], ['set', 'g-rock-1970']]);
+  // Le rattrapage d'un joueur d'avant les badges ne mesure pas ces familles.
+  const old = await player();
+  db.prepare('UPDATE users SET created_at = 1000 WHERE id = ?').run(old.user.id);
+  assert.deepEqual(deps.badges.backfill(old.user.id).filter((b) => b.family === 'set' || b.family === 'event'), []);
 });

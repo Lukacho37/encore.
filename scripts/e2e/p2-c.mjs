@@ -242,8 +242,7 @@ async function runC(name, viewport, fn) {
   await routeFonts(ctx);
   const page = await ctx.newPage();
   page.on('pageerror', (e) => fail(`[${name}] ${e.message}`));
-  // Seule exception attendue : les classements d'un album archivé répondent 404 (server/battles.js, P1-F, hors de ce
-  // chantier : correctif demandé dans le compte rendu P2-C).
+  // Aucune exception : les classements d'un album archivé répondent 200 (archived: true) depuis l'intégration P2.
   page.on('console', (m) => m.type() === 'error' && !ignoredConsole(m.text()) && fail(`[${name}] console: ${m.text()} (${m.location()?.url || '?'})`));
   fs.mkdirSync(OUT, { recursive: true });
   try {
@@ -287,8 +286,23 @@ async function detachFlow(page, p) {
   const state = (await apiCall(page, 'GET', '/state')).body;
   if (!state.cards.some((c) => String(c.t).startsWith('dz1000001:'))) fail(`[${p}] cartes perdues`);
   if (!state.ratings.some((r) => r.i === 'dz1000001')) fail(`[${p}] note perdue`);
+  // Plus de booster d'album ni de pressage pour un album archivé (le serveur les refuse : 409 archived_item).
+  if (await page.locator('.album-booster, .press-btn, [data-press-all]').count()) fail(`[${p}] booster ou pressage proposé sur un album archivé`);
   await page.locator('.en-archived').scrollIntoViewIfNeeded();
   await settledShot(page, `${p}-40-album-archived`);
+  // Vue « Cartes » : « Archivé » dans le pied des cartes, jamais sur l'image.
+  await page.getByRole('button', { name: 'Cartes', exact: true }).click();
+  await page.locator('.card-grid .card__tag--archived').first().waitFor();
+  if (await page.locator('.card__art .card__tag--archived').count()) fail(`[${p}] pastille « Archivé » sur l'image d'une carte`);
+  await settledShot(page, `${p}-41-album-archived-cards`);
+  await page.getByRole('button', { name: 'Tracklist', exact: true }).click().catch(() => {});
+  // Collection › Mes albums : l'album archivé y reste, sa vignette porte « Archivé » sous son titre.
+  await page.goto(`${BASE}/collection?mine=1`);
+  const tile = page.locator('.album-tile', { has: page.locator('.album-tile__archived') }).first();
+  await tile.waitFor({ timeout: 15_000 });
+  if (await tile.locator('.album-tile__cover .album-tile__archived').count()) fail(`[${p}] pastille « Archivé » sur une pochette`);
+  await tile.scrollIntoViewIfNeeded();
+  await settledShot(page, `${p}-42-collection-archived`);
 }
 
 async function archivedPhone(page, p) {

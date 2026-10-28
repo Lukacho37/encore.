@@ -159,9 +159,15 @@ test('progression et récompenses : badge aux 3/4, cadre au complet, une seule f
   const has = (key) => !!db.prepare('SELECT 1 FROM achievements WHERE user_id = ? AND key = ?').get(p.user.id, key);
   assert.ok(!has(badge));
   const xpBefore = services.getUser(p.user.id).xp;
+  const medals = [];
+  const off = deps.bus.on('badge.earned', (e) => e.userId === p.user.id && medals.push(e));
   complete(p, ids[5]);
+  off();
   // 6 sur 8 : le badge bronze (et ses 50 XP), le cadre pas encore.
   assert.ok(has(badge));
+  // C'est aussi une médaille de la page Badges (famille externe « set »).
+  assert.ok(medals.some((e) => e.key === badge && e.family === 'set' && e.variant === 'g-rock-1970' && e.tier === 'bronze'));
+  assert.ok((await call(p, 'GET', '/badges')).body.families.some((m) => m.id === 'set' && m.variant === 'g-rock-1970' && m.best === 'bronze'));
   const cosmetic = setFrameId('g-rock-1970');
   const frameRow = () => db.prepare('SELECT source FROM user_cosmetics WHERE user_id = ? AND cosmetic_id = ?').get(p.user.id, cosmetic);
   assert.equal(frameRow(), undefined);

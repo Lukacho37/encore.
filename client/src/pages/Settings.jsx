@@ -9,7 +9,7 @@ import { useGame } from '../state/GameContext.jsx';
 import { useI18n } from '../i18n/index.jsx';
 import { Icon, useToast } from '../components/ui.jsx';
 import { ScaleSwitch } from '../components/Rating.jsx';
-import { embedChoices, resetEmbedChoices } from '../components/ListenPanel.jsx';
+import { hasAlwaysEmbeds, resetEmbedChoices } from '../components/ListenPanel.jsx';
 import { LangSwitch, useSound } from '../components/shell/controls.jsx';
 import { LEGAL_PAGES, hasReportPage } from '../components/shell/LegalLinks.jsx';
 import { SafetySettings } from '../components/settings/SafetySettings.jsx';
@@ -69,7 +69,7 @@ function ListenChoice() {
 function EmbedsRow() {
   const { t } = useI18n();
   const toast = useToast();
-  const [always, setAlways] = useState(() => embedChoices().deezer === 'always');
+  const [always, setAlways] = useState(() => hasAlwaysEmbeds());
   const reset = () => {
     resetEmbedChoices();
     setAlways(false);

@@ -389,12 +389,21 @@ if (fs.existsSync(demoFile)) {
       await page.click('.demo-mail .btn');
       // P1 : un compte neuf arrive une fois sur /welcome (premiers pas) ; on revient à l'accueil de la démo.
       await homeAfterWelcome(page, { url: `file://${demoFile}`, navigate: false });
-      // Admin de la démo : le rôle est posé dans la sauvegarde (le code de déblocage n'est pas public).
-      await page.evaluate(() => {
+      // Admin de la démo : le rôle est posé dans la sauvegarde (le code de déblocage n'est pas public), au chargement
+      // suivant et avant que l'application ne la lise : la page en cours réécrit la sauvegarde après chaque requête,
+      // un rôle posé tout de suite pouvait donc être écrasé avant le rechargement (même correctif que p2-c.mjs).
+      await page.addInitScript(() => {
         const key = 'albummania.demo.v1';
-        const data = JSON.parse(localStorage.getItem(key));
-        data.users.find((u) => u.id === data.session).role = 'admin';
-        localStorage.setItem(key, JSON.stringify(data));
+        try {
+          const data = JSON.parse(localStorage.getItem(key));
+          const me = data?.users?.find((u) => u.id === data.session);
+          if (me && me.role !== 'admin') {
+            me.role = 'admin';
+            localStorage.setItem(key, JSON.stringify(data));
+          }
+        } catch {
+          // Sauvegarde illisible : l'attente du héros « illimités » le signalera.
+        }
       });
       await page.goto(`file://${demoFile}`);
       // L'accueil s'affiche d'abord avec l'état gardé en mémoire : on attend l'état rechargé (rôle admin).

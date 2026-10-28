@@ -171,7 +171,7 @@ function backfill(ctx, uid) {
 
 /** Badges gagnés depuis `since` (hors rattrapage) : [{ key, family, variant, tier, at, reward }]. */
 function earnedSince(db, uid, since) {
-  return Object.entries(badgesOf(db, uid))
+  return Object.entries({ ...badgesOf(db, uid), ...externalOf(db, uid) })
     .filter(([, b]) => b.at >= (Number(since) || 0) && !b.backfill)
     .sort((a, b) => a[1].at - b[1].at || (a[0] < b[0] ? -1 : 1))
     .slice(0, 20)
@@ -196,10 +196,18 @@ export function evaluateBadges(ctx, uid, { since = null } = {}) {
 
 // ----- lecture -----------------------------------------------------------------------------------------------------
 
+/**
+ * Badges des coffrets et des événements (familles externes « set » et « event ») : gardés par le jumeau des coffrets
+ * (db.setBadges = { joueur: { clé: date } }), lus ici sous la forme de db.badges.
+ */
+const externalOf = (db, uid) => Object.fromEntries(Object.entries(db.setBadges?.[uid] || {})
+  .filter(([key, at]) => Number.isFinite(at) && parseBadgeKey(key))
+  .map(([key, at]) => [key, { at }]));
+
 /** Badges gagnés : Map « famille|variante » → Map palier → date. */
 function earnedOf(db, uid) {
   const out = new Map();
-  for (const [key, b] of Object.entries(badgesOf(db, uid))) {
+  for (const [key, b] of Object.entries({ ...badgesOf(db, uid), ...externalOf(db, uid) })) {
     const parsed = parseBadgeKey(key);
     if (!parsed) continue;
     const k = `${parsed.family}|${parsed.variant ?? ''}`;
@@ -221,12 +229,25 @@ function medalView(f, variant, earned, values) {
   return { id: f.id, variant: variant ?? null, group: f.group, icon: f.icon, tiers, best: best?.tier ?? null, earnedAt: best?.earnedAt ?? null };
 }
 
+/** Médailles d'une famille externe : une par coffret ou événement gagné ; sinon, avec `placeholder`, la verrouillée. */
+function externalViews(f, earned, { placeholder = false } = {}) {
+  const views = [];
+  for (const [k, tiers] of earned) if (k.startsWith(`${f.id}|`)) views.push(medalView(f, k.slice(f.id.length + 1), tiers, null));
+  views.sort((a, b) => (b.earnedAt || 0) - (a.earnedAt || 0));
+  if (!views.length && placeholder) views.push(medalView(f, null, null, null));
+  return views;
+}
+
 function mine(ctx, uid) {
   evaluateBadges(ctx, uid);
   const measured = measureAll(ctx, uid);
   const earned = earnedOf(ctx.db, uid);
   const families = [];
   for (const f of FAMILIES) {
+    if (f.external) {
+      families.push(...externalViews(f, earned, { placeholder: true }));
+      continue;
+    }
     if (!f.variants) {
       families.push(medalView(f, null, earned.get(`${f.id}|`), measured.get(`${f.id}|`)));
       continue;
@@ -259,6 +280,10 @@ function ofUser(ctx, viewer, username) {
   const earned = earnedOf(db, target.id);
   const families = [];
   for (const f of FAMILIES) {
+    if (f.external) {
+      families.push(...externalViews(f, earned));
+      continue;
+    }
     for (const variant of f.variants || [null]) {
       const got = earned.get(`${f.id}|${variant ?? ''}`);
       if (!got) continue;

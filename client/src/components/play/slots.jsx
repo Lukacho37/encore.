@@ -14,7 +14,7 @@ import { useGame } from '../../state/GameContext.jsx';
 import { useApi } from '../../state/catalog.js';
 import { EmptyState, ErrorBox, Skeleton } from '../feedback.jsx';
 import { Icon, Modal, RoyaltyIcon, useToast } from '../ui.jsx';
-import { BADGE_GROUPS, rewardFor, tierRank } from '@shared/badges.js';
+import { BADGE_GROUPS, familyOf, rewardFor, tierRank } from '@shared/badges.js';
 import { BadgeToast } from './BadgeToast.jsx';
 import { Duel, useBattleQueue } from './Duel.jsx';
 import { CategoryName, Medal, enc, medalName, medalTone, questTitle, rewardText, tierGoal } from './common.jsx';
@@ -171,8 +171,8 @@ function tierReward(t, num, family, tier) {
 
 /** Détail d'une médaille : paliers, objectifs, récompenses, dates (ou progression). */
 export function MedalDetail({ medal, onClose }) {
-  const { t, date, num } = useI18n();
-  const name = medal ? medalName(t, medal) : '';
+  const { t, date, num, lang } = useI18n();
+  const name = medal ? medalName(t, medal, lang) : '';
   return (
     <Modal open={!!medal} onClose={onClose} title={name}>
       {medal && (
@@ -195,6 +195,13 @@ export function MedalDetail({ medal, onClose }) {
               </li>
             ))}
           </ul>
+          {/* Médaille d'un coffret ou d'un événement (P2-B) : lien vers sa page. */}
+          {medal.variant && familyOf(medal.id)?.external && (
+            <Link to={medal.id === 'event' ? `/events/${enc(medal.variant)}` : `/sets/${enc(medal.variant)}`} className="btn btn--ghost btn--sm"
+              onClick={onClose} data-medal-link={medal.id}>
+              <Icon name={medal.id === 'event' ? 'star' : 'disc'} size={16} /> {t(`badges.f.${medal.id}.open`)}
+            </Link>
+          )}
           <button type="button" className="btn btn--ghost btn--sm" onClick={onClose}>{t('badges.close')}</button>
         </div>
       )}

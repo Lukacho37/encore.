@@ -67,7 +67,7 @@ function listen() {
 
 export function BadgeToast() {
   const key = useId();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { queue, leader } = useSyncExternalStore(subscribe, read, read);
   const [ready, setReady] = useState(false);
 
@@ -118,7 +118,7 @@ export function BadgeToast() {
       <span className="pl-toast__text">
         <strong className="pl-toast__title">{t('badges.toastTitle')}</strong>
         <span className="pl-toast__body">
-          {t('badges.toastBody', { name: medalName(t, medal), tier: t(`badges.tiers.${first.tier}`) })}
+          {t('badges.toastBody', { name: medalName(t, medal, lang), tier: t(`badges.tiers.${first.tier}`) })}
           {current.length > 1 && ` ${t('badges.toastMore', { n: current.length - 1 })}`}
         </span>
         <Link to="/badges" className="pl-toast__link" onClick={dismiss}>{t('badges.see')}</Link>

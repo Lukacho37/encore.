@@ -3,7 +3,8 @@
 // (tutoiement, espace fine insécable avant ; : ! ? % et dans « »). Espaces de noms : sets, events. Clés disjointes
 // ajoutées à d'autres espaces : notify.kinds.set_reward et notify.kinds.event_reward (notifications), cosmetics.frame.*
 // (noms des cadres des coffrets et des événements dans l'éditeur du Studio), discover.tiles.events et .sets (tuiles de
-// Découvrir), badges.f.set et .event (médailles), errors.set_not_found, errors.event_not_found.
+// Découvrir), badges.f.set et .event (médailles), quests.eventOpen (page Quêtes), errors.set_not_found,
+// errors.event_not_found.
 import { CODE_SETS, GENERATED_DECADES, GENERATED_GENRES, generatedId, generatedTitles } from '@shared/sets.js';
 
 const N = ' ';
@@ -178,10 +179,12 @@ export default {
         sets: { title: 'Coffrets', body: 'Des albums à compléter, un badge et un cadre à la clé.' },
       },
     },
+    // Page Quêtes : panneau « Quêtes de l'événement » (lien vers la page de l'événement, où elles se réclament).
+    quests: { eventOpen: 'Voir l’événement et son bonus' },
     badges: {
       f: {
-        set: { name: 'Coffret complété', goal: 'Compléter les trois quarts d’un coffret' },
-        event: { name: 'Événement réussi', goal: 'Réclamer les 3 quêtes d’un événement' },
+        set: { name: 'Coffret complété', named: 'Coffret · {name}', goal: 'Compléter les trois quarts d’un coffret', open: 'Voir le coffret' },
+        event: { name: 'Événement réussi', named: '{name}', goal: 'Réclamer les 3 quêtes d’un événement', open: 'Voir l’événement' },
       },
     },
     errors: {
@@ -346,10 +349,11 @@ export default {
         sets: { title: 'Box sets', body: 'Albums to complete, with a badge and a frame to win.' },
       },
     },
+    quests: { eventOpen: 'See the event and its bonus' },
     badges: {
       f: {
-        set: { name: 'Box set completed', goal: 'Complete three quarters of a box set' },
-        event: { name: 'Event cleared', goal: 'Claim all 3 quests of an event' },
+        set: { name: 'Box set completed', named: 'Box set · {name}', goal: 'Complete three quarters of a box set', open: 'See the box set' },
+        event: { name: 'Event cleared', named: '{name}', goal: 'Claim all 3 quests of an event', open: 'See the event' },
       },
     },
     errors: {

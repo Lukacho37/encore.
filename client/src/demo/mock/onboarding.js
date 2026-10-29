@@ -35,10 +35,7 @@ let popularity = null;
 function pop(ctx) {
   if (popularity) return popularity;
   const album = new Map();
-  for (const a of ctx.ALBUM.values()) {
-    const tracks = ctx.staticCatalog.albumTracks(a.id);
-    album.set(a.id, tracks.length ? tracks.reduce((s, t) => s + (t.pop || 0), 0) / tracks.length : 0);
-  }
+  for (const a of ctx.ALBUM.values()) album.set(a.id, ctx.staticCatalog.albumPop(a.id));
   const artist = new Map();
   for (const a of ctx.ALBUM.values()) artist.set(a.artistId, Math.max(artist.get(a.artistId) || 0, album.get(a.id)));
   popularity = { album, artist };

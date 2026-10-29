@@ -40,10 +40,7 @@ function bayesOf(ctx, id) {
 }
 
 /** Popularité d'un album : moyenne de ses morceaux (le catalogue de la démo n'a pas de nombre de fans). */
-const popOf = (ctx, id) => {
-  const tracks = ctx.staticCatalog.albumTracks(id);
-  return tracks.length ? tracks.reduce((s, t) => s + (t.pop || 0), 0) / tracks.length : 0;
-};
+const popOf = (ctx, id) => ctx.staticCatalog.albumPop(id);
 const byPop = (ctx, list) => [...list].sort((a, b) => popOf(ctx, b.id) - popOf(ctx, a.id) || a.id.localeCompare(b.id));
 
 /** Albums proches : co-notes 8+, même artiste, même genre et même époque (comme le serveur). */

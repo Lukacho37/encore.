@@ -108,8 +108,7 @@ const factsOf = (ctx, itemType, id) => (itemType === 'track' ? trackFacts(ctx, i
 
 /** Popularité d'un album (moyenne de ses morceaux), pour les réservoirs et les goûts des joueurs fictifs. */
 function albumPop(ctx, id) {
-  const tracks = ctx.staticCatalog.albumTracks(id);
-  return tracks.length ? tracks.reduce((s, t) => s + (t.pop || 0), 0) / tracks.length : 0;
+  return ctx.staticCatalog.albumPop(id);
 }
 
 /** Éléments d'une catégorie, les plus populaires d'abord (200 au plus). */

@@ -509,11 +509,75 @@ export const COUNTRIES = [...new Set(ARTISTS.map((a) => a.country))];
 export function artFor(track) {
   if (track.kind === 'promo') return { ...track.art, seed: track.id };
   const album = ALBUM_BY_ID[track.albumId];
-  return { ...album.art, seed: album.id };
+  // Album du grand catalogue de la démo : un seul objet partagé par ses morceaux (des centaines de milliers de cartes).
+  return album.artView || { ...album.art, seed: album.id };
 }
 
 /** Code catalogue façon maison de disques : AM-001, AM-P03… */
 export function catalogCode(track) {
   if (track.kind === 'promo') return `AM-P${pad(track.n)}`;
   return `AM-${String(ALBUM_BY_ID[track.albumId].catalog).padStart(3, '0')}`;
+}
+
+// ---------- grand catalogue de la démo ----------
+
+/** Version du catalogue : change quand extendCatalog ajoute des albums (caches de shared/staticCatalog.js). */
+export let CATALOG_VERSION = 0;
+
+/**
+ * Ajoute le grand catalogue (albums importés, scripts/demo-catalog.mjs) aux tables ci-dessus, dans le navigateur de la
+ * démo seulement (client/src/demo/bigCatalog.js). Les albums importés gardent leur visuel généré ; leur rareté découle
+ * de l'indice (POP_TIERS). Renvoie le nombre d'albums ajoutés.
+ */
+export function extendCatalog(data, { artOf } = {}) {
+  if (!data || data.v !== 1 || !Array.isArray(data.albums)) return 0;
+  const artists = (data.artists || []).map(([id, name, genre, country]) => ({ id, name, genre, country: country || null }));
+  for (const a of artists) {
+    if (ARTIST_BY_ID[a.id]) continue;
+    ARTISTS.push(a);
+    ARTIST_BY_ID[a.id] = a;
+  }
+  let catalog = ALBUMS.length;
+  let added = 0;
+  for (const [id, artistIdx, title, year, genre, titles, pops] of data.albums) {
+    const artist = artists[artistIdx];
+    if (!artist || ALBUM_BY_ID[id]) continue;
+    const names = String(titles).split('\u001f');
+    const art = artOf ? artOf(id) : { palette: ['#1b1623', '#ef3b3b', '#ffd35a'], motif: 'bars' };
+    const album = { id, artist: artist.id, title, year: year || null, genre, art, artView: { ...art, seed: id }, imported: true };
+    catalog += 1;
+    added += 1;
+    ALBUMS.push(album);
+    ALBUM_BY_ID[id] = { ...album, catalog };
+    const list = (TRACKS_BY_ALBUM[id] = []);
+    names.forEach((name, i) => {
+      const pop = Number(pops[i]) || 0;
+      const t = {
+        id: `${id}:${pad(i + 1)}`, kind: 'album', title: name, feat: null, pop, rarity: rarityFromPop(pop),
+        albumId: id, artistId: artist.id, n: i + 1, total: names.length, year: year || null, genre,
+      };
+      TRACKS.push(t);
+      TRACK_BY_ID[t.id] = t;
+      list.push(t);
+      (TRACKS_BY_ARTIST[artist.id] ||= []).push(t);
+    });
+    (ALBUMS_BY_ARTIST[artist.id] ||= []).push(album);
+  }
+  (data.promos || []).forEach(([id, artistIdx, title, pop, year, genre], i) => {
+    const artist = artists[artistIdx];
+    if (!artist || TRACK_BY_ID[id]) return;
+    const art = artOf ? artOf(id) : { palette: ['#1b1623', '#ef3b3b', '#ffd35a'], motif: 'bars' };
+    const t = {
+      id, kind: 'promo', title, feat: null, rarity: 'promo', pop: Number(pop) || 0, albumId: null, promoId: id, artistId: artist.id,
+      n: PROMOS.length + i + 1, total: PROMOS.length + data.promos.length, year: year || null, genre, promoKind: 'single', context: null, art,
+    };
+    TRACKS.push(t);
+    TRACK_BY_ID[id] = t;
+    PROMO_TRACKS.push(t);
+    (TRACKS_BY_ARTIST[artist.id] ||= []).push(t);
+  });
+  for (const d of new Set(TRACKS.filter((t) => t.year).map((t) => decadeOf(t.year)))) if (!DECADES.includes(d)) DECADES.push(d);
+  DECADES.sort((a, b) => a - b);
+  CATALOG_VERSION += 1;
+  return added;
 }

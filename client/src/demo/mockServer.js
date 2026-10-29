@@ -16,6 +16,7 @@ import { cleanSelection, cosmeticsBetween, cosmeticsForLevel, levelCosmetic } fr
 import { dayStart as parisDayStart } from '@shared/periods.js';
 import MODULES from './mock/index.js';
 import { DEMO_COVERS, coversSnapshot } from './covers.js';
+import { loadBigCatalog } from './bigCatalog.js';
 
 const KEY = 'albummania.demo.v1';
 const REGEN_MS = 30 * 60_000;
@@ -46,13 +47,39 @@ const idOf = (v) => (typeof v === 'string' && v.length > 0 && v.length <= 80 ? v
 const ALL_ALBUMS = staticCatalog.searchAlbums({ limit: 10_000 }).items.map(({ owned: _owned, ...a }) => a);
 const ALL_TRACKS = [...ALL_ALBUMS.flatMap((a) => staticCatalog.albumTracks(a.id)), ...staticCatalog.promos({ limit: 10_000 }).items];
 const ALL_ARTISTS = [...new Set(ALL_TRACKS.map((t) => t.artistId))].map((id) => staticCatalog.artist(id)).filter(Boolean);
-const TRACK = new Map(ALL_TRACKS.map((t) => [t.id, t]));
+/**
+ * Cartes : celles de la graine tout de suite, celles du grand catalogue (des centaines de milliers) fabriquées à la
+ * demande. values() et size ne couvrent que les cartes déjà fabriquées : un module qui parcourt tout le catalogue lit
+ * shared/catalog.js (voir mock/search.js).
+ */
+class TrackMap extends Map {
+  get(id) {
+    let t = super.get(id);
+    if (t === undefined && typeof id === 'string') {
+      t = staticCatalog.track(id) || undefined;
+      if (t) super.set(id, t);
+    }
+    return t;
+  }
+
+  has(id) {
+    return this.get(id) !== undefined;
+  }
+}
+const TRACK = new TrackMap(ALL_TRACKS.map((t) => [t.id, t]));
 const ALBUM = new Map(ALL_ALBUMS.map((a) => [a.id, a]));
 const ARTIST = new Map(ALL_ARTISTS.map((a) => [a.id, a]));
 const trackOf = (id) => (typeof id === 'string' ? TRACK.get(id) : undefined);
 
-// Les pages de la démo s'affichent tout de suite : le catalogue du site connaît déjà toutes les cartes.
+// Les pages de la démo s'affichent tout de suite : le catalogue du site connaît déjà toutes les cartes de la graine
+// (celles du grand catalogue arrivent avec les réponses, champ `catalog`, comme sur le vrai site).
 registerCatalog({ tracks: ALL_TRACKS, albums: ALL_ALBUMS, artists: ALL_ARTISTS });
+
+// Grand catalogue publié à côté de la page : ses albums et artistes rejoignent les tables avant la première requête.
+const ready = loadBigCatalog().then(({ albumIds, artistIds }) => {
+  for (const id of artistIds) if (!ARTIST.has(id)) ARTIST.set(id, staticCatalog.artist(id));
+  for (const id of albumIds) if (!ALBUM.has(id)) ALBUM.set(id, staticCatalog.album(id));
+});
 
 /** Données des cartes, albums et artistes cités dans une réponse (champ `catalog`, comme le vrai serveur). */
 function refs({ trackIds = [], albumIds = [], artistIds = [] } = {}) {
@@ -692,7 +719,7 @@ function addCards(u, cards, source) {
 /** Joueur d'une liste d'amis : UserSummary, plus `unique` et `total` (noms d'avant, gardés pour les pages existantes). */
 function summary(u) {
   const s = summaries([u.id]).get(u.id);
-  return { ...s, unique: s.uniqueCards, total: ALL_TRACKS.length };
+  return { ...s, unique: s.uniqueCards, total: staticCatalog.totals().tracks };
 }
 
 function between(a, b) {
@@ -1405,7 +1432,8 @@ const routes = [
     const now = Date.now();
     const list = id ? staticCatalog.albumTracks(id) : ALL_TRACKS;
     for (const t of list) if (!mine[`${t.id}|std`] && !mine[`${t.id}|holo`]) mine[`${t.id}|std`] = { count: 1, at: now };
-    for (const albumId of id ? [id] : ALBUM.keys()) ach[`album:${albumId}`] ||= now;
+    // Sans album : toute la graine (le grand catalogue ne tiendrait pas dans le stockage du navigateur).
+    for (const albumId of id ? [id] : new Set(list.map((t) => t.albumId).filter(Boolean))) ach[`album:${albumId}`] ||= now;
     // Artistes dont toutes les cartes sont maintenant possédées.
     const owned = ownedSet(u.id);
     for (const artistId of new Set(list.map((t) => t.artistId))) {
@@ -1537,6 +1565,7 @@ export const ctx = {
 const ALL_ROUTES = [...MODULES.flatMap((mod) => mod.routes || []), ...routes];
 
 export async function handle(method, path, body = {}) {
+  await ready;
   load();
   const [pathname, qs] = path.split('?');
   // Petit délai réseau simulé (plus court pour la navigation dans le catalogue : défilement, recherche).

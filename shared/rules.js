@@ -194,6 +194,11 @@ export function rollPack(rng, catalog, { wishlist = null, focusAlbumIds = [], pr
       for (let i = FALLBACK.indexOf(wanted); !track && i < FALLBACK.length; i++) {
         track = catalog.randomTrack({ rarity: FALLBACK[i], ...themeFilter(theme, rng), exclude }, rng);
       }
+      // Thème sans carte de cette rareté ni d'une plus commune (genre fait d'albums cultes, petit catalogue) : une carte
+      // plus rare du thème plutôt qu'une carte hors thème.
+      for (let i = FALLBACK.indexOf(wanted) - 1; !track && i >= 1; i--) {
+        track = catalog.randomTrack({ rarity: FALLBACK[i], ...themeFilter(theme, rng), exclude }, rng);
+      }
     } else if (wanted === 'promo') {
       if (promoArtistIds && rng() < PROMO_FOCUS) {
         const artistIds = typeof promoArtistIds === 'function' ? promoArtistIds() : promoArtistIds;

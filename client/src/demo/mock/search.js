@@ -7,6 +7,7 @@ import {
   normalize, prepareQuery, trigrams, similarity, textScore, typoScore, finalScore, byScore, betterTop,
   trackWeight, userWeight, listWeight, cleanQuery,
 } from '@shared/search.js';
+import { ALBUMS, ARTISTS, ALBUM_BY_ID, ARTIST_BY_ID, TRACKS, TRACKS_BY_ALBUM, TRACKS_BY_ARTIST, CATALOG_VERSION } from '@shared/catalog.js';
 
 export const name = 'search';
 
@@ -17,28 +18,45 @@ const VERSION = '2';
 
 const words = (s) => normalize(s).split(' ').filter(Boolean);
 
-// Catalogue de base : documents construits une fois (il ne change pas pendant la démo).
+// Catalogue (graine et grand catalogue de la démo, lus dans shared/catalog.js) : documents construits une fois par
+// version du catalogue, rangés par début de mot (deux lettres) pour ne pas parcourir 270 000 cartes à chaque frappe.
 let catalogDocs = null;
-function catalogIndex(ctx) {
-  if (catalogDocs) return catalogDocs;
-  const avg = (list) => (list.length ? list.reduce((s, x) => s + (x.pop || 0), 0) / list.length : 0);
-  const tracks = [...ctx.TRACK.values()];
+let catalogVersion = -1;
+let byPrefix = null;
+const prefixOf = (w) => w.slice(0, 2);
+function catalogIndex() {
+  if (catalogDocs && catalogVersion === CATALOG_VERSION) return catalogDocs;
+  const avg = (list) => (list?.length ? list.reduce((s, x) => s + (x.pop || 0), 0) / list.length : 0);
   const docs = [];
-  for (const a of ctx.ALBUM.values()) {
-    docs.push({ kind: 'album', ref: a.id, folded: normalize(a.title), words: [...words(a.title), ...words(`${a.artist} ${a.year || ''}`)],
-      weight: Math.min(1, avg(tracks.filter((t) => t.albumId === a.id)) / 100) });
+  const albumWords = new Map();
+  for (const a of ALBUMS) {
+    const artist = ARTIST_BY_ID[a.artist]?.name || '';
+    // Mots de l'artiste et de l'album, partagés par tous les morceaux de l'album.
+    albumWords.set(a.id, [...words(artist), ...words(a.title)]);
+    docs.push({ kind: 'album', ref: a.id, folded: normalize(a.title), words: [...words(a.title), ...words(`${artist} ${a.year || ''}`)],
+      weight: Math.min(1, avg(TRACKS_BY_ALBUM[a.id]) / 100) });
   }
-  for (const t of tracks) {
-    docs.push({ kind: 'track', ref: t.id, folded: normalize(t.title), words: [...words(`${t.title} ${t.feat || ''}`), ...words(`${t.artist} ${t.album || ''}`)],
+  for (const t of TRACKS) {
+    const shared = t.albumId ? albumWords.get(t.albumId) : words(ARTIST_BY_ID[t.artistId]?.name || '');
+    docs.push({ kind: 'track', ref: t.id, folded: normalize(t.title), words: words(`${t.title} ${t.feat || ''}`), words2: shared,
       weight: trackWeight(t.pop), albumId: t.albumId, artistId: t.artistId });
   }
-  for (const ar of ctx.ARTIST.values()) {
+  for (const ar of ARTISTS) {
     docs.push({ kind: 'artist', ref: ar.id, folded: normalize(ar.name), words: [...words(ar.name), ...words(ar.genre || '')],
-      weight: Math.min(1, avg(tracks.filter((t) => t.artistId === ar.id)) / 100) });
+      weight: Math.min(1, avg(TRACKS_BY_ARTIST[ar.id]) / 100) });
+  }
+  byPrefix = new Map();
+  for (const d of docs) {
+    for (const p of new Set([...d.words, ...(d.words2 || [])].map(prefixOf))) {
+      if (!byPrefix.has(p)) byPrefix.set(p, []);
+      byPrefix.get(p).push(d);
+    }
   }
   catalogDocs = docs;
+  catalogVersion = CATALOG_VERSION;
   return docs;
 }
+const hasWord = (d, t) => d.words.some((w) => w.startsWith(t)) || !!d.words2?.some((w) => w.startsWith(t));
 
 const blocked = (db, viewerId) => new Set((db.blocks || []).flatMap((b) => (b.blocker === viewerId ? [b.blocked] : b.blocked === viewerId ? [b.blocker] : [])));
 
@@ -84,13 +102,17 @@ function kindsOf(ctx, scope) {
 /** Candidats classés par type (mêmes étapes que server/search.js) : { lists, matched, ftsHits, typo }. */
 function candidates(ctx, viewerId, prepared, kinds, quotaOf) {
   const { fq, tokens, compact } = prepared;
-  const docs = [...catalogIndex(ctx), ...socialIndex(ctx, viewerId)].filter((d) => kinds.includes(d.kind));
+  const all = catalogIndex();
+  // Candidats du catalogue : ceux qui ont un mot commençant comme le plus long mot cherché (index par deux lettres).
+  const key = [...tokens].sort((a, b) => b.length - a.length)[0] || '';
+  const fromCatalog = key.length >= 2 ? byPrefix.get(prefixOf(key)) || [] : all;
+  const docs = [...fromCatalog, ...socialIndex(ctx, viewerId)].filter((d) => kinds.includes(d.kind));
   const lists = Object.fromEntries(kinds.map((k) => [k, []]));
   const matched = Object.fromEntries(kinds.map((k) => [k, 0]));
   let ftsHits = 0;
   const seen = new Set();
   for (const d of docs) {
-    if (!tokens.every((t) => d.words.some((w) => w.startsWith(t)))) continue;
+    if (!tokens.every((t) => hasWord(d, t))) continue;
     matched[d.kind] += 1;
     if (lists[d.kind].length >= CAP) continue;
     ftsHits += 1;
@@ -100,7 +122,9 @@ function candidates(ctx, viewerId, prepared, kinds, quotaOf) {
   const typo = [];
   if (compact.length >= TYPO_MIN_LENGTH && ftsHits < TYPO_HITS && kinds.some((k) => lists[k].length < quotaOf(k))) {
     const queryTri = trigrams(fq);
-    for (const d of docs) {
+    // Fautes de frappe : albums, artistes, joueurs et listes (et cartes seulement sur le petit catalogue de base).
+    const pool = all.length > 50_000 ? [...all.filter((d) => d.kind !== 'track'), ...socialIndex(ctx, viewerId)].filter((d) => kinds.includes(d.kind)) : [...all, ...socialIndex(ctx, viewerId)].filter((d) => kinds.includes(d.kind));
+    for (const d of pool) {
       if (seen.has(d)) continue;
       const sim = similarity(queryTri, d.folded, TYPO_MIN_SIM);
       if (sim < TYPO_MIN_SIM) continue;

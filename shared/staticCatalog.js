@@ -2,7 +2,7 @@
 // (server/catalog.js) : la démo autonome et les tests l'utilisent à la place de SQLite.
 import {
   TRACKS, TRACK_BY_ID, ALBUMS, ALBUM_BY_ID, ARTISTS, ARTIST_BY_ID, TRACKS_BY_ALBUM, TRACKS_BY_ARTIST, ALBUMS_BY_ARTIST,
-  PROMO_TRACKS, decadeOf, artFor, catalogCode,
+  PROMO_TRACKS, decadeOf, artFor, catalogCode, CATALOG_VERSION,
 } from './catalog.js';
 import { RARITIES, foldText as norm } from './rules.js';
 
@@ -64,8 +64,45 @@ function ratio(list, owned) {
   return { owned: have, total: list.length, pct: list.length ? have / list.length : 0 };
 }
 
+// Index recalculés quand le grand catalogue de la démo arrive (extendCatalog) : avec 270 000 cartes, filtrer toute la
+// liste à chaque tirage ou à chaque recherche ferait attendre l'interface.
+let indexVersion = -1;
+let byRarity = null;
+let memo = {};
+function indexes() {
+  if (indexVersion !== CATALOG_VERSION) {
+    indexVersion = CATALOG_VERSION;
+    byRarity = Object.fromEntries(RARITIES.map((r) => [r, []]));
+    for (const t of TRACKS) byRarity[t.rarity]?.push(t);
+    memo = { folded: new Map() };
+  }
+  return { byRarity, memo };
+}
+const cached = (key, fn) => {
+  const { memo: m } = indexes();
+  if (!(key in m)) m[key] = fn();
+  return m[key];
+};
+const foldedAlbum = (a) => {
+  const { memo: m } = indexes();
+  let f = m.folded.get(a.id);
+  if (f === undefined) {
+    f = norm(`${a.title} ${ARTIST_BY_ID[a.artist]?.name || ''}`);
+    m.folded.set(a.id, f);
+  }
+  return f;
+};
+
 function pick(list, rng, exclude) {
-  const candidates = exclude ? list.filter((t) => !exclude.has(t.id)) : list;
+  if (!exclude) return list.length ? list[Math.floor(rng() * list.length)] : null;
+  // Grandes listes (grand catalogue de la démo) : quelques tirages au hasard avant de filtrer toute la liste.
+  if (list.length > 2000) {
+    for (let i = 0; i < 6; i++) {
+      const t = list[Math.floor(rng() * list.length)];
+      if (!exclude.has(t.id)) return t;
+    }
+  }
+  const candidates = list.filter((t) => !exclude.has(t.id));
   return candidates.length ? candidates[Math.floor(rng() * candidates.length)] : null;
 }
 
@@ -78,11 +115,24 @@ export const staticCatalog = {
   artistAlbums: (artistId) => (ALBUMS_BY_ARTIST[own(artistId)] || []).map((a) => albumView(ALBUM_BY_ID[a.id])),
   artistTracks: (artistId) => (TRACKS_BY_ARTIST[own(artistId)] || []).map(trackView),
   albumTrackIds: (albumId) => (TRACKS_BY_ALBUM[own(albumId)] || []).map((t) => t.id),
+  /** Popularité d'un album : moyenne de ses morceaux (gardée : les classements par popularité trient 20 000 albums). */
+  albumPop(albumId) {
+    const { memo: m } = indexes();
+    m.albumPop ||= new Map();
+    const id = own(albumId);
+    let v = m.albumPop.get(id);
+    if (v === undefined) {
+      const list = TRACKS_BY_ALBUM[id] || [];
+      v = list.length ? list.reduce((sum, t) => sum + (t.pop || 0), 0) / list.length : 0;
+      m.albumPop.set(id, v);
+    }
+    return v;
+  },
   artistTrackIds: (artistId) => (TRACKS_BY_ARTIST[own(artistId)] || []).map((t) => t.id),
 
   randomTrack({ rarity, genre, decade, albumIds, artistIds, exclude } = {}, rng = Math.random) {
-    let list = TRACKS.filter((t) => t.rarity === rarity);
-    if (albumIds?.length) list = list.filter((t) => albumIds.includes(t.albumId));
+    let list = indexes().byRarity[rarity] || [];
+    if (albumIds?.length) list = albumIds.flatMap((id) => TRACKS_BY_ALBUM[own(id)] || []).filter((t) => t.rarity === rarity);
     else if (artistIds?.length) list = rarity === 'promo' ? list.filter((t) => artistIds.includes(t.artistId)) : [];
     else {
       if (genre) list = list.filter((t) => t.genre === genre);
@@ -103,17 +153,23 @@ export const staticCatalog = {
   },
 
   totals() {
-    const rarity = Object.fromEntries(RARITIES.map((r) => [r, TRACKS.filter((t) => t.rarity === r).length]));
-    return { tracks: TRACKS.length, albums: ALBUMS.length, artists: ARTISTS.length, promos: PROMO_TRACKS.length, rarity, imported: 0 };
+    return cached('totals', () => {
+      const rarity = Object.fromEntries(RARITIES.map((r) => [r, indexes().byRarity[r].length]));
+      const imported = ALBUMS.filter((a) => a.imported).length;
+      return { tracks: TRACKS.length, albums: ALBUMS.length, artists: ARTISTS.length, promos: PROMO_TRACKS.length, rarity, imported };
+    });
   },
   rarityTotals() {
     return this.totals().rarity;
   },
   genres() {
-    const counts = {};
-    for (const a of ALBUMS) counts[a.genre] = (counts[a.genre] || 0) + 1;
-    return Object.entries(counts).sort((a, b) => b[1] - a[1])
-      .map(([id, albums]) => ({ id, albums, tracks: TRACKS.filter((t) => t.genre === id).length }));
+    return cached('genres', () => {
+      const counts = {};
+      const tracks = {};
+      for (const a of ALBUMS) counts[a.genre] = (counts[a.genre] || 0) + 1;
+      for (const t of TRACKS) tracks[t.genre] = (tracks[t.genre] || 0) + 1;
+      return Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([id, albums]) => ({ id, albums, tracks: tracks[id] || 0 }));
+    });
   },
 
   ownedTracks(owned, { q, rarity, offset = 0, limit = 60, holo = new Set() } = {}) {
@@ -125,20 +181,29 @@ export const staticCatalog = {
     return { total: list.length, items: list.slice(offset, offset + limit).map((t) => ({ ...t, holo: holo.has(t.id) })) };
   },
   decades() {
-    const counts = {};
-    for (const a of ALBUMS) counts[decadeOf(a.year)] = (counts[decadeOf(a.year)] || 0) + 1;
-    return Object.entries(counts).map(([d, albums]) => ({ decade: Number(d), albums })).sort((a, b) => a.decade - b.decade);
+    return cached('decades', () => {
+      const counts = {};
+      for (const a of ALBUMS) if (a.year) counts[decadeOf(a.year)] = (counts[decadeOf(a.year)] || 0) + 1;
+      return Object.entries(counts).map(([d, albums]) => ({ decade: Number(d), albums })).sort((a, b) => a.decade - b.decade);
+    });
   },
 
   /** `owned` : Set des cartes du joueur (la démo n'a pas de base pour joindre les cartes). */
   searchAlbums({ q, genre, decade, artistId, sort = 'popular', mine = false, offset = 0, limit = 48, owned = new Set() } = {}) {
     const words = norm(q).split(/\s+/).filter(Boolean);
-    let list = ALBUMS.map((a) => ({ ...albumView(ALBUM_BY_ID[a.id]), owned: ratio(TRACKS_BY_ALBUM[a.id], owned).owned }));
-    if (words.length) list = list.filter((a) => words.every((w) => norm(`${a.title} ${a.artist}`).includes(w)));
-    if (genre) list = list.filter((a) => a.genre === genre);
-    if (decade != null && decade !== '') list = list.filter((a) => decadeOf(a.year) === Number(decade));
-    if (artistId) list = list.filter((a) => a.artistId === artistId);
-    if (mine) list = list.filter((a) => a.owned > 0);
+    // Filtres sur les données brutes d'abord : seules les fiches retenues sont construites (20 000 albums).
+    let raw = ALBUMS;
+    if (words.length) raw = raw.filter((a) => words.every((w) => foldedAlbum(a).includes(w)));
+    if (genre) raw = raw.filter((a) => a.genre === genre);
+    if (decade != null && decade !== '') raw = raw.filter((a) => a.year && decadeOf(a.year) === Number(decade));
+    if (artistId) raw = raw.filter((a) => a.artist === artistId);
+    const ownedOf = (a) => (owned.size ? ratio(TRACKS_BY_ALBUM[a.id], owned).owned : 0);
+    if (mine) raw = raw.filter((a) => ownedOf(a) > 0);
+    const needAll = sort === 'progress' || sort === 'title' || sort === 'year';
+    const off0 = Math.max(0, Number(offset) || 0);
+    const lim0 = Number(limit) || 48;
+    let list = (needAll ? raw : raw.slice(off0, off0 + lim0)).map((a) => ({ ...albumView(ALBUM_BY_ID[a.id]), owned: ownedOf(a) }));
+    if (!needAll) return { total: raw.length, items: list };
     const cmp = {
       progress: (a, b) => b.owned / b.trackCount - a.owned / a.trackCount || b.owned - a.owned,
       title: (a, b) => a.title.localeCompare(b.title),
@@ -161,7 +226,7 @@ export const staticCatalog = {
    * comptent d'après les succès obtenus (jamais retirés), sinon d'après les cartes possédées.
    */
   stats(owned, achievements = null) {
-    const byRarity = Object.fromEntries(RARITIES.map((r) => [r, ratio(TRACKS.filter((t) => t.rarity === r), owned)]));
+    const byRarity = Object.fromEntries(RARITIES.map((r) => [r, ratio(indexes().byRarity[r], owned)]));
     const albums = {};
     for (const a of ALBUMS) {
       const r = ratio(TRACKS_BY_ALBUM[a.id], owned);

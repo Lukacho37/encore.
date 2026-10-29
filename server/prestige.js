@@ -8,7 +8,9 @@
 // Puis, morceau par morceau (célébrité propre d'un titre : « Stronger » est un monument même hors de son album) :
 //   - Wikidata : chansons et singles de l'artiste (P175) et leurs articles Wikipédia, rapprochés par titre ;
 //   - ListenBrainz (/1/popularity/top-recordings-for-artist) : auditeurs de chaque enregistrement de l'artiste, le
-//     plus écouté de chaque titre retenu. cat_tracks.wd_links, lb_users ; cat_artists.songs_at.
+//     plus écouté de chaque titre retenu. ListenBrainz exige un jeton pour ce point d'accès (LISTENBRAINZ_TOKEN, gratuit
+//     sur listenbrainz.org) : sans jeton, seuls les articles Wikipédia comptent (lb_users reste vide).
+//   cat_tracks.wd_links, lb_users ; cat_artists.songs_at.
 // Écrit cat_artists / cat_albums.wd_links, lb_users, prestige_at (0 quand rien n'est trouvé : c'est aussi une
 // information) et range les identifiants Wikidata et MusicBrainz trouvés dans external_ids. Les artistes sont traités
 // par paquets enregistrés au fur et à mesure : une coupure ne perd que le paquet en cours. Quelques minutes pour
@@ -51,6 +53,7 @@ export function prestigeSettings(env = process.env, cfg = config) {
     userAgent: `AlbumMania (prestige du catalogue${contact ? ` ; ${contact}` : ''})`,
     sparqlUrl: text(env.WIKIDATA_SPARQL_URL) || 'https://query.wikidata.org/sparql',
     lbUrl: (text(env.LISTENBRAINZ_API_URL) || 'https://api.listenbrainz.org/1').replace(/\/$/, ''),
+    lbToken: text(env.LISTENBRAINZ_TOKEN),
     // ListenBrainz accepte 30 requêtes par 10 secondes : une toutes les 350 ms.
     pauseMs: cfg.isTest ? 0 : 350,
   };
@@ -216,7 +219,7 @@ export function createPrestige(db, { settings = prestigeSettings(), fetchImpl = 
     const out = new Map();
     let rows = [];
     try {
-      rows = await request(`${settings.lbUrl}/popularity/top-recordings-for-artist/${mbid}`, { method: 'GET', headers: {} });
+      rows = await request(`${settings.lbUrl}/popularity/top-recordings-for-artist/${mbid}`, { method: 'GET', headers: { Authorization: `Token ${settings.lbToken}` } });
     } catch {
       return out; // artiste inconnu de ListenBrainz (404) ou service en panne : rien pour lui
     }
@@ -241,7 +244,7 @@ export function createPrestige(db, { settings = prestigeSettings(), fetchImpl = 
     }));
     const songs = await artistSongs([...new Set(ids.map((x) => x.qid).filter(Boolean))]);
     const recordings = new Map();
-    for (const x of ids) if (x.mbid && MBID.test(x.mbid)) recordings.set(x.id, await topRecordings(x.mbid));
+    if (settings.lbToken) for (const x of ids) if (x.mbid && MBID.test(x.mbid)) recordings.set(x.id, await topRecordings(x.mbid));
     let tracks = 0;
     let found = 0;
     const now = Date.now();
@@ -253,10 +256,11 @@ export function createPrestige(db, { settings = prestigeSettings(), fetchImpl = 
         for (const t of tracksOfArtist.all(x.id)) {
           const key = matchKey(t.title);
           const links = key ? list.reduce((m, s) => (s.keys.has(key) && s.links > m ? s.links : m), 0) : 0;
-          const users = key ? recs?.get(key) || 0 : 0;
+          // Sans jeton ListenBrainz : auditeurs inconnus (null), le calcul s'en passe.
+          const users = !settings.lbToken ? null : key ? recs?.get(key) || 0 : 0;
           setTrack.run(links, users, t.id);
           tracks += 1;
-          if (links || users) found += 1;
+          if (links) found += 1;
         }
         setSongsAt.run(now, x.id);
       }

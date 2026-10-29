@@ -4,6 +4,11 @@
 // joueur (standard / holo), qui la possède (nombre gardé 5 min par morceau, amis ≤ 8), le résumé des notes (les
 // critiques viennent de GET /api/ratings/track/:id) et le nombre de joueurs qui ont complété l'album.
 // Toutes les requêtes passent par un index (cards_track, cards PK, cat_tracks_album, ach_key, rating_stats PK).
+// GET /api/catalog/tracks/:id/preview : extrait de 30 s d'un morceau importé, demandé à Deezer à chaque appel (son
+// adresse expire au bout de quelques heures) ; rien n'est stocké. Pour les blind tests.
+import { config } from './config.js';
+import { providerDetached } from './importer.js';
+
 export const name = 'tracks';
 
 /** Morceaux de l'album renvoyés au plus ; promos de l'artiste pour un single promo ; amis propriétaires affichés. */
@@ -72,9 +77,26 @@ export function init(deps) {
     };
   }
 
-  return { trackPage, ownerCount, forgetOwners: (trackId) => ownersCache.delete(trackId) };
+  const stDeezer = q("SELECT deezer_id FROM cat_tracks WHERE id = ? AND source = 'deezer' AND status = 'active'");
+  /** { url, link } de l'extrait Deezer ; 404 no_preview si le morceau n'en a pas (graine, fournisseur détaché). */
+  async function preview(trackId) {
+    const dz = stDeezer.get(String(trackId))?.deezer_id;
+    if (!dz || !/^\d+$/.test(dz) || providerDetached(db, 'deezer')) throw new deps.HttpError(404, 'no_preview');
+    const res = await fetch(`${config.deezerApiUrl}/track/${dz}`, { signal: AbortSignal.timeout(8000) }).catch(() => null);
+    const data = res?.ok ? await res.json().catch(() => null) : null;
+    const url = typeof data?.preview === 'string' && data.preview.startsWith('https://') ? data.preview : null;
+    if (!data) throw new deps.HttpError(502, 'provider_unavailable');
+    if (!url) throw new deps.HttpError(404, 'no_preview');
+    return { url, link: typeof data.link === 'string' && data.link.startsWith('https://') ? data.link : null };
+  }
+
+  return { trackPage, preview, ownerCount, forgetOwners: (trackId) => ownersCache.delete(trackId) };
 }
 
 export function routes(r, deps) {
   r.get('/catalog/tracks/:id', deps.limits.read, (req, res) => res.json(deps.tracks.trackPage(req.user.id, req.params.id)));
+  r.get('/catalog/tracks/:id/preview', deps.limits.read, async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json(await deps.tracks.preview(req.params.id));
+  });
 }

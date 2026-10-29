@@ -61,6 +61,16 @@ DEMO_COVERS=data/demo-covers.json npm run build:demo      # démo avec ces poche
 
 Le fichier reste hors du dépôt (`data/` n'est pas versionné) : les pochettes appartiennent à leurs ayants droit. Derrière un proxy, lance le script avec `NODE_USE_ENV_PROXY=1`. Sans `DEMO_COVERS`, la démo garde ses visuels générés.
 
+## Grand catalogue (20 000 albums Deezer)
+
+Le serveur l'importe tout seul en tâche de fond (`CATALOG_IMPORT=deezer`). Pour remplir une base sans lancer le site :
+
+```bash
+DATABASE_FILE=data/albummania.db node scripts/import-catalog.mjs --target 20000 --rps 8
+```
+
+Même code que l'import du serveur (`server/importer.js`) : genres et classements Deezer, albums studio dédoublonnés, pistes avec durée, raretés par percentiles, pochettes en adresse seulement. Relancé après une coupure, il reprend où il en était. Compter environ 4 à 5 heures. Derrière un proxy, ajoute `NODE_USE_ENV_PROXY=1`.
+
 ## Mettre en ligne
 
 Le guide pas à pas est dans **[DEPLOIEMENT.md](DEPLOIEMENT.md)** (Render + Brevo, environ une heure). En résumé :

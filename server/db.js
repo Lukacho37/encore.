@@ -587,6 +587,7 @@ export const COLUMNS = [
   ['cat_tracks', 'status', "ALTER TABLE cat_tracks ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"],
   ['cat_tracks', 'rarity_locked', 'ALTER TABLE cat_tracks ADD COLUMN rarity_locked INTEGER NOT NULL DEFAULT 0'],
   ['cat_tracks', 'rarity_edition', 'ALTER TABLE cat_tracks ADD COLUMN rarity_edition INTEGER'],
+  ['cat_tracks', 'duration', 'ALTER TABLE cat_tracks ADD COLUMN duration INTEGER'],
   ['cat_tracks', 'pop_source', 'ALTER TABLE cat_tracks ADD COLUMN pop_source TEXT'],
 ];
 

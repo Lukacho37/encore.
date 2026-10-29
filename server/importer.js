@@ -456,8 +456,8 @@ export function createImporter(db, catalog, {
         fansOf(dzAlbum), String(dzAlbum.id), cover, cover ? (dzAlbum.cover_xl ? 1000 : 500) : null, thumb, thumb ? 500 : null,
         https(dzAlbum.link), Date.now(),
       );
-      const ins = q(`INSERT INTO cat_tracks (id, kind, album_id, artist_id, n, total, title, feat, year, genre, pop, rarity, rank, url, source, deezer_id, created_at)
-        VALUES (?, 'album', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'deezer', ?, ?) ON CONFLICT(id) DO NOTHING`);
+      const ins = q(`INSERT INTO cat_tracks (id, kind, album_id, artist_id, n, total, title, feat, year, genre, pop, rarity, rank, url, source, deezer_id, created_at, duration)
+        VALUES (?, 'album', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'deezer', ?, ?, ?) ON CONFLICT(id) DO NOTHING`);
       // Provenance : identifiant Deezer et code-barres de l'album, identifiant Deezer et ISRC de chaque morceau.
       ext('album', id, 'deezer', String(dzAlbum.id));
       ext('album', id, 'upc', dzAlbum.upc);
@@ -467,7 +467,7 @@ export function createImporter(db, catalog, {
         const dzId = q('SELECT 1 FROM cat_tracks WHERE deezer_id = ?').get(String(t.id)) ? null : String(t.id);
         const trackId = albumTrackId(id, i + 1);
         ins.run(trackId, id, artistId, i + 1, list.length, title, feat, year, genre, pop, rarity,
-          Number(t.rank) || 0, https(t.link), dzId, Date.now());
+          Number(t.rank) || 0, https(t.link), dzId, Date.now(), Number(t.duration) || null);
         if (dzId) ext('track', trackId, 'deezer', dzId);
         ext('track', trackId, 'isrc', t.isrc);
       });

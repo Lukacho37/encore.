@@ -1,12 +1,15 @@
 // Import du grand catalogue depuis l'API publique de Deezer (sans clé), en tâche de fond et par reprise.
 //
-// 1. Découverte : classements et artistes de chaque grand genre (/chart/{genre}/artists, /genre/{genre}/artists).
+// 1. Découverte : classements et artistes de chaque grand genre (/chart/{genre}/artists, /genre/{genre}/artists), et
+//    artistes francophones connus de Wikidata (les classements de Deezer dépendent du pays d'où part la requête).
 // 2. Exploration, des artistes les plus suivis aux moins suivis : leurs albums studio (pas de live, de compilation
 //    ni de rééditions en double), leurs artistes proches (/artist/{id}/related), et un single hors album par
 //    artiste (carte promo).
-// 3. Calibrage : l'indice de popularité (0-100) et la rareté de chaque morceau viennent de son rang Deezer, en
-//    percentiles sur tout le catalogue importé (⭐ 0,5 % les plus écoutés, 🟠 1,5 %, 🟣 4 %, 🔵 10 %, 🟢 24 %, ⚪ 60 %).
-//    Une seule requête SQL, et seulement quand des morceaux ont été ajoutés depuis le dernier calibrage.
+// 3. Calibrage : l'indice de popularité (0-100) et la rareté de chaque morceau viennent de son score de prestige
+//    (shared/prestige.js : rayonnement mondial et culte de son album, auditeurs dans le monde, place du morceau dans
+//    son album), en percentiles sur tout le catalogue importé (⭐ 0,5 % les plus hauts, 🟠 1,5 %, 🟣 4 %, 🔵 10 %,
+//    🟢 24 %, ⚪ 60 %). Les signaux sont collectés après chaque tournée (server/prestige.js, Wikidata et ListenBrainz) ;
+//    le calibrage n'a lieu que si des morceaux ou des signaux ont changé.
 // 4. Vérification quotidienne des nouvelles sorties, même une fois la cible atteinte : chaque jour, jusqu'à 300 artistes
 //    déjà importés et pas revus depuis une semaine (les plus suivis d'abord, puis chacun son tour). Un nouvel album
 //    studio entre au catalogue s'il fait partie des CATALOG_MAX_ALBUMS_PER_ARTIST albums les plus écoutés de l'artiste.
@@ -28,6 +31,7 @@ import { SEED_CATALOG_MAX } from './catalog.js';
 import { ARTISTS, ALBUMS } from '../shared/catalog.js';
 import { generatedArt } from '../shared/art.js';
 import { albumTrackId, catalogIdFor, cleanSourceId } from '../shared/ids.js';
+import { albumScores, percentiles, trackScores } from '../shared/prestige.js';
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -124,17 +128,16 @@ const fansOf = (a) => Number(a?.fans) || 0;
 // Calibrage en une requête : percent_rank() donne à chaque morceau la part du catalogue importé moins écoutée que lui
 // (rangs égaux : même percentile), puis le palier et l'indice de popularité en découlent. Seules les lignes dont
 // l'indice ou la rareté changent sont réécrites.
-const POP_SQL = `CASE ${RANK_TIERS.map((t, i) => {
+/** Indice de popularité et rareté d'un percentile (0 à 1) : palier de RANK_TIERS, indice réparti dans le palier. */
+export function tierOfPercentile(p) {
+  const i = Math.max(0, RANK_TIERS.findIndex((t) => p >= t.from));
+  const t = RANK_TIERS[i];
   const upper = i === 0 ? 1 : RANK_TIERS[i - 1].from;
-  return `WHEN p >= ${t.from} THEN MAX(0, MIN(100, round(${t.pop[0]} + ((p - ${t.from}) / (${upper} - ${t.from})) * (${t.pop[1]} - ${t.pop[0]}))))`;
-}).join(' ')} END`;
-const RARITY_SQL = `CASE ${RANK_TIERS.map((t) => `WHEN p >= ${t.from} THEN '${t.rarity}'`).join(' ')} END`;
-// Seuls les morceaux dont la rareté n'est pas gelée (rarity_locked = 0) sont réécrits (PLAN.md 6.5).
-const CALIBRATE_SQL = `UPDATE cat_tracks SET pop = x.pop, rarity = x.rarity
-  FROM (SELECT id, CAST(${POP_SQL} AS INTEGER) AS pop, CASE WHEN kind = 'promo' THEN 'promo' ELSE ${RARITY_SQL} END AS rarity
-    FROM (SELECT id, kind, CASE WHEN COUNT(*) OVER () = 1 THEN 1.0 ELSE percent_rank() OVER (ORDER BY COALESCE(rank, 0)) END AS p
-      FROM cat_tracks WHERE source = 'deezer')) AS x
-  WHERE cat_tracks.id = x.id AND cat_tracks.rarity_locked = 0 AND (cat_tracks.pop IS NOT x.pop OR cat_tracks.rarity IS NOT x.rarity)`;
+  const pop = Math.max(0, Math.min(100, Math.round(t.pop[0] + ((p - t.from) / (upper - t.from)) * (t.pop[1] - t.pop[0]))));
+  return { pop, rarity: t.rarity };
+}
+/** Délai après lequel un album sans prestige collecté (Wikidata ou ListenBrainz injoignables) est gelé quand même. */
+const PRESTIGE_GRACE_MS = 2 * DAY;
 /** Édition de rareté posée sur les morceaux gelés (« 1re édition » ; une réévaluation annuelle, P3, passerait à 2). */
 export const RARITY_EDITION = 1;
 const FREEZE_CHUNK = 2000; // morceaux gelés par transaction : aucune requête ne bloque le serveur plus de quelques ms
@@ -142,7 +145,7 @@ const BREAKS_SQL = `SELECT rn, rank FROM (SELECT COALESCE(rank, 0) AS rank, row_
   FROM cat_tracks WHERE source = 'deezer') WHERE rn IN (SELECT value FROM json_each(?))`;
 
 export function createImporter(db, catalog, {
-  cfg = config, fetchImpl = (...a) => fetch(...a), pauseMs = 170, backoffMs = 1000, retryMs = RETRY_MS, log = console,
+  cfg = config, fetchImpl = (...a) => fetch(...a), pauseMs = 170, backoffMs = 1000, retryMs = RETRY_MS, log = console, prestige = null,
 } = {}) {
   const q = (sql) => db.prepare(sql);
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -324,6 +327,22 @@ export function createImporter(db, catalog, {
   const next = q("SELECT * FROM import_artists WHERE status = 'pending' ORDER BY depth, priority, CASE WHEN depth = 0 THEN rowid ELSE -fans END LIMIT 1");
   const pendingArtists = () => q("SELECT COUNT(*) AS n FROM import_artists WHERE status = 'pending' OR (status = 'error' AND retries < ?)").get(MAX_ARTIST_RETRIES).n;
 
+  /**
+   * Artistes francophones (Wikidata, server/prestige.js) mis dans la file : les classements de Deezer dépendent du
+   * pays d'où part la requête. priority : rang de départ dans la file (une valeur négative les fait passer en premier).
+   */
+  async function discoverFrancophone(priority = 50) {
+    if (!prestige?.francophoneArtists) return 0;
+    try {
+      const list = await prestige.francophoneArtists();
+      list.forEach((a, i) => queueArtist({ id: a.deezerId, name: a.name }, null, 0, priority + i));
+      return list.length;
+    } catch (err) {
+      log.warn?.(`  Artistes francophones introuvables : ${err.message}`);
+      return 0;
+    }
+  }
+
   async function discover() {
     for (const [gid, genre] of Object.entries(GENRE_MAP)) {
       if (stopRequested) return;
@@ -332,6 +351,7 @@ export function createImporter(db, catalog, {
       const list = await optional(call(`/genre/${gid}/artists`));
       (list?.data || []).forEach((a, i) => queueArtist(a, genre, 0, 100 + i));
     }
+    await discoverFrancophone(50);
     setState({ discovered: true });
   }
 
@@ -528,31 +548,54 @@ export function createImporter(db, catalog, {
    * (la construction initiale se termine sans bloquer les joueurs). `assign` : rareté et indice provisoires d'après
    * les seuils enregistrés (morceaux arrivés après le gel). Renvoie le nombre de morceaux dont la rareté a changé.
    */
-  function freezeUnlocked({ assign = false } = {}) {
-    const b = breaks();
-    const { lo, hi } = q("SELECT MIN(rowid) AS lo, MAX(rowid) AS hi FROM cat_tracks WHERE source = 'deezer' AND rarity_locked = 0").get();
-    if (lo == null) return 0;
-    let changed = 0;
-    const lock = q(`UPDATE cat_tracks SET rarity_locked = 1, rarity_edition = ${RARITY_EDITION}, pop_source = COALESCE(pop_source, 'deezer-rank')
-      WHERE rowid >= ? AND rowid < ? AND source = 'deezer' AND rarity_locked = 0`);
-    const pick = q(`SELECT rowid AS rid, kind, rank, pop, rarity FROM cat_tracks
-      WHERE rowid >= ? AND rowid < ? AND source = 'deezer' AND rarity_locked = 0`);
+  /** Score de prestige de chaque morceau importé (shared/prestige.js), avec son état actuel. */
+  function prestigeScores() {
+    const albums = q(`SELECT id, artist_id AS artistId, wd_links AS links, lb_users AS listeners, fans, prestige_at IS NOT NULL AS known
+      FROM cat_albums WHERE source = 'deezer'`).all();
+    const artists = new Map(q('SELECT id, wd_links AS links, lb_users AS listeners FROM cat_artists WHERE prestige_at IS NOT NULL').all()
+      .map((a) => [a.id, a]));
+    const tracks = q(`SELECT rowid AS rid, kind, album_id AS albumId, artist_id AS artistId, rank, pop, rarity, rarity_locked AS locked
+      FROM cat_tracks WHERE source = 'deezer'`).all();
+    const scores = trackScores(tracks, albumScores(albums, artists));
+    tracks.forEach((t, i) => {
+      t.score = scores[i];
+    });
+    return tracks;
+  }
+
+  /** Rareté d'un score d'après les seuils enregistrés au dernier calibrage (morceaux arrivés après le gel). */
+  function fromScore(score, b) {
+    for (let i = 0; i < b.length; i++) {
+      if (score >= b[i]) {
+        const tier = RANK_TIERS[i];
+        const hi = i === 0 ? 1 : b[i - 1];
+        const t = Math.min(1, (score - b[i]) / Math.max(1e-9, hi - b[i]));
+        return { pop: Math.round(tier.pop[0] + t * (tier.pop[1] - tier.pop[0])), rarity: tier.rarity };
+      }
+    }
+    const last = RANK_TIERS[RANK_TIERS.length - 1];
+    return { pop: Math.round((Math.max(0, score) / Math.max(1e-9, b[b.length - 1])) * last.pop[1]), rarity: 'common' };
+  }
+
+  /** Écrit les indices et raretés (morceaux non gelés), par transactions courtes. Renvoie le nombre de raretés changées. */
+  function writeTiers(rows, lockSource = null) {
     const set = q('UPDATE cat_tracks SET pop = ?, rarity = ? WHERE rowid = ?');
-    for (let from = lo; from <= hi; from += FREEZE_CHUNK) {
-      const to = from + FREEZE_CHUNK;
+    const lock = q(`UPDATE cat_tracks SET rarity_locked = 1, rarity_edition = ${RARITY_EDITION}, pop_source = COALESCE(pop_source, ?)
+      WHERE rowid = ? AND rarity_locked = 0`);
+    let changed = 0;
+    for (let i = 0; i < rows.length; i += FREEZE_CHUNK) {
       db.exec('BEGIN');
       try {
-        if (assign) {
-          for (const r of pick.all(from, to)) {
-            const p = provisional(r.rank, b);
-            const rarity = r.kind === 'promo' ? 'promo' : p.rarity;
-            if (p.pop !== r.pop || rarity !== r.rarity) {
-              set.run(p.pop, rarity, r.rid);
+        for (const r of rows.slice(i, i + FREEZE_CHUNK)) {
+          if (r.next) {
+            const rarity = r.kind === 'promo' ? 'promo' : r.next.rarity;
+            if (r.next.pop !== r.pop || rarity !== r.rarity) {
+              set.run(r.next.pop, rarity, r.rid);
               if (rarity !== r.rarity) changed += 1;
             }
           }
+          if (lockSource) lock.run(lockSource, r.rid);
         }
-        lock.run(from, to);
         db.exec('COMMIT');
       } catch (err) {
         db.exec('ROLLBACK');
@@ -560,6 +603,52 @@ export function createImporter(db, catalog, {
       }
     }
     return changed;
+  }
+
+  /** Catalogue pas encore gelé : percentiles du score de prestige ; seuils enregistrés pour les morceaux à venir. */
+  function applyPrestige() {
+    const tracks = prestigeScores();
+    const p = percentiles(tracks.map((t) => t.score));
+    const rows = [];
+    tracks.forEach((t, i) => {
+      if (!t.locked) rows.push({ ...t, next: tierOfPercentile(p[i]) });
+    });
+    const sorted = tracks.map((t) => t.score).sort((a, b) => a - b);
+    kvSet('scoreBreaks', RANK_TIERS.slice(0, -1).map((t) => sorted[Math.floor(t.from * (sorted.length - 1))] ?? 0));
+    return writeTiers(rows);
+  }
+
+  /**
+   * Gèle les morceaux qui ne le sont pas encore. assign : leur donne d'abord une rareté d'après les seuils de score du
+   * dernier calibrage (morceaux arrivés après le gel) ; un album dont le prestige n'a pas encore été collecté attend
+   * (PRESTIGE_GRACE_MS au plus). Sans seuils de score (catalogue gelé avant le prestige) : rang Deezer, comme avant.
+   */
+  function freezeUnlocked({ assign = false } = {}) {
+    const sb = kvGet('scoreBreaks', null);
+    if (assign && sb) {
+      // Sans collecte du prestige (PRESTIGE=off, tests), rien à attendre.
+      const waits = prestige?.settings?.mode === 'on';
+      const ready = new Set(q("SELECT id FROM cat_albums WHERE source = 'deezer' AND (prestige_at IS NOT NULL OR created_at < ?)")
+        .all(waits ? Date.now() - PRESTIGE_GRACE_MS : Infinity).map((r) => r.id));
+      const rows = prestigeScores().filter((t) => !t.locked && (t.albumId == null || ready.has(t.albumId)))
+        .map((t) => ({ ...t, next: fromScore(t.score, sb) }));
+      return writeTiers(rows, 'prestige');
+    }
+    const b = breaks();
+    const rows = q("SELECT rowid AS rid, kind, rank, pop, rarity FROM cat_tracks WHERE source = 'deezer' AND rarity_locked = 0").all()
+      .map((t) => ({ ...t, next: assign ? provisional(t.rank, b) : null }));
+    return writeTiers(rows, sb ? 'prestige' : 'deezer-rank');
+  }
+
+  /**
+   * Nouveau calcul complet des raretés (avant l'ouverture aux joueurs, ou pour une nouvelle édition) : tout est dégelé,
+   * recalibré d'après le prestige, puis regelé. Les cartes déjà tirées gardent la rareté de leur tirage (pulled_rarity).
+   */
+  function recalibrate() {
+    q("UPDATE cat_tracks SET rarity_locked = 0 WHERE source = 'deezer' AND rarity_locked = 1").run();
+    setState({ frozenAt: null });
+    dirty = true;
+    return calibrate({ lock: true });
   }
 
   /**
@@ -575,7 +664,7 @@ export function createImporter(db, catalog, {
     const before = state().calibratedTracks;
     let changed = 0;
     if (n && !frozen()) {
-      changed = Number(q(CALIBRATE_SQL).run().changes);
+      changed = applyPrestige();
       const idx = RANK_TIERS.slice(0, -1).map((t) => Math.floor(t.from * (n - 1)));
       const at = new Map(q(BREAKS_SQL).all(JSON.stringify(idx)).map((r) => [r.rn, r.rank]));
       kvSet('rankBreaks', idx.map((i) => at.get(i) ?? 0));
@@ -779,6 +868,14 @@ export function createImporter(db, catalog, {
       if (!state().discovered && importedAlbums() < cfg.catalogTarget) await discover();
       await importQueue();
       if (!stopRequested && refreshDue()) await refresh();
+      // Prestige des nouveaux artistes et albums (Wikidata, ListenBrainz) avant le calibrage : une panne n'arrête rien.
+      if (!stopRequested && prestige) {
+        try {
+          if ((await prestige.collect())?.changed) dirty = true;
+        } catch (err) {
+          log.warn?.(`  Prestige du catalogue impossible : ${err.message}`);
+        }
+      }
     } finally {
       // Même interrompue, une tournée qui a ajouté des morceaux les fait entrer dans les tirages.
       try {
@@ -905,6 +1002,8 @@ export function createImporter(db, catalog, {
     start,
     status,
     calibrate,
+    recalibrate,
+    discoverFrancophone,
     frozen,
     hasWork,
     /** Pause enregistrée en base : elle tient après un redémarrage, jusqu'au bouton « Lancer » de l'espace admin. */

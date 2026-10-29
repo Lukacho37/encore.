@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 process.env.NODE_ENV = 'test';
 const { openDb } = await import('../db.js');
 const { createCatalog } = await import('../catalog.js');
-const { createImporter, baseTitle, splitFeat, RANK_TIERS } = await import('../importer.js');
+const { createImporter, baseTitle, splitFeat, RANK_TIERS, tierOfPercentile } = await import('../importer.js');
+const { albumScores, percentiles, trackScores } = await import('../../shared/prestige.js');
 const { catalogImportMode } = await import('../config.js');
 const { makeFakeDeezer } = await import('./fakeDeezer.js');
 
@@ -145,22 +146,17 @@ test('calibrage : une requête SQL, identique au calcul pas à pas ; rien à ref
   db.exec("UPDATE cat_tracks SET rank = 500000 WHERE source = 'deezer' AND rowid % 7 = 0");
   db.exec("UPDATE cat_tracks SET pop = 0, rarity = 'common' WHERE source = 'deezer'");
   assert.ok(importer.calibrate() > 0);
-  const rows = db.prepare("SELECT id, rank, kind, pop, rarity FROM cat_tracks WHERE source = 'deezer' ORDER BY rank, id").all();
-  const ranks = rows.map((r) => Number(r.rank) || 0);
-  for (let i = 0; i < rows.length;) {
-    let j = i;
-    while (j + 1 < rows.length && ranks[j + 1] === ranks[i]) j++;
-    const p = i / (rows.length - 1);
-    const k = RANK_TIERS.findIndex((t) => p >= t.from);
-    const tier = RANK_TIERS[k];
-    const upper = k === 0 ? 1 : RANK_TIERS[k - 1].from;
-    const pop = Math.round(tier.pop[0] + ((p - tier.from) / (upper - tier.from)) * (tier.pop[1] - tier.pop[0]));
-    for (let m = i; m <= j; m++) {
-      assert.equal(rows[m].pop, pop, rows[m].id);
-      assert.equal(rows[m].rarity, rows[m].kind === 'promo' ? 'promo' : tier.rarity, rows[m].id);
-    }
-    i = j + 1;
-  }
+  // Calcul pas à pas (shared/prestige.js) : score de chaque morceau, percentile, palier et indice.
+  const albums = db.prepare(`SELECT id, artist_id AS artistId, wd_links AS links, lb_users AS listeners, fans, prestige_at IS NOT NULL AS known
+    FROM cat_albums WHERE source = 'deezer'`).all();
+  const rows = db.prepare(`SELECT id, kind, album_id AS albumId, artist_id AS artistId, rank, pop, rarity FROM cat_tracks
+    WHERE source = 'deezer' ORDER BY rowid`).all();
+  const p = percentiles(trackScores(rows, albumScores(albums)));
+  rows.forEach((r, i) => {
+    const want = tierOfPercentile(p[i]);
+    assert.equal(r.pop, want.pop, r.id);
+    assert.equal(r.rarity, r.kind === 'promo' ? 'promo' : want.rarity, r.id);
+  });
   // Seconde passe : aucune ligne ne change.
   assert.equal(importer.calibrate(), 0);
 
@@ -184,16 +180,20 @@ test('gel des raretés : les morceaux gelés ne changent jamais ; les nouveaux r
   assert.equal(db.prepare(`SELECT COUNT(*) AS n ${deezer} AND (rarity_locked = 0 OR rarity_edition IS NULL)`).get().n, 0, 'tout est gelé, 1re édition');
   const snapshot = () => db.prepare(`SELECT id, pop, rarity ${deezer} AND rarity_locked = 1 ORDER BY id`).all();
   const before = snapshot();
+  // Le tube d'un album, avant que tout ne bouge : un morceau qui le dépasse ne peut pas être moins rare que lui.
+  const album = db.prepare(`SELECT album_id, artist_id ${deezer} AND kind = 'album' LIMIT 1`).get();
+  const order = RANK_TIERS.map((t) => t.rarity);
+  const best = Math.min(...db.prepare(`SELECT rarity ${deezer} AND album_id = ?`).all(album.album_id).map((r) => order.indexOf(r.rarity)));
   // Le rang Deezer des morceaux gelés bouge beaucoup (popularité inversée) : rien ne change à la rareté.
   db.exec(`UPDATE cat_tracks SET rank = 1000000 - COALESCE(rank, 0) WHERE source = 'deezer'`);
-  // Un morceau arrive après le gel (nouvelle sortie), très écouté : il prend sa rareté des seuils enregistrés.
-  const album = db.prepare(`SELECT album_id, artist_id ${deezer} AND kind = 'album' LIMIT 1`).get();
+  // Un morceau arrive après le gel (nouvelle sortie), très écouté : il prend sa rareté des seuils de score enregistrés.
   db.prepare(`INSERT INTO cat_tracks (id, kind, album_id, artist_id, n, total, title, year, genre, pop, rarity, rank, source, created_at)
     VALUES ('dzlate:01', 'album', ?, ?, 99, 99, 'Tardif', 2024, 'pop', 0, 'common', 999999999, 'deezer', ?)`).run(album.album_id, album.artist_id, Date.now());
   assert.ok(importer.calibrate() >= 1, 'le nouveau morceau a reçu sa rareté');
   assert.deepEqual(snapshot().filter((r) => r.id !== 'dzlate:01'), before, 'aucune rareté gelée ne change');
   const late = db.prepare("SELECT rarity, rarity_locked, rarity_edition FROM cat_tracks WHERE id = 'dzlate:01'").get();
-  assert.deepEqual({ ...late }, { rarity: 'legendary', rarity_locked: 1, rarity_edition: 1 });
+  assert.deepEqual({ rarity_locked: late.rarity_locked, rarity_edition: late.rarity_edition }, { rarity_locked: 1, rarity_edition: 1 });
+  assert.ok(order.indexOf(late.rarity) <= best, `${late.rarity} au moins aussi rare que le tube de l'album (${order[best]})`);
   // Second passage : plus rien à faire.
   assert.equal(importer.calibrate(), 0);
   db.close();

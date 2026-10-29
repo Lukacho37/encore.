@@ -64,7 +64,8 @@ test('boosters : cartes valides tirées dans tout le catalogue, stats tenues à 
 });
 
 test('boosters gratuits orientés vers les albums commencés', () => {
-  const albumId = imported()[3].id;
+  // Les trois premiers emplacements visent une carte Commune (tirage à 0,01) : un album qui en a au moins trois.
+  const albumId = imported().find((a) => catalog.albumTrackIds(a.id).filter((id) => catalog.track(id).rarity === 'common').length >= 3).id;
   const ids = catalog.albumTrackIds(albumId);
   // Avec un tirage qui choisit toujours l'emplacement ciblé, toutes les cartes non promo viennent de l'album commencé.
   let i = 0;
@@ -125,6 +126,8 @@ test('booster d’album : 5 cartes de l’album, payées en royalties, manquante
   assert.ok(res.cards.every((c) => ids.has(c.trackId)));
   if (ids.size >= 5) assert.equal(new Set(res.cards.map((c) => c.trackId)).size, 5, 'cartes différentes');
   services.openAlbumPack(uid, album.id);
+  // Les niveaux gagnés en route rapportent des royalties : on repart d'un solde juste insuffisant.
+  db.prepare('UPDATE users SET royalties = ? WHERE id = ?').run(ECONOMY.albumPackPrice - 1, uid);
   assert.throws(() => services.openAlbumPack(uid, album.id), { code: 'not_enough_royalties' });
   assert.throws(() => services.openAlbumPack(uid, ['x']), { code: 'unknown_album' });
   assert.throws(() => services.openAlbumPack(uid, 'nope'), { code: 'unknown_album' });

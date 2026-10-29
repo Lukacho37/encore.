@@ -456,7 +456,7 @@ export default {
   footer: {
     legal: 'Les pochettes affichées sont des visuels originaux générés par AlbumMania. Titres et noms d’artistes sont cités à titre d’information.',
     legalCovers: 'Pochettes et liens d’écoute fournis par {p}. Les images restent hébergées par la plateforme et appartiennent à leurs ayants droit ; sans pochette disponible, AlbumMania affiche un visuel généré. Titres et noms d’artistes sont cités à titre d’information.',
-    legalCatalog: 'Catalogue (albums, titres, artistes, pochettes et popularité) issu de l’API publique de Deezer. Chaque album et chaque morceau renvoie vers Deezer pour l’écoute ; AlbumMania ne diffuse aucun fichier audio.',
+    legalCatalog: 'Catalogue (albums, titres, artistes, pochettes et popularité) issu de l’API publique de Deezer. Chaque album et chaque morceau renvoie vers Deezer pour l’écoute ; AlbumMania ne diffuse aucun fichier audio. Le prestige des albums, qui règle les raretés, est calculé à partir de données libres (CC0) de Wikidata et de ListenBrainz.',
   },
   rating: {
     scaleStars: '★ /5',
@@ -522,14 +522,14 @@ export default {
   },
   rarityGuide: {
     title: 'Comment marchent les raretés ?',
-    intro: 'La rareté d’une carte dépend de la popularité du morceau. Chaque morceau a un indice de popularité de 0 à 100, estimé d’après son succès : écoutes, classements, notoriété.',
+    intro: 'La rareté d’une carte dépend du prestige de son album et de la place du morceau dans cet album. Un album culte écouté dans le monde entier est bien plus dur à compléter qu’un album connu surtout dans un pays. Le prestige combine le rayonnement de l’album (le nombre de langues dans lesquelles Wikipédia lui consacre un article), ses auditeurs dans le monde et ses fans sur Deezer ; dans l’album, ses tubes sont les cartes les plus rares. L’indice de 0 à 100 résume le tout.',
     meaning: {
-      common: 'Morceaux peu connus, intros, interludes',
-      uncommon: 'Morceaux moyennement connus',
-      rare: 'Morceaux populaires',
-      super: 'Gros morceaux',
-      ultra: 'Très gros hits',
-      legendary: 'Morceaux iconiques',
+      common: 'Morceaux discrets d’albums à l’audience locale',
+      uncommon: 'Albums connus, morceaux secondaires',
+      rare: 'Albums marquants ou leurs tubes',
+      super: 'Grands albums, en particulier leurs tubes',
+      ultra: 'Tubes d’albums célèbres dans le monde entier',
+      legendary: 'Les tubes des albums cultes',
       promo: 'Singles sortis hors album',
     },
     colTier: 'Rareté',

@@ -69,7 +69,9 @@ Le serveur l'importe tout seul en tâche de fond (`CATALOG_IMPORT=deezer`). Pour
 DATABASE_FILE=data/albummania.db node scripts/import-catalog.mjs --target 20000 --rps 8
 ```
 
-Même code que l'import du serveur (`server/importer.js`) : genres et classements Deezer, albums studio dédoublonnés, pistes avec durée, raretés par percentiles, pochettes en adresse seulement. Relancé après une coupure, il reprend où il en était. Compter environ 4 à 5 heures. Derrière un proxy, ajoute `NODE_USE_ENV_PROXY=1`.
+Même code que l'import du serveur (`server/importer.js`) : genres et classements Deezer, artistes francophones (Wikidata), albums studio dédoublonnés, pistes avec durée, pochettes en adresse seulement. Options : `--francophone` met les artistes francophones en tête de file (catalogue déjà importé sans eux), `--recalibrate` recalcule toutes les raretés d'un catalogue déjà gelé (avant l'ouverture aux joueurs).
+
+Raretés par prestige mondial (`shared/prestige.js`, signaux collectés par `server/prestige.js` après chaque import) : un album culte écouté dans le monde entier est bien plus dur à compléter qu'un album connu surtout dans un pays. Le score d'un album combine le nombre de langues dans lesquelles Wikipédia lui consacre un article (Wikidata), ses auditeurs dans le monde (ListenBrainz) et, avec un poids faible, ses fans Deezer ; celui d'un morceau ajoute sa place dans son album (ses tubes sont les plus rares). Les raretés suivent les percentiles de ce score. `PRESTIGE=off` coupe la collecte. Les 20 albums de base suivent la même logique : `DATABASE_FILE=… node scripts/seed-prestige.mjs --write` redistribue leurs indices dans `shared/catalog.js`. Relancé après une coupure, il reprend où il en était. Compter environ 4 à 5 heures. Derrière un proxy, ajoute `NODE_USE_ENV_PROXY=1`.
 
 ## Mettre en ligne
 

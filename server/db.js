@@ -588,6 +588,12 @@ export const COLUMNS = [
   ['cat_tracks', 'rarity_locked', 'ALTER TABLE cat_tracks ADD COLUMN rarity_locked INTEGER NOT NULL DEFAULT 0'],
   ['cat_tracks', 'rarity_edition', 'ALTER TABLE cat_tracks ADD COLUMN rarity_edition INTEGER'],
   ['cat_tracks', 'duration', 'ALTER TABLE cat_tracks ADD COLUMN duration INTEGER'],
+  ['cat_artists', 'wd_links', 'ALTER TABLE cat_artists ADD COLUMN wd_links INTEGER'],
+  ['cat_artists', 'lb_users', 'ALTER TABLE cat_artists ADD COLUMN lb_users INTEGER'],
+  ['cat_artists', 'prestige_at', 'ALTER TABLE cat_artists ADD COLUMN prestige_at INTEGER'],
+  ['cat_albums', 'wd_links', 'ALTER TABLE cat_albums ADD COLUMN wd_links INTEGER'],
+  ['cat_albums', 'lb_users', 'ALTER TABLE cat_albums ADD COLUMN lb_users INTEGER'],
+  ['cat_albums', 'prestige_at', 'ALTER TABLE cat_albums ADD COLUMN prestige_at INTEGER'],
   ['cat_tracks', 'pop_source', 'ALTER TABLE cat_tracks ADD COLUMN pop_source TEXT'],
 ];
 

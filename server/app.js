@@ -10,6 +10,7 @@ import { createAuth } from './auth.js';
 import { createCovers } from './covers.js';
 import { createCatalog } from './catalog.js';
 import { createImporter } from './importer.js';
+import { createPrestige } from './prestige.js';
 import { createLimits, createQuota } from './security.js';
 import { createBus } from './bus.js';
 import { createJobs } from './jobs.js';
@@ -63,7 +64,7 @@ export function createApp({ dbFile, db: openedDb } = {}) {
   const bus = createBus();
   const mailer = createMailer(db);
   const catalog = createCatalog(db);
-  const importer = createImporter(db, catalog);
+  const importer = createImporter(db, catalog, { prestige: createPrestige(db) });
   const services = createServices(db, catalog, { bus });
   const auth = createAuth(db, mailer, services);
   const covers = createCovers(db);

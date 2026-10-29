@@ -57,6 +57,32 @@ test('calcul : percentiles ex aequo ; un album culte mondial passe devant un alb
   assert.ok(t[2] > t[1] && t[1] > t[0]);
 });
 
+test('calcul : la célébrité propre d’un morceau compte (« Stronger » devant les morceaux discrets d’un album culte)', () => {
+  const albums = [
+    { id: 'graduation', artistId: 'kanye', links: 30, listeners: 42000, fans: 300000, known: true },
+    ...Array.from({ length: 30 }, (_, i) => ({ id: `x${i}`, artistId: `c${i}`, links: i % 10, listeners: 300 * i, fans: 10000 * (i + 1), known: true })),
+  ];
+  const scores = albumScores(albums);
+  const song = (id, albumId, rank, songLinks, songUsers) => ({ id, albumId, artistId: albumId === 'graduation' ? 'kanye' : 'c', kind: 'album', rank, songLinks, songUsers });
+  const tracks = [
+    song('stronger', 'graduation', 900000, 16, 83000),
+    song('flashing', 'graduation', 800000, 14, 53000),
+    song('drunk', 'graduation', 300000, 0, 3000),
+    // Un tube mondial d'un album moins prestigieux, puis des morceaux sans renommée.
+    song('tube', 'x20', 950000, 20, 120000),
+    ...Array.from({ length: 200 }, (_, i) => song(`f${i}`, `x${i % 30}`, 1000 * i, 0, i * 5)),
+  ];
+  const t = trackScores(tracks, scores);
+  const by = Object.fromEntries(tracks.map((x, i) => [x.id, t[i]]));
+  assert.ok(by.stronger > by.drunk && by.flashing > by.drunk, 'les tubes passent devant les morceaux discrets du même album');
+  assert.ok(by.tube > by.drunk, 'un tube mondial d’un album moins prestigieux passe devant un morceau discret d’un album culte');
+  const p = percentiles(t);
+  assert.ok(p[0] >= 0.98 && p[1] >= 0.98, `Stronger et Flashing Lights tout en haut : ${p[0]}, ${p[1]}`);
+  // Pas encore évalués : l'ancien calcul (album et place dans l'album).
+  const unknown = trackScores([{ ...tracks[0], songLinks: null, songUsers: null }], scores);
+  assert.ok(Math.abs(unknown[0] - (0.7 * scores.get('graduation') + 0.3)) < 1e-9);
+});
+
 test('calcul : album introuvable sur Wikidata, part de l’artiste selon ses fans (une compilation obscure d’une star reste modeste)', () => {
   const artists = new Map([['star', { links: 90, listeners: 400000 }]]);
   const albums = [

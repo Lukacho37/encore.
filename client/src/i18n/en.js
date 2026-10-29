@@ -522,7 +522,7 @@ export default {
   },
   rarityGuide: {
     title: 'How do rarities work?',
-    intro: 'A card’s rarity depends on how prestigious its album is and on where the track stands within that album. A cult album heard all over the world is much harder to complete than an album known mostly in one country. Prestige combines the album’s reach (how many languages Wikipedia has an article about it in), its listeners worldwide and its fans on Deezer; within the album, the hits are the rarest cards. The 0 to 100 index sums it all up.',
+    intro: 'A card’s rarity depends first on how famous the track is worldwide: how many languages Wikipedia has an article about it in, its listeners (ListenBrainz) and its plays on Deezer. Its album’s prestige counts too: a cult album heard everywhere is much harder to complete than an album known mostly in one country. The worldwide hits of great albums are the legendary cards. The 0 to 100 index sums it all up.',
     meaning: {
       common: 'Quieter tracks from albums with a local audience',
       uncommon: 'Well-known albums, secondary tracks',

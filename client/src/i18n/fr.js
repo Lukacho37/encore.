@@ -522,7 +522,7 @@ export default {
   },
   rarityGuide: {
     title: 'Comment marchent les raretés ?',
-    intro: 'La rareté d’une carte dépend du prestige de son album et de la place du morceau dans cet album. Un album culte écouté dans le monde entier est bien plus dur à compléter qu’un album connu surtout dans un pays. Le prestige combine le rayonnement de l’album (le nombre de langues dans lesquelles Wikipédia lui consacre un article), ses auditeurs dans le monde et ses fans sur Deezer ; dans l’album, ses tubes sont les cartes les plus rares. L’indice de 0 à 100 résume le tout.',
+    intro: 'La rareté d’une carte dépend d’abord de la célébrité du morceau dans le monde : les langues dans lesquelles Wikipédia lui consacre un article, ses auditeurs (ListenBrainz) et ses écoutes sur Deezer. Le prestige de son album compte aussi : un album culte écouté partout est bien plus dur à compléter qu’un album connu surtout dans un pays. Les tubes mondiaux des grands albums sont les cartes légendaires. L’indice de 0 à 100 résume le tout.',
     meaning: {
       common: 'Morceaux discrets d’albums à l’audience locale',
       uncommon: 'Albums connus, morceaux secondaires',

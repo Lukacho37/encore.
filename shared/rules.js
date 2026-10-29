@@ -212,6 +212,10 @@ export function rollPack(rng, catalog, { wishlist = null, focusAlbumIds = [], pr
     for (let i = FALLBACK.indexOf(wanted); !track && i < FALLBACK.length; i++) {
       track = catalog.randomTrack({ rarity: FALLBACK[i], exclude }, rng);
     }
+    // Petit catalogue sans carte de cette rareté ni d'une plus commune (graine faite d'albums cultes) : une plus rare.
+    for (let i = FALLBACK.indexOf(wanted) - 1; !track && i >= 1; i--) {
+      track = catalog.randomTrack({ rarity: FALLBACK[i], exclude }, rng);
+    }
     if (!track) continue;
     exclude.add(track.id);
     cards.push({ trackId: track.id, rarity: track.rarity, variant: holoRoll(track.rarity, rng) ? 'holo' : 'std' });

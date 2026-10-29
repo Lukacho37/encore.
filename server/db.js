@@ -594,6 +594,9 @@ export const COLUMNS = [
   ['cat_albums', 'wd_links', 'ALTER TABLE cat_albums ADD COLUMN wd_links INTEGER'],
   ['cat_albums', 'lb_users', 'ALTER TABLE cat_albums ADD COLUMN lb_users INTEGER'],
   ['cat_albums', 'prestige_at', 'ALTER TABLE cat_albums ADD COLUMN prestige_at INTEGER'],
+  ['cat_tracks', 'wd_links', 'ALTER TABLE cat_tracks ADD COLUMN wd_links INTEGER'],
+  ['cat_tracks', 'lb_users', 'ALTER TABLE cat_tracks ADD COLUMN lb_users INTEGER'],
+  ['cat_artists', 'songs_at', 'ALTER TABLE cat_artists ADD COLUMN songs_at INTEGER'],
   ['cat_tracks', 'pop_source', 'ALTER TABLE cat_tracks ADD COLUMN pop_source TEXT'],
 ];
 

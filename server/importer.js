@@ -554,8 +554,8 @@ export function createImporter(db, catalog, {
       FROM cat_albums WHERE source = 'deezer'`).all();
     const artists = new Map(q('SELECT id, wd_links AS links, lb_users AS listeners FROM cat_artists WHERE prestige_at IS NOT NULL').all()
       .map((a) => [a.id, a]));
-    const tracks = q(`SELECT rowid AS rid, kind, album_id AS albumId, artist_id AS artistId, rank, pop, rarity, rarity_locked AS locked
-      FROM cat_tracks WHERE source = 'deezer'`).all();
+    const tracks = q(`SELECT rowid AS rid, kind, album_id AS albumId, artist_id AS artistId, rank, pop, rarity, rarity_locked AS locked,
+      wd_links AS songLinks, lb_users AS songUsers FROM cat_tracks WHERE source = 'deezer'`).all();
     const scores = trackScores(tracks, albumScores(albums, artists));
     tracks.forEach((t, i) => {
       t.score = scores[i];

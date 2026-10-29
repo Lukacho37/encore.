@@ -5,6 +5,10 @@
 //     titre ; pour chacun, le nombre d'éditions de Wikipédia qui lui consacrent un article (sitelinks) ;
 //   - ListenBrainz (/1/popularity, par lots de 300) : auditeurs dans le monde de l'album (groupe de parutions
 //     MusicBrainz P436) et de l'artiste (P434).
+// Puis, morceau par morceau (célébrité propre d'un titre : « Stronger » est un monument même hors de son album) :
+//   - Wikidata : chansons et singles de l'artiste (P175) et leurs articles Wikipédia, rapprochés par titre ;
+//   - ListenBrainz (/1/popularity/top-recordings-for-artist) : auditeurs de chaque enregistrement de l'artiste, le
+//     plus écouté de chaque titre retenu. cat_tracks.wd_links, lb_users ; cat_artists.songs_at.
 // Écrit cat_artists / cat_albums.wd_links, lb_users, prestige_at (0 quand rien n'est trouvé : c'est aussi une
 // information) et range les identifiants Wikidata et MusicBrainz trouvés dans external_ids. Les artistes sont traités
 // par paquets enregistrés au fur et à mesure : une coupure ne perd que le paquet en cours. Quelques minutes pour
@@ -20,6 +24,8 @@ const CHUNK = 600; // artistes traités puis enregistrés ensemble
 const MAX_TRIES = 4;
 // Album (Q482994) et album studio (Q208569) : ni single, ni compilation, ni live.
 const ALBUM_TYPES = 'wd:Q482994 wd:Q208569';
+// Single (Q134556) et chanson (Q7366).
+const SONG_TYPES = 'wd:Q134556 wd:Q7366';
 
 // Pays francophones (Wikidata) : France, Belgique, Suisse, Luxembourg, Monaco, Canada (avec la langue française),
 // Haïti, Afrique francophone et Maghreb.
@@ -45,7 +51,8 @@ export function prestigeSettings(env = process.env, cfg = config) {
     userAgent: `AlbumMania (prestige du catalogue${contact ? ` ; ${contact}` : ''})`,
     sparqlUrl: text(env.WIKIDATA_SPARQL_URL) || 'https://query.wikidata.org/sparql',
     lbUrl: (text(env.LISTENBRAINZ_API_URL) || 'https://api.listenbrainz.org/1').replace(/\/$/, ''),
-    pauseMs: cfg.isTest ? 0 : 500,
+    // ListenBrainz accepte 30 requêtes par 10 secondes : une toutes les 350 ms.
+    pauseMs: cfg.isTest ? 0 : 350,
   };
 }
 
@@ -185,6 +192,82 @@ export function createPrestige(db, { settings = prestigeSettings(), fetchImpl = 
     return out;
   }
 
+  /** Chansons et singles Wikidata des artistes : qid → [{ links, keys }]. */
+  async function artistSongs(qids) {
+    const out = new Map();
+    await batched(qids, ALBUM_BATCH, async (part) => {
+      const res = await sparql(`SELECT ?artist ?item ?links (GROUP_CONCAT(DISTINCT ?label; separator="|||") AS ?labels) WHERE {
+        VALUES ?artist { ${part.map((x) => `wd:${x}`).join(' ')} }
+        VALUES ?type { ${SONG_TYPES} }
+        ?item wdt:P175 ?artist ; wdt:P31 ?type ; wikibase:sitelinks ?links .
+        ?item rdfs:label ?label FILTER(LANG(?label) IN ("en", "fr", "es", "de", "pt", "it"))
+      } GROUP BY ?artist ?item ?links`);
+      for (const b of res) {
+        const artist = qid(val(b, 'artist'));
+        if (!out.has(artist)) out.set(artist, []);
+        out.get(artist).push({ links: Number(val(b, 'links')) || 0, keys: new Set(String(val(b, 'labels') || '').split('|||').map(matchKey).filter(Boolean)) });
+      }
+    });
+    return out;
+  }
+
+  /** Auditeurs ListenBrainz des titres d'un artiste : clé de titre → auditeurs de son enregistrement le plus écouté. */
+  async function topRecordings(mbid) {
+    const out = new Map();
+    let rows = [];
+    try {
+      rows = await request(`${settings.lbUrl}/popularity/top-recordings-for-artist/${mbid}`, { method: 'GET', headers: {} });
+    } catch {
+      return out; // artiste inconnu de ListenBrainz (404) ou service en panne : rien pour lui
+    }
+    for (const r of Array.isArray(rows) ? rows : []) {
+      const key = matchKey(r?.recording_name);
+      const n = Number(r?.total_user_count) || 0;
+      if (key && n > (out.get(key) || 0)) out.set(key, n);
+    }
+    return out;
+  }
+
+  const tracksOfArtist = q('SELECT id, title FROM cat_tracks WHERE artist_id = ?');
+  const setTrack = q('UPDATE cat_tracks SET wd_links = ?, lb_users = ? WHERE id = ?');
+  const setSongsAt = q('UPDATE cat_artists SET songs_at = ? WHERE id = ?');
+
+  /** Célébrité propre des morceaux d'un paquet d'artistes déjà évalués (éléments Wikidata et MusicBrainz connus). */
+  async function processSongs(rows) {
+    const ids = rows.map((r) => ({
+      id: r.id,
+      qid: extGet.get('artist', r.id, 'wikidata')?.source_id || null,
+      mbid: extGet.get('artist', r.id, 'musicbrainz')?.source_id || null,
+    }));
+    const songs = await artistSongs([...new Set(ids.map((x) => x.qid).filter(Boolean))]);
+    const recordings = new Map();
+    for (const x of ids) if (x.mbid && MBID.test(x.mbid)) recordings.set(x.id, await topRecordings(x.mbid));
+    let tracks = 0;
+    let found = 0;
+    const now = Date.now();
+    db.exec('BEGIN');
+    try {
+      for (const x of ids) {
+        const list = songs.get(x.qid) || [];
+        const recs = recordings.get(x.id);
+        for (const t of tracksOfArtist.all(x.id)) {
+          const key = matchKey(t.title);
+          const links = key ? list.reduce((m, s) => (s.keys.has(key) && s.links > m ? s.links : m), 0) : 0;
+          const users = key ? recs?.get(key) || 0 : 0;
+          setTrack.run(links, users, t.id);
+          tracks += 1;
+          if (links || users) found += 1;
+        }
+        setSongsAt.run(now, x.id);
+      }
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+    return { songArtists: rows.length, tracks, tracksFound: found };
+  }
+
   const albumsOf = q('SELECT id, artist_id, title, deezer_id FROM cat_albums WHERE artist_id IN (SELECT value FROM json_each(?)) AND prestige_at IS NULL');
   const setArtist = q('UPDATE cat_artists SET wd_links = ?, lb_users = ?, prestige_at = ? WHERE id = ?');
   const setAlbum = q('UPDATE cat_albums SET wd_links = ?, lb_users = ?, prestige_at = ? WHERE id = ?');
@@ -241,9 +324,9 @@ export function createPrestige(db, { settings = prestigeSettings(), fetchImpl = 
    * évalué (le calibrage des raretés doit être refait).
    */
   async function run({ onProgress = null } = {}) {
-    const total = { artists: 0, artistsFound: 0, albums: 0, albumsFound: 0 };
+    const total = { artists: 0, artistsFound: 0, albums: 0, albumsFound: 0, songArtists: 0, tracks: 0, tracksFound: 0 };
     const add = (s) => {
-      for (const k of Object.keys(total)) total[k] += s[k];
+      for (const k of Object.keys(total)) total[k] += s[k] || 0;
       onProgress?.({ ...total });
     };
     const fresh = q('SELECT id, name, deezer_id FROM cat_artists WHERE prestige_at IS NULL LIMIT ?');
@@ -254,7 +337,11 @@ export function createPrestige(db, { settings = prestigeSettings(), fetchImpl = 
     for (let i = 0; i < later.length; i += CHUNK) add(await processArtists(later.slice(i, i + CHUNK), { known: true }));
     // Albums sans artiste évaluable (ne devrait pas arriver) : notés quand même, pour ne pas les redemander.
     q('UPDATE cat_albums SET wd_links = COALESCE(wd_links, 0), lb_users = COALESCE(lb_users, 0), prestige_at = ? WHERE prestige_at IS NULL').run(Date.now());
-    return { ...total, changed: total.albums > 0 };
+    // Célébrité des morceaux : artistes pas encore vus, puis ceux qui ont de nouveaux morceaux.
+    const songs = q(`SELECT id FROM cat_artists WHERE prestige_at IS NOT NULL AND (songs_at IS NULL
+      OR id IN (SELECT artist_id FROM cat_tracks WHERE wd_links IS NULL)) LIMIT ?`);
+    for (let rows = songs.all(CHUNK); rows.length; rows = songs.all(CHUNK)) add(await processSongs(rows));
+    return { ...total, changed: total.albums > 0 || total.tracks > 0 };
   }
 
   /** Collecte (une seule à la fois) ; null quand PRESTIGE=off. */

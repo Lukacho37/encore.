@@ -9,12 +9,16 @@
 //   l'album a peu de fans à côté du plus suivi de l'artiste — une compilation obscure d'une star reste modeste)
 //   - fans Deezer de l'album : poids faible, l'audience de Deezer est surtout française.
 // Album pas encore évalué : ses fans Deezer seulement.
-// Score d'un morceau = 0,7 · score de son album + 0,3 · place du morceau dans son album (rang Deezer comparé aux autres
-// morceaux du même album : ses tubes, sans biais de pays). Single promo : score de l'artiste (son meilleur album) et
-// rang parmi les promos.
+// Score d'un morceau : sa célébrité propre d'abord (« Stronger » est un monument, pas seulement le tube d'un grand
+// album), puis le prestige de son album :
+//   0,35 · album + 0,25 · articles Wikipédia du morceau (chanson ou single) + 0,25 · ses auditeurs ListenBrainz dans le
+//   monde + 0,075 · son rang Deezer (absolu) + 0,075 · sa place dans son album, chaque signal en percentile.
+// Morceau pas encore évalué : 0,7 · album + 0,3 · place dans l'album. Single promo : score de l'artiste (son meilleur
+// album) à la place de celui de l'album, place parmi les promos.
 
 export const PRESTIGE_WEIGHTS = Object.freeze({ links: 0.45, listeners: 0.4, fans: 0.15 });
 export const ALBUM_WEIGHT = 0.7;
+export const TRACK_WEIGHTS = Object.freeze({ album: 0.35, links: 0.25, listeners: 0.25, rank: 0.075, hit: 0.075 });
 /** Album sans article Wikipédia ou sans auditeurs connus : part de l'artiste retenue, pour son album le plus suivi. */
 export const ARTIST_LINKS_SHARE = 0.3;
 export const ARTIST_LISTENERS_SHARE = 0.08;
@@ -66,7 +70,8 @@ export function albumScores(albums, artists = new Map()) {
 }
 
 /**
- * Score de chaque morceau. tracks : [{ id, albumId, artistId, kind, rank }] ; albumScore : Map (albumScores).
+ * Score de chaque morceau. tracks : [{ id, albumId, artistId, kind, rank, songLinks?, songUsers? }] (songLinks et
+ * songUsers : null tant que la célébrité du morceau n'a pas été collectée) ; albumScore : Map (albumScores).
  * Renvoie un tableau de scores, dans l'ordre de `tracks`.
  */
 export function trackScores(tracks, albumScore) {
@@ -89,8 +94,20 @@ export function trackScores(tracks, albumScore) {
       hit[i] = p[k];
     });
   }
+  // Célébrité propre : percentiles sur les morceaux évalués seulement.
+  const known = [];
+  tracks.forEach((t, i) => {
+    if (t.songLinks != null && t.songUsers != null) known.push(i);
+  });
+  const pLinks = percentiles(known.map((i) => Math.log1p(Math.max(0, Number(tracks[i].songLinks) || 0))));
+  const pUsers = percentiles(known.map((i) => Math.log1p(Math.max(0, Number(tracks[i].songUsers) || 0))));
+  const pRank = percentiles(known.map((i) => Number(tracks[i].rank) || 0));
+  const fame = new Map(known.map((i, k) => [i, { links: pLinks[k], users: pUsers[k], rank: pRank[k] }]));
+  const w = TRACK_WEIGHTS;
   return tracks.map((t, i) => {
     const base = t.albumId != null ? albumScore.get(t.albumId) ?? 0 : artistScore.get(t.artistId) ?? 0;
-    return ALBUM_WEIGHT * base + (1 - ALBUM_WEIGHT) * hit[i];
+    const f = fame.get(i);
+    if (!f) return ALBUM_WEIGHT * base + (1 - ALBUM_WEIGHT) * hit[i];
+    return w.album * base + w.links * f.links + w.listeners * f.users + w.rank * f.rank + w.hit * hit[i];
   });
 }

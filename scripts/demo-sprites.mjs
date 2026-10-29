@@ -56,11 +56,9 @@ for (let s = 0; s < sprites; s++) {
   part.forEach((a, i) => {
     cells[a.id] = s * PER + i;
   });
-  const list = path.join(out, `s${s}.txt`);
-  fs.writeFileSync(list, part.map((a) => file(a.id)).join('\n'));
-  execFileSync('montage', [`@${list}`, '-tile', `${COLS}x${COLS}`, '-geometry', `${SIZE}x${SIZE}+0+0`, '-background', '#1b1623',
+  // Fichiers passés un à un : la politique de sécurité d'ImageMagick refuse souvent les listes « @fichier ».
+  execFileSync('montage', [...part.map((a) => file(a.id)), '-tile', `${COLS}x${COLS}`, '-geometry', `${SIZE}x${SIZE}+0+0`, '-background', '#1b1623',
     '-quality', '74', '-strip', '-interlace', 'none', path.join(out, `s${s}.jpg`)]);
-  fs.rmSync(list);
 }
 fs.writeFileSync(path.join(out, 'index.json'), JSON.stringify({ size: SIZE, cols: COLS, sprites, cells }));
 const bytes = Array.from({ length: sprites }, (_, s) => fs.statSync(path.join(out, `s${s}.jpg`)).size).reduce((a, b) => a + b, 0);

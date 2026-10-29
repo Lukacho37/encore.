@@ -65,10 +65,11 @@ Les textes (CGU, confidentialité, règles de la communauté, cookies) sont dans
 Rien à faire : au premier démarrage, le serveur commence à importer des albums depuis l'**API publique de Deezer** (sans clé), jusqu'à **20 000 albums** (environ 250 000 cartes) :
 
 - il part des classements Deezer de chaque genre (rap, pop, rock, métal, électro, R&B, jazz, reggae, chanson, latino, country, classique, musiques de film, musiques du monde), puis suit les artistes proches ;
+- il ajoute environ 2 000 **artistes francophones** connus de Wikidata (France, Belgique, Suisse, Québec, Afrique francophone, Maghreb, Haïti) : les classements de Deezer dépendent du pays d'où part la requête, et un serveur hébergé hors de France n'importerait presque pas de musique française ;
 - il ne garde que les **albums studio** (pas de live, de compilation ni de best-of ; une seule version quand il existe une réédition « Deluxe ») des artistes suivis par au moins 15 000 fans ;
-- chaque album importé arrive avec sa tracklist, sa pochette, ses liens Deezer et un **indice de popularité** par morceau, d'où découle la rareté (les 0,5 % de morceaux les plus écoutés sont légendaires, les 60 % les moins écoutés sont communs) ; les singles hors album deviennent des cartes **Promo**.
+- chaque album importé arrive avec sa tracklist, sa pochette et ses liens Deezer ; la rareté de ses morceaux suit son **prestige mondial** : le nombre de langues dans lesquelles Wikipédia consacre un article à l'album (Wikidata), ses auditeurs dans le monde (ListenBrainz), ses fans Deezer (poids faible) et, dans l'album, ses tubes. Un album culte écouté partout est donc bien plus dur à compléter qu'un album connu surtout dans un pays. Les signaux sont collectés après chaque tournée d'import (quelques minutes) ; `PRESTIGE=off` coupe cette collecte. Les raretés sont ensuite **gelées** : une carte tirée Légendaire le reste.
 
-Compte **environ 3 heures** pour les 20 000 albums (le serveur ménage l'API de Deezer). Le jeu est jouable pendant ce temps : les nouveaux albums apparaissent au fur et à mesure dans la collection (tout de suite) et dans les boosters (dans le quart d'heure qui suit). L'import reprend où il en était après un redémarrage.
+Compte **environ 4 heures** pour les 20 000 albums et les artistes francophones (le serveur ménage l'API de Deezer). Le jeu est jouable pendant ce temps : les nouveaux albums apparaissent au fur et à mesure dans la collection (tout de suite) et dans les boosters (dans le quart d'heure qui suit). L'import reprend où il en était après un redémarrage.
 
 Ensuite, une fois par jour, le serveur vérifie les **nouvelles sorties** des artistes déjà importés (300 artistes par jour, chacun revu au plus une fois par semaine, les plus suivis d'abord) : un nouvel album studio entre au catalogue s'il fait partie des 10 albums les plus écoutés de l'artiste (`CATALOG_MAX_ALBUMS_PER_ARTIST`), même une fois les 20 000 albums atteints.
 
@@ -121,7 +122,7 @@ Le fichier `Dockerfile` permet de déployer partout où Docker est accepté (Rai
 
 ## Sauvegardes
 
-Toute la base tient dans un seul fichier, `albummania.db` (une centaine de Mo avec le catalogue complet), sur le disque persistant. Render propose des instantanés du disque ; tu peux aussi télécharger le fichier de temps en temps depuis le **Shell** de Render.
+Toute la base tient dans un seul fichier, `albummania.db` (environ 400 Mo avec le catalogue complet et son index de recherche ; le disque de 1 Go suffit pour commencer), sur le disque persistant. Render propose des instantanés du disque ; tu peux aussi télécharger le fichier de temps en temps depuis le **Shell** de Render.
 
 ## Avant d'ouvrir au public : liste de vérification
 

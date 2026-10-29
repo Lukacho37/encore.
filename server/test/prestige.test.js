@@ -121,7 +121,7 @@ test('calibrage : l’album culte devient bien plus rare que l’album le plus �
   // Mêmes parts qu'avant pour l'ensemble du catalogue (à un morceau près par palier).
   const n = db.prepare("SELECT COUNT(*) AS n FROM cat_tracks WHERE source = 'deezer'").get().n;
   const legendary = db.prepare("SELECT COUNT(*) AS n FROM cat_tracks WHERE source = 'deezer' AND rarity = 'legendary'").get().n;
-  assert.ok(legendary <= Math.ceil(n * 0.005) + 2, `${legendary} légendaires sur ${n}`);
+  assert.ok(legendary <= Math.ceil(n * 0.01) + 2, `${legendary} légendaires sur ${n}`);
   db.close();
 });
 

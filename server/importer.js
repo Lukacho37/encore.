@@ -7,8 +7,8 @@
 //    artiste (carte promo).
 // 3. Calibrage : l'indice de popularité (0-100) et la rareté de chaque morceau viennent de son score de prestige
 //    (shared/prestige.js : rayonnement mondial et culte de son album, auditeurs dans le monde, place du morceau dans
-//    son album), en percentiles sur tout le catalogue importé (⭐ 0,5 % les plus hauts, 🟠 1,5 %, 🟣 4 %, 🔵 10 %,
-//    🟢 24 %, ⚪ 60 %). Les signaux sont collectés après chaque tournée (server/prestige.js, Wikidata et ListenBrainz) ;
+//    son album), en percentiles sur tout le catalogue importé (⭐ 1 % les plus hauts, 🟠 2 %, 🟣 4 %, 🔵 10 %,
+//    🟢 23 %, ⚪ 60 %). Les signaux sont collectés après chaque tournée (server/prestige.js, Wikidata et ListenBrainz) ;
 //    le calibrage n'a lieu que si des morceaux ou des signaux ont changé.
 // 4. Vérification quotidienne des nouvelles sorties, même une fois la cible atteinte : chaque jour, jusqu'à 300 artistes
 //    déjà importés et pas revus depuis une semaine (les plus suivis d'abord, puis chacun son tour). Un nouvel album
@@ -56,12 +56,16 @@ export const GENRE_MAP = {
   98: 'classical', 173: 'soundtrack', 2: 'world', 12: 'world', 16: 'world', 81: 'world',
 };
 
-/** Paliers de rareté en percentiles du rang Deezer (du plus rare au plus commun) et indice de popularité associé. */
+/**
+ * Paliers de rareté en percentiles du score de prestige (du plus rare au plus commun) et indice de popularité associé.
+ * 1 % de Légendaires (environ 3 600 morceaux sur 26 000 albums) : les grands classiques mondiaux, pas seulement le
+ * tube le plus écouté de chaque légende (demande du propriétaire du 2026-10-29).
+ */
 export const RANK_TIERS = [
-  { rarity: 'legendary', from: 0.995, pop: [92, 100] },
-  { rarity: 'ultra', from: 0.98, pop: [82, 91] },
-  { rarity: 'super', from: 0.94, pop: [70, 81] },
-  { rarity: 'rare', from: 0.84, pop: [55, 69] },
+  { rarity: 'legendary', from: 0.99, pop: [92, 100] },
+  { rarity: 'ultra', from: 0.97, pop: [82, 91] },
+  { rarity: 'super', from: 0.93, pop: [70, 81] },
+  { rarity: 'rare', from: 0.83, pop: [55, 69] },
   { rarity: 'uncommon', from: 0.6, pop: [35, 54] },
   { rarity: 'common', from: 0, pop: [0, 34] },
 ];

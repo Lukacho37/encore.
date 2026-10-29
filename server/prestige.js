@@ -26,8 +26,9 @@ const CHUNK = 600; // artistes traités puis enregistrés ensemble
 const MAX_TRIES = 4;
 // Album (Q482994) et album studio (Q208569) : ni single, ni compilation, ni live.
 const ALBUM_TYPES = 'wd:Q482994 wd:Q208569';
-// Single (Q134556) et chanson (Q7366).
-const SONG_TYPES = 'wd:Q134556 wd:Q7366';
+// Single (Q134556), chanson (Q7366), œuvre musicale (Q105543609 : Wikidata y range de plus en plus de chansons, dont
+// « Billie Jean ») et piste audio (Q7302866).
+const SONG_TYPES = 'wd:Q134556 wd:Q7366 wd:Q105543609 wd:Q7302866';
 
 // Pays francophones (Wikidata) : France, Belgique, Suisse, Luxembourg, Monaco, Canada (avec la langue française),
 // Haïti, Afrique francophone et Maghreb.

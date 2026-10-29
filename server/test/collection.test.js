@@ -96,17 +96,22 @@ function countingCatalog(wishIds, advancedIds) {
   return {
     counts,
     randomTrack(opts, rng) {
-      const track = staticCatalog.randomTrack(opts, rng);
-      if (track && opts.albumIds === wishIds) counts.wish += 1;
-      if (track && opts.albumIds === advancedIds) counts.advanced += 1;
-      return track;
+      // Albums visés : une de leurs cartes quelle que soit la rareté tirée (on mesure la part des emplacements ciblés,
+      // indépendamment des raretés de la graine).
+      if (opts.albumIds?.length) {
+        const ids = opts.albumIds.flatMap((id) => staticCatalog.albumTrackIds(id));
+        const track = staticCatalog.track(ids[Math.floor(rng() * ids.length)]);
+        if (track && opts.albumIds === wishIds) counts.wish += 1;
+        if (track && opts.albumIds === advancedIds) counts.advanced += 1;
+        return track;
+      }
+      return staticCatalog.randomTrack(opts, rng);
     },
   };
 }
 
 test('ciblage : 25 % des emplacements pour la liste d’envies, 10 % pour les albums avancés (2 000 boosters)', () => {
   assert.equal(WISHLIST_FOCUS + ADVANCED_FOCUS, FOCUS_CHANCE);
-  // Albums qui ont les six raretés hors promo : le ciblage ne retombe jamais faute de carte.
   const wishIds = ['discovery', 'abbey-road'];
   const advancedIds = ['the-eminem-show', 'back-to-black'];
   const boosters = 2000;
@@ -131,8 +136,9 @@ test('ciblage : 25 % des emplacements pour la liste d’envies, 10 % pour les al
 
 test('ciblage : la liste d’envies ne vise que les cartes manquantes', () => {
   const wishIds = ['discovery'];
-  const ids = staticCatalog.albumTrackIds('discovery');
-  const owned = new Set(ids.slice(1)); // une seule carte manquante
+  // Une seule carte manquante, la plus commune de l'album (une Légendaire ne sortirait qu'avec l'emplacement 5).
+  const ids = staticCatalog.albumTrackIds('discovery').sort((a, b) => staticCatalog.track(a).pop - staticCatalog.track(b).pop);
+  const owned = new Set(ids.slice(1));
   let seen = 0;
   for (let i = 0; i < 400; i++) {
     for (const c of rollPack(Math.random, staticCatalog, { wishlist: { albumIds: wishIds, owned } })) {

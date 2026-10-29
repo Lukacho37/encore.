@@ -128,6 +128,20 @@ export function taints(img) {
 async function tileSource(tile, { covers, realCovers }) {
   if (realCovers && !tile.art.coverBlocked) {
     const real = realCover(tile.art, covers);
+    if (real?.sprite) {
+      // Démo publiée : la case de l'album, découpée dans sa planche (même origine que la page).
+      try {
+        const sheet = await loadCors(real.sprite.src);
+        const cell = Math.round((sheet.naturalWidth || sheet.width) / real.sprite.cols);
+        const canvas = document.createElement('canvas');
+        canvas.width = cell;
+        canvas.height = cell;
+        canvas.getContext('2d').drawImage(sheet, real.sprite.x * cell, real.sprite.y * cell, cell, cell, 0, 0, cell, cell);
+        return { img: canvas, real: true, provider: real.provider };
+      } catch {
+        // Planche indisponible : visuel généré (ci-dessous).
+      }
+    }
     const src = real?.cover || real?.thumb;
     if (src) {
       try {

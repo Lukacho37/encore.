@@ -6112,6 +6112,12 @@ button.vinyl:hover .disc__body {
   background: var(--black);
 }
 
+/* Démo publiée : pochette découpée dans une planche (CoverArt, art.sprite). */
+.cover--sprite {
+  background-color: var(--black);
+  background-repeat: no-repeat;
+}
+
 /* Rien ne recouvre une vraie pochette : la pastille de rareté, « Nouveau » et le nombre d'exemplaires passent dans
    le pied de carte (le numéro reste dans la fiche de la carte et, pour les albums, dans la tracklist), le reflet holo
    reste sur le cadre, et le survol n'éclaircit pas l'image. */

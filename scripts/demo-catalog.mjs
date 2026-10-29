@@ -1,12 +1,13 @@
 // Grand catalogue pour la démo publiée (claude.ai) : les albums importés d'une base, dans un fichier compact que la
 // démo charge à côté de la page (client/src/demo/bigCatalog.js). Sans ce fichier (démo ouverte en local, tests), la
-// démo garde ses 20 albums de base. Pas de pochettes : la page ne peut charger aucune image d'un autre site, les
-// albums importés gardent leur visuel généré.
+// démo garde ses 20 albums de base. Pochettes : la page ne peut charger aucune image d'un autre site ; si les planches
+// de scripts/demo-sprites.mjs existent, chaque album porte sa case, sinon il garde son visuel généré.
 //
 //   DATABASE_FILE=data/albummania.db node scripts/demo-catalog.mjs [fichier]     défaut : data/demo-catalog.json
 //
 // Format (v1) : artists [[id, nom, genre, pays]] ; albums [[id, n° d'artiste, titre, année, genre, titres des
-// morceaux séparés par \u001f, indices de popularité]] ; promos [[id, n° d'artiste, titre, indice, année, genre]].
+// morceaux séparés par \u001f, indices de popularité, case de la pochette dans les planches ou -1]] ; promos [[id, n°
+// d'artiste, titre, indice, année, genre]] ; sprites { size, cols, count, prefix } (planches publiées sous covers/).
 // Les albums suivent l'ordre « populaires » (indice moyen décroissant) ; la rareté se déduit de l'indice (POP_TIERS).
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,6 +15,9 @@ import { config } from '../server/config.js';
 import { openDb } from '../server/db.js';
 
 const out = process.argv[2] || 'data/demo-catalog.json';
+// Planches de pochettes (scripts/demo-sprites.mjs), si elles existent : case de chaque album.
+const spritesFile = process.env.DEMO_SPRITES || 'data/demo-sprites/index.json';
+const sheet = fs.existsSync(spritesFile) ? JSON.parse(fs.readFileSync(spritesFile, 'utf8')) : null;
 const db = openDb(config.dbFile, { log: null });
 const albums = db.prepare(`SELECT a.id, a.artist_id, a.title, a.year, a.genre, AVG(t.pop) AS avg
   FROM cat_albums a JOIN cat_tracks t ON t.album_id = a.id
@@ -32,6 +36,7 @@ const data = {
   v: 1,
   artists: artists.map((a) => [a.id, a.name, a.genre || 'pop', a.country || null]),
   albums: [],
+  ...(sheet && { sprites: { size: sheet.size, cols: sheet.cols, count: sheet.sprites, prefix: 'covers/s' } }),
   promos: promos.filter((p) => index.has(p.artist_id)).map((p) => [p.id, index.get(p.artist_id), p.title, p.pop ?? 0, p.year || null, p.genre || 'pop']),
 };
 let trackCount = 0;
@@ -41,7 +46,8 @@ for (const a of albums) {
   // Les numéros doivent se suivre (identifiants des cartes : <album>:01, :02…) : sinon l'album est laissé de côté.
   if (!list.length || list.some((t, i) => t.n !== i + 1)) continue;
   trackCount += list.length;
-  data.albums.push([a.id, index.get(a.artist_id), a.title, a.year || null, a.genre || 'pop', list.map((t) => clean(t.title)).join('\u001f'), list.map((t) => t.pop ?? 0)]);
+  data.albums.push([a.id, index.get(a.artist_id), a.title, a.year || null, a.genre || 'pop', list.map((t) => clean(t.title)).join('\u001f'),
+    list.map((t) => t.pop ?? 0), sheet?.cells?.[a.id] ?? -1]);
 }
 fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
 fs.writeFileSync(out, JSON.stringify(data));

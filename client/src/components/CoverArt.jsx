@@ -219,6 +219,16 @@ function CoverArt({ art, className = '', title, generated = false, sizes = '160p
   const id = useId().replace(/:/g, '');
   const covers = useCovers();
   const real = generated ? null : shownCover(art, covers);
+  if (real?.sprite) {
+    // Démo publiée : case d'une planche de pochettes (16 × 16), agrandie pour remplir le cadre.
+    const { src, x, y, cols } = real.sprite;
+    const at = (v) => (cols > 1 ? (v / (cols - 1)) * 100 : 0);
+    return (
+      <span className={`cover cover--real cover--sprite ${className}`} role={title ? 'img' : undefined} aria-label={title || undefined}
+        aria-hidden={title ? undefined : 'true'}
+        style={{ backgroundImage: `url(${src})`, backgroundSize: `${cols * 100}% ${cols * 100}%`, backgroundPosition: `${at(x)}% ${at(y)}%` }} />
+    );
+  }
   if (real) {
     const srcSet = real.thumb && real.thumb !== real.cover && real.thumbW && real.coverW
       ? `${real.thumb} ${real.thumbW}w, ${real.cover} ${real.coverW}w`

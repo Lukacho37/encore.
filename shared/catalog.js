@@ -539,11 +539,20 @@ export function extendCatalog(data, { artOf } = {}) {
   }
   let catalog = ALBUMS.length;
   let added = 0;
-  for (const [id, artistIdx, title, year, genre, titles, pops] of data.albums) {
+  // Vraies pochettes en planches (scripts/demo-sprites.mjs) : case de l'album dans la planche, découpée à l'affichage.
+  const sheet = data.sprites && Number(data.sprites.cols) > 0 ? data.sprites : null;
+  const spriteOf = (cell) => {
+    if (!sheet || !Number.isInteger(cell) || cell < 0) return null;
+    const per = sheet.cols * sheet.cols;
+    const k = cell % per;
+    return { src: `${sheet.prefix}${Math.floor(cell / per)}.jpg`, x: k % sheet.cols, y: Math.floor(k / sheet.cols), cols: sheet.cols };
+  };
+  for (const [id, artistIdx, title, year, genre, titles, pops, cell] of data.albums) {
     const artist = artists[artistIdx];
     if (!artist || ALBUM_BY_ID[id]) continue;
     const names = String(titles).split('\u001f');
-    const art = artOf ? artOf(id) : { palette: ['#1b1623', '#ef3b3b', '#ffd35a'], motif: 'bars' };
+    const sprite = spriteOf(cell);
+    const art = { ...(artOf ? artOf(id) : { palette: ['#1b1623', '#ef3b3b', '#ffd35a'], motif: 'bars' }), ...(sprite && { sprite }) };
     const album = { id, artist: artist.id, title, year: year || null, genre, art, artView: { ...art, seed: id }, imported: true };
     catalog += 1;
     added += 1;

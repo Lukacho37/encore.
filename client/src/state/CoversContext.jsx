@@ -52,5 +52,7 @@ export function realCover(art, covers) {
   if (art.cover && !covers.broken?.has(art.seed)) {
     return { cover: art.cover, coverW: art.coverW, thumb: art.thumb || art.cover, thumbW: art.thumbW, provider: art.provider || 'deezer' };
   }
+  // Démo publiée : pochette du grand catalogue copiée dans une planche (scripts/demo-sprites.mjs), découpée par CoverArt.
+  if (art.sprite && !covers.broken?.has(art.seed)) return { sprite: art.sprite, provider: 'deezer' };
   return null;
 }

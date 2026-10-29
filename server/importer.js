@@ -212,9 +212,10 @@ export function createImporter(db, catalog, {
     // Fournisseur détaché (scripts/detach-provider.js ou espace admin) : plus aucun appel, même en pleine tournée.
     if (providerDetached(db, 'deezer')) throw new Unavailable('deezer: fournisseur détaché');
     for (let attempt = 0; ; attempt++) {
-      const gap = pauseMs - (Date.now() - lastCall);
-      if (gap > 0) await wait(gap);
-      lastCall = Date.now();
+      // Créneau réservé avant d'attendre : des requêtes lancées en parallèle restent espacées d'au moins pauseMs.
+      const slot = Math.max(Date.now(), lastCall + pauseMs);
+      lastCall = slot;
+      if (slot > Date.now()) await wait(slot - Date.now());
       requests++;
       let res;
       try {
@@ -655,20 +656,28 @@ export function createImporter(db, catalog, {
     const albumTitles = new Set(q('SELECT title FROM cat_tracks WHERE artist_id = ?').all(artistId).map((r) => norm(splitFeat(r.title).title)));
     let tried = 0;
     let refused = 0;
+    // Fiches et pistes des albums manquants demandées en parallèle (la latence de Deezer domine ; les créneaux de
+    // call() gardent le débit sous pauseMs), puis enregistrées une à une dans l'ordre.
+    const fetched = new Map(await Promise.all(top
+      .filter(([key, a]) => !have.has(key) && !q('SELECT 1 FROM cat_albums WHERE deezer_id = ?').get(String(a.id)))
+      .map(async ([, a]) => {
+        try {
+          const full = await call(`/album/${a.id}`);
+          return [a.id, { full, list: full ? await albumTracks(a.id, full) : null }];
+        } catch (err) {
+          return [a.id, { err }];
+        }
+      })));
     for (const [key, a] of top) {
       if (stopRequested || (!refresh && importedAlbums() >= cfg.catalogTarget)) return;
-      if (have.has(key) || q('SELECT 1 FROM cat_albums WHERE deezer_id = ?').get(String(a.id))) continue;
+      if (have.has(key) || !fetched.has(a.id) || q('SELECT 1 FROM cat_albums WHERE deezer_id = ?').get(String(a.id))) continue;
       tried++;
-      let full = null;
-      try {
-        full = await call(`/album/${a.id}`);
-      } catch (err) {
+      const { full, list, err } = fetched.get(a.id);
+      if (err) {
         if (!(err instanceof Refused)) throw err;
         refused++;
       }
-      if (!full) continue;
-      const list = await albumTracks(a.id, full);
-      if (!list) continue;
+      if (!full || !list) continue;
       if (saveAlbum(artistId, artistGenre, { ...a, ...full }, list)) {
         have.add(key);
         for (const t of list) albumTitles.add(norm(splitFeat(t.title, t.title_short).title));

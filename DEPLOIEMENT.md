@@ -2,6 +2,8 @@
 
 Compte une heure la première fois. Tu auras besoin de trois comptes gratuits ou presque : **GitHub** (tu l'as déjà), **Render** pour héberger le site, **Brevo** pour envoyer les e-mails de vérification.
 
+> **Gratuit** : pour héberger le site sans payer (serveur Oracle Cloud « Always Free », installation par un script), suis [HEBERGEMENT-GRATUIT.md](HEBERGEMENT-GRATUIT.md). Les sections 1 (Brevo), 3 (compte admin) et 4 (mentions légales) ci-dessous servent aussi.
+
 ## 1. Envoi des e-mails avec Brevo
 
 Sans serveur d'envoi, les e-mails de vérification ne partent pas.

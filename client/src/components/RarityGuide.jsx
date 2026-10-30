@@ -3,7 +3,7 @@ import { Modal, Icon } from './ui.jsx';
 import { RarityGem } from './Card.jsx';
 import { BoosterOdds, usePct } from './game/odds.jsx';
 import {
-  POP_TIERS, RARITIES, RARITY, packOdds, ADVANCED_ALBUMS, ADVANCED_FOCUS, FOCUS_CHANCE, PITY_AFTER, PITY_SLOT, PROMO_FOCUS, PROMO_PRESS_COST,
+  POP_TIERS, RARITIES, RARITY, packOdds, ADVANCED_ALBUMS, ADVANCED_FOCUS, FOCUS_CHANCE, PITY_AFTER, PITY_SLOT, PROMO_FOCUS,
   WISHLIST_FOCUS, WISHLIST_SLOTS, WISHLIST_BONUS_LEVELS, SHOWCASE_SLOTS, SHOWCASE_BONUS_LEVELS, THEMED_BOOSTER_EVERY, ECONOMY,
 } from '@shared/rules.js';
 import { LEVEL_COSMETICS } from '@shared/cosmetics.js';
@@ -156,7 +156,11 @@ export function RarityGuideModal({ open, onClose }) {
           </section>
           <section>
             <h3><RarityGem rarity="promo" size={13} /> {t('rarityGuide.promoTitle')}</h3>
-            <p>{t('rarityGuide.promoBody', { p: pct(PROMO_FOCUS), cost: PROMO_PRESS_COST })}</p>
+            <p>{t('rarityGuide.promoBody', { p: pct(PROMO_FOCUS) })}</p>
+          </section>
+          <section>
+            <h3>{t('rarityGuide.getTitle')}</h3>
+            <p>{t('rarityGuide.getBody')}</p>
           </section>
           <section>
             <h3>{t('rarityGuide.freezeTitle')}</h3>

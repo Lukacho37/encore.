@@ -20,7 +20,8 @@ Le jeu de collection de morceaux de musique : ouvre des boosters, collectionne l
 | Catalogue | Import automatique depuis l'API Deezer (albums studio, sans live ni compilation), recherche plein texte, filtres par genre et décennie, rareté calibrée sur la popularité réelle de chaque morceau |
 | Raretés | Indice de popularité 0-100 affiché sur chaque carte, rareté calculée automatiquement, guide des raretés avec les chances par booster |
 | Ouverture | Booster à déchirer, cartes retournées une à une, halo d'anticipation selon la rareté, rayons + confettis pour les grosses cartes, **effets sonores** synthétisés (aucun fichier audio) |
-| Collection | Recherche dans les 20 000 albums, mes cartes, artistes commencés, promos, progression par genre / décennie, recyclage des doublons en royalties, **pressage** d'une carte manquante |
+| Collection | Recherche dans les 20 000 albums, mes cartes, artistes commencés, promos, progression par genre / décennie, recyclage des doublons en royalties ; aucune carte ne s'achète à l'unité |
+| Enchères et échanges | **Enchères** : mise en vente d'une carte (prix de départ, durée), offres en royalties ; **échanges** carte contre carte de même rareté, entre amis seulement |
 | Studio | Onglet **Studio** (ou menu de la photo de profil). **Vinylthèque** en tête du profil (un vinyle par album complété, édition holo si toutes ses cartes sont holo, platine tourne-disque au clic), **sélection** de 6 cartes, notes et critiques |
 | Notes & critiques | Albums et morceaux, ★ sur 5 ou /10 selon ta préférence, moyenne et répartition des notes, critiques (celles de tes amis d'abord), tracklist notée, activité de tes amis sur l'accueil |
 | Photo de profil | Initiale + couleur, ou **pochette d'un album que tu as complété** |
@@ -121,7 +122,7 @@ Fichiers fournis : `render.yaml` (blueprint Render) et `Dockerfile` (Railway, Fl
   Les albums de base gardent les numéros de catalogue 1 à 1000 (AM-001, AM-002…) ; les albums importés sont numérotés à partir de AM-1001, un nouvel album de base ne heurte donc jamais un album importé.
 
   La rareté se calcule toute seule : commune ≤ 34 · peu commune 35-54 · rare 55-69 · super rare 70-81 · ultra rare 82-91 · légendaire ≥ 92 (seuils dans `POP_TIERS`). Les singles hors album vont dans `PROMOS`. Motifs de pochette disponibles : `bars`, `rings`, `sun`, `grid`, `shards`, `split`, `curtain`, `halftone`, `spotlight`, `waves`, `dots`, `stripes`, `orbit`, `arcs`, `burst`, `diamond`, `checker`.
-- **Équilibrage** : `shared/rules.js` (probabilités par emplacement, chance de holo, valeur des doublons, coût du pressage, prix du booster, récompenses d'album et du blind test).
+- **Équilibrage** : `shared/rules.js` (probabilités par emplacement, chance de holo, valeur des doublons, prix du booster, récompenses d'album et du blind test).
 - **Rythme des boosters gratuits** : variables `PACK_REGEN_MINUTES` et `PACK_MAX_STOCK`.
 
 ## Droits d'auteur : ce que fait le jeu

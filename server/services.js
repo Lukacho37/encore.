@@ -11,7 +11,7 @@ import { createLru } from './lru.js';
 import { decodeCursor, encodeCursor, keysetPage } from './paging.js';
 import { dayStart as parisDayStart } from '../shared/periods.js';
 import {
-  rollPack, rollAlbumPack, newAchievements, xpForCard, newCardRoyalties, recycleValue, pressCost, levelFromXp,
+  rollPack, rollAlbumPack, newAchievements, xpForCard, newCardRoyalties, recycleValue, levelFromXp,
   ECONOMY, BLINDTEST, AVATAR_COLORS, RARITIES, packOdds, PACK_SLOTS,
   buildBlindtest, blindtestClues, blindtestPoints, blindtestReward,
   ADVANCED_ALBUMS, isHit, levelRewards, showcaseSlots, wishlistMax, parseBoosterTheme, themeFilterOf, THEME_GENRES,
@@ -844,34 +844,25 @@ export function createServices(db, catalog, { bus = null } = {}) {
   }
 
   /**
-   * Promos pressables (PLAN.md 6.4) : le joueur a complété au moins un album de cet artiste. Parcourt les albums de
-   * l'artiste (index cat_albums par artiste) et cherche chaque succès par la clé primaire du joueur.
-   */
-  const promoUnlocked = (userId, artistId) => !!q(`SELECT 1 FROM cat_albums al WHERE al.artist_id = ?
-    AND EXISTS (SELECT 1 FROM achievements a WHERE a.user_id = ? AND a.key = 'album:' || al.id) LIMIT 1`).get(artistId, userId);
-
-  /**
-   * Ce que coûte le pressage d'une carte pour ce joueur (GET /api/me/press/:trackId) : `cost` (null si impossible),
-   * `reason` : null | 'owned' | 'promo_locked' (promo d'un artiste dont aucun album n'est complété).
+   * Pressage d'une carte (GET /api/me/press/:trackId) : réservé à l'admin, gratuit (shared/rules.js). `reason` : null |
+   * 'owned' | 'archived' | 'admin_only'.
    */
   function pressInfo(userId, trackId) {
     const id = idOf(trackId);
     const track = id && catalog.track(id);
     if (!track) throw new HttpError(404, 'unknown_track');
-    const user = getUser(userId);
-    const unlocked = track.rarity === 'promo' ? promoUnlocked(userId, track.artistId) : false;
-    const base = pressCost(track.rarity, { promoUnlocked: unlocked });
+    const admin = isAdmin(getUser(userId));
     const owned = ownsTrack(userId, id);
     return {
       trackId: id,
-      cost: isAdmin(user) ? 0 : base,
-      pressable: !owned && !track.archived && (base != null || isAdmin(user)),
-      reason: owned ? 'owned' : track.archived ? 'archived' : base == null ? 'promo_locked' : null,
+      cost: admin ? 0 : null,
+      pressable: admin && !owned && !track.archived,
+      reason: owned ? 'owned' : track.archived ? 'archived' : admin ? null : 'admin_only',
       artistId: track.artistId,
     };
   }
 
-  /** « Presser » une carte manquante en échange de royalties (promo : un album de l'artiste complété, 1 200). */
+  /** « Presser » une carte manquante : l'admin seulement, gratuitement, pour tester. */
   function pressCard(userId, trackId) {
     const id = idOf(trackId);
     const track = id && catalog.track(id);
@@ -879,15 +870,9 @@ export function createServices(db, catalog, { bus = null } = {}) {
     if (track.archived) throw new HttpError(409, 'archived_item');
     return atomic(() => {
       const user = getUser(userId);
-      const admin = isAdmin(user);
-      const base = pressCost(track.rarity, { promoUnlocked: track.rarity === 'promo' && promoUnlocked(userId, track.artistId) });
-      // L'admin presse gratuitement, promos comprises, pour tester.
-      if (base == null && !admin) throw new HttpError(409, 'promo_locked', { artistId: track.artistId });
-      const cost = admin ? 0 : base;
+      if (!isAdmin(user)) throw new HttpError(403, 'admin_only');
       if (ownsTrack(userId, id)) throw new HttpError(409, 'already_owned');
-      if (user.royalties < cost) throw new HttpError(409, 'not_enough_royalties');
-      q('UPDATE users SET royalties = royalties - ? WHERE id = ?').run(cost, userId);
-      return { spent: cost, ...addCards(user, [{ trackId: id, variant: 'std' }], 'press') };
+      return { spent: 0, ...addCards(user, [{ trackId: id, variant: 'std' }], 'press') };
     });
   }
 
@@ -1545,7 +1530,7 @@ export function createServices(db, catalog, { bus = null } = {}) {
     // forget(userId) : oublie les statistiques et le profil gardés en cache d'un joueur (après un changement fait ailleurs).
     forget: dropStats,
     bind, atomic, getUser, isAdmin, refs, syncPacks, state, cardCounts, openPacks, openAlbumPack, openSpecialPack, buyPack, recycleDuplicates,
-    pressCard, pressInfo, promoUnlocked, addCards, refreshProgress, focusAlbums, wishlistAlbumIds, packFocus,
+    pressCard, pressInfo, addCards, refreshProgress, focusAlbums, wishlistAlbumIds, packFocus,
     gainXp, addXp, insertBooster, unlockedCosmeticIds, parseJson,
     setAvatar, setShowcase, setLang, setPrefs, publicProfile, userSummaries, summaryAlbums,
     listFriends, requestFriend, respondFriend, removeFriend, friendIds,

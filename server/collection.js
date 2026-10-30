@@ -310,6 +310,6 @@ export function routes(r, deps) {
   // Cosmétiques et moment de complétion.
   r.get('/me/cosmetics', limits.read, (req, res) => res.json(api().cosmeticsPayload(req.user.id)));
   r.get('/albums/:id/completion', limits.read, (req, res) => res.json(api().completion(req.user.id, req.params.id)));
-  // Pressage d'une carte : coût pour ce joueur (promos : un album de l'artiste complété).
+  // Pressage d'une carte : réservé à l'admin (gratuit).
   r.get('/me/press/:trackId', limits.read, (req, res) => res.json(services.pressInfo(req.user.id, req.params.trackId)));
 }

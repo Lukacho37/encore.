@@ -223,7 +223,7 @@ test('recyclage des doublons sur le catalogue importé', () => {
   assert.ok(RARITIES.every((r) => typeof services.state(uid).stats.byRarity[r].owned === 'number'));
 });
 
-test('droits d’auteur : chaque nouvelle carte rapporte des royalties, pas les doublons ni le pressage', () => {
+test('droits d’auteur : chaque nouvelle carte rapporte des royalties, pas les doublons ni le pressage (admin)', () => {
   const uid = makeUser({ packs: 3, royalties: 0 });
   const res = services.openPacks(uid, 1);
   const expected = res.cards.filter((c) => c.newTrack).reduce((n, c) => n + ECONOMY.newCardRoyalties[c.rarity], 0);
@@ -232,7 +232,10 @@ test('droits d’auteur : chaque nouvelle carte rapporte des royalties, pas les 
   assert.equal(services.getUser(uid).royalties, res.royalties);
   const missing = catalog.albumTrackIds(imported()[7].id).find((id) => !services.state(uid).cards.some((c) => c.t === id));
   db.prepare('UPDATE users SET royalties = 10000 WHERE id = ?').run(uid);
-  assert.equal(services.pressCard(uid, missing).cardRoyalties, 0);
+  // Un joueur ne presse rien (shared/rules.js) ; l'admin presse gratuitement, sans droits d'auteur.
+  assert.throws(() => services.pressCard(uid, missing), { code: 'admin_only' });
+  assert.equal(services.getUser(uid).royalties, 10000);
+  assert.equal(services.pressCard(makeUser({ admin: true }), missing).cardRoyalties, 0);
 });
 
 // ---------- recherche, pagination, booster d'album, succès, numéros de catalogue ----------

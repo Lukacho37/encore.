@@ -6,7 +6,7 @@ import { storage } from '../storage.js';
 import { registerCatalog } from '../catalogStore.js';
 import { staticCatalog } from '@shared/staticCatalog.js';
 import {
-  rollPack, rollAlbumPack, newAchievements, xpForCard, newCardRoyalties, recycleValue, pressCost, levelFromXp,
+  rollPack, rollAlbumPack, newAchievements, xpForCard, newCardRoyalties, recycleValue, levelFromXp,
   ECONOMY, BLINDTEST, SHOWCASE_SLOTS, AVATAR_COLORS, RARITY, RARITIES, packOdds, PACK_SLOTS,
   buildBlindtest, blindtestClues, blindtestPoints, blindtestReward,
   validateEmail, validatePassword, validateUsername,
@@ -470,18 +470,15 @@ function resetPityOnHit(u, cards) {
   return u.pity || 0;
 }
 
-/** Promos pressables : un album de l'artiste complété (PLAN.md 6.4). */
-const promoUnlocked = (uid, artistId) => Object.keys(achOf(uid)).some((k) => k.startsWith('album:') && ALBUM.get(k.slice(6))?.artistId === artistId);
-
-/** Ce que coûte le pressage d'une carte pour ce joueur (GET /me/press/:trackId), comme services.pressInfo. */
+/** Pressage d'une carte (GET /me/press/:trackId) : réservé à l'admin, gratuit, comme services.pressInfo. */
 function pressInfo(u, trackId) {
   const track = trackOf(idOf(trackId));
   if (!track) fail(404, 'unknown_track');
-  const base = pressCost(track.rarity, { promoUnlocked: track.rarity === 'promo' && promoUnlocked(u.id, track.artistId) });
+  const admin = isAdmin(u);
   const owned = ownedSet(u.id).has(track.id);
   return {
-    trackId: track.id, cost: isAdmin(u) ? 0 : base, pressable: !owned && (base != null || isAdmin(u)),
-    reason: owned ? 'owned' : base == null ? 'promo_locked' : null, artistId: track.artistId,
+    trackId: track.id, cost: admin ? 0 : null, pressable: admin && !owned,
+    reason: owned ? 'owned' : admin ? null : 'admin_only', artistId: track.artistId,
   };
 }
 
@@ -1170,16 +1167,10 @@ const routes = [
     const u = me();
     const track = trackOf(idOf(body.trackId));
     if (!track) fail(404, 'unknown_track');
-    const admin = isAdmin(u);
-    // Promo : pressable une fois un album de son artiste complété (1 200 royalties, PLAN.md 6.4).
-    const base = pressCost(track.rarity, { promoUnlocked: track.rarity === 'promo' && promoUnlocked(u.id, track.artistId) });
-    // L'admin presse gratuitement, promos comprises, pour tester.
-    if (base == null && !admin) fail(409, 'promo_locked', { artistId: track.artistId });
-    const cost = admin ? 0 : base;
+    // Réservé à l'admin, gratuit : un joueur n'achète jamais une carte précise (shared/rules.js).
+    if (!isAdmin(u)) fail(403, 'admin_only');
     if (ownedSet(u.id).has(track.id)) fail(409, 'already_owned');
-    if (u.royalties < cost) fail(409, 'not_enough_royalties');
-    u.royalties -= cost;
-    return { spent: cost, ...addCards(u, [{ trackId: track.id, variant: 'std' }], 'press'), state: partialState() };
+    return { spent: 0, ...addCards(u, [{ trackId: track.id, variant: 'std' }], 'press'), state: partialState() };
   }],
   ['POST', /^\/profile\/avatar$/, ({ body }) => {
     const u = me();

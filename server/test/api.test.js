@@ -79,7 +79,7 @@ test('protection CSRF', async () => {
   assert.equal(res.status, 403);
 });
 
-test('boosters, doublons, pressage et succès', async () => {
+test('boosters, doublons, pressage refusé et succès', async () => {
   const call = client();
   const s = await register(call, 'bob@example.com', 'bob');
   assert.equal(s.user.role, 'player');
@@ -108,7 +108,8 @@ test('boosters, doublons, pressage et succès', async () => {
   assert.equal(rec.body.dedupe, true);
   assert.ok((await call('GET', '/api/state')).body.cards.every((c) => c.c === 1));
 
-  // Album presque complet : presser la dernière carte déclenche le succès.
+  // Album presque complet : un joueur ne presse pas la dernière carte (réservé à l'admin) ; le booster d'album, qui
+  // tire d'abord les cartes manquantes, la donne et déclenche le succès.
   const album = TRACKS_BY_ALBUM['kind-of-blue'];
   const uid = st.user.id;
   for (const t of album.slice(1)) {
@@ -116,15 +117,15 @@ test('boosters, doublons, pressage et succès', async () => {
   }
   db.prepare('DELETE FROM cards WHERE user_id = ? AND track_id = ?').run(uid, album[0].id);
   db.prepare('UPDATE users SET royalties = 5000 WHERE id = ?').run(uid);
-  const press = await call('POST', '/api/collection/press', { trackId: album[0].id });
-  assert.equal(press.status, 200, JSON.stringify(press.body));
-  assert.ok(press.body.achievements.some((a) => a.key === 'album:kind-of-blue'));
-  assert.ok(press.body.achievements.some((a) => a.key === 'artist:miles-davis'));
-  assert.equal((await call('POST', '/api/collection/press', { trackId: album[0].id })).body.error, 'already_owned');
-  // Promo d'un artiste dont aucun album n'est complété : pas encore pressable (PLAN.md 6.4).
-  const locked = await call('POST', '/api/collection/press', { trackId: 'promo:hey-jude' });
-  assert.equal(locked.status, 409);
-  assert.equal(locked.body.error, 'promo_locked');
+  const refused = await call('POST', '/api/collection/press', { trackId: album[0].id });
+  assert.equal(refused.status, 403);
+  assert.equal(refused.body.error, 'admin_only');
+  assert.equal((await call('GET', '/api/state')).body.user.royalties, 5000, 'aucune royalty dépensée');
+  const pack = await call('POST', '/api/packs/album', { albumId: 'kind-of-blue' });
+  assert.equal(pack.status, 200, JSON.stringify(pack.body));
+  assert.ok(pack.body.achievements.some((a) => a.key === 'album:kind-of-blue'));
+  assert.ok(pack.body.achievements.some((a) => a.key === 'artist:miles-davis'));
+  assert.equal((await call('POST', '/api/collection/press', { trackId: 'promo:hey-jude' })).body.error, 'admin_only');
 
   // Avatar : pochette d'un album complété uniquement.
   assert.equal((await call('POST', '/api/profile/avatar', { avatar: 'album:discovery' })).body.error, 'avatar_locked');

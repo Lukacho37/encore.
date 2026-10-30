@@ -30,7 +30,9 @@ export default {
         title: 'Ma carte',
         since: 'Obtenue le',
         collectors: 'Collection',
-        promoHint: `Les promos ne se pressent pas${NNBSP}: on ne les trouve qu’en booster.`,
+        getHint: `Carte manquante${NNBSP}: tire-la en booster, ou obtiens-la d’un autre joueur.`,
+        getTrades: 'Échanger avec un ami',
+        getAuctions: 'Enchères',
       },
       listen: {
         title: 'Écouter',
@@ -83,7 +85,9 @@ export default {
         title: 'My card',
         since: 'First pulled',
         collectors: 'Collectors',
-        promoHint: 'Promos can’t be pressed: you only find them in packs.',
+        getHint: 'Missing card: pull it from a pack, or get it from another player.',
+        getTrades: 'Trade with a friend',
+        getAuctions: 'Auctions',
       },
       listen: {
         title: 'Listen',

@@ -25,14 +25,13 @@ export const RARITIES = ['common', 'uncommon', 'rare', 'super', 'ultra', 'legend
 
 export const RARITY = {
   // Couleurs calquées sur ⚪ 🟢 🔵 🟣 🟠 ⭐ 🟥
-  common: { rank: 0, pips: 1, color: '#e6e1ec', xp: 5, recycle: 5, press: 40 },
-  uncommon: { rank: 1, pips: 2, color: '#7fd36b', xp: 10, recycle: 10, press: 80 },
-  rare: { rank: 2, pips: 3, color: '#4f9dff', xp: 20, recycle: 25, press: 200 },
-  super: { rank: 3, pips: 4, color: '#b17dff', xp: 40, recycle: 50, press: 400 },
-  ultra: { rank: 4, pips: 5, color: '#ff8b3d', xp: 80, recycle: 100, press: 800 },
-  legendary: { rank: 5, pips: 6, color: '#ffd35a', xp: 150, recycle: 250, press: 1600 },
-  // Les promos ne peuvent pas être pressées : on ne les obtient qu'en booster.
-  promo: { rank: 6, pips: 0, color: '#ef3b3b', xp: 100, recycle: 150, press: null },
+  common: { rank: 0, pips: 1, color: '#e6e1ec', xp: 5, recycle: 5 },
+  uncommon: { rank: 1, pips: 2, color: '#7fd36b', xp: 10, recycle: 10 },
+  rare: { rank: 2, pips: 3, color: '#4f9dff', xp: 20, recycle: 25 },
+  super: { rank: 3, pips: 4, color: '#b17dff', xp: 40, recycle: 50 },
+  ultra: { rank: 4, pips: 5, color: '#ff8b3d', xp: 80, recycle: 100 },
+  legendary: { rank: 5, pips: 6, color: '#ffd35a', xp: 150, recycle: 250 },
+  promo: { rank: 6, pips: 0, color: '#ef3b3b', xp: 100, recycle: 150 },
 };
 
 export const PACK_SIZE = 5;
@@ -64,8 +63,6 @@ export const PITY_AFTER = 10;
 export const PITY_SLOT = { ultra: 11, legendary: 5, promo: 6 };
 /** Carte « ultra ou mieux » : elle remet le compteur de pitié à zéro. */
 export const isHit = (rarity) => rarity === 'ultra' || rarity === 'legendary' || rarity === 'promo';
-// Promos pressables (PLAN.md 6.4) : 1 200 royalties, une fois un album de l'artiste complété.
-export const PROMO_PRESS_COST = 1200;
 // Booster d'album : poids de tirage par rareté (les cartes manquantes passent toujours avant celles déjà possédées).
 export const ALBUM_PACK_WEIGHTS = { common: 8, uncommon: 6, rare: 4, super: 2.5, ultra: 1.5, legendary: 1, promo: 1 };
 export const HOLO_CHANCE_TOP = 0.12; // légendaires et promos
@@ -360,14 +357,9 @@ export function xpForCard(rarity, isNew) {
   return isNew ? base : Math.round(base * ECONOMY.duplicateXpRatio);
 }
 
-/**
- * Coût pour « presser » (fabriquer) une carte manquante ; null si impossible. Une promo se presse seulement une fois
- * un album de son artiste complété (`promoUnlocked`, vérifié par le serveur).
- */
-export function pressCost(rarity, { promoUnlocked = false } = {}) {
-  if (rarity === 'promo') return promoUnlocked ? PROMO_PRESS_COST : null;
-  return RARITY[rarity]?.press ?? null;
-}
+// Presser (fabriquer) une carte manquante : réservé à l'admin, gratuitement, pour tester (promos comprises). Un joueur
+// n'achète jamais une carte précise : il la tire en booster, la gagne au Comptoir avec ses doublons ou l'obtient d'un
+// autre joueur (échange entre amis, enchères : server/market.js).
 
 export function albumReward(trackCount) {
   return { royalties: trackCount * ECONOMY.albumRewardPerTrack, xp: trackCount * ECONOMY.albumXpPerTrack };

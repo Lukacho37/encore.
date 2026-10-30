@@ -1,6 +1,6 @@
 // Performance (PLAN.md 7.3 ; critères P0.6 et P0.11). Deux volets :
 //   1. Plans de requêtes : toutes les requêtes préparées par les chemins les plus fréquents d'un joueur (état, boosters,
-//      pressage, profil, amis, notes, réglages, blind test) passent par un index : aucun parcours complet (SCAN) d'une
+//      profil, amis, notes, réglages, blind test) passent par un index : aucun parcours complet (SCAN) d'une
 //      table du jeu. Vérifié sur une base neuve (sans statistiques) et, si PERF_DB est défini, sur la base peuplée.
 //   2. Avec PERF_DB (copie de design/schema-proto/old.db : 5 000 joueurs, 786 000 cartes, 341 000 notes) : profil du
 //      plus gros collectionneur (60 000 cartes, 3 000 vinyles) < 50 ms, profil d'un joueur ordinaire < 10 ms, réponse
@@ -19,7 +19,6 @@ import { startApp, signupVerified, api } from './helpers.js';
 const { openDb } = await import('../db.js');
 const { createCatalog } = await import('../catalog.js');
 const { createServices } = await import('../services.js');
-const { pressCost } = await import('../../shared/rules.js');
 const { packCollection, PACK_FROM } = await import('../services.js');
 const { unpackState } = await import('../../client/src/state/mergeState.js');
 
@@ -84,8 +83,6 @@ test('plans de requêtes : les chemins fréquents d’un joueur n’ont aucun pa
       await call(p, 'GET', '/state');
       await call(p, 'POST', '/packs/open', {});
       await call(p, 'POST', '/packs/album', { albumId: 'discovery' });
-      const missing = app.catalog.albumTracks('thriller').find((t) => pressCost(t.rarity) != null);
-      await call(p, 'POST', '/collection/press', { trackId: missing.id });
       await call(p, 'POST', '/shop/buy-pack');
       await call(p, 'POST', '/profile/settings', { prefs: { listen: 'spotify' } });
       await call(p, 'POST', '/profile/showcase', { slots: [] });

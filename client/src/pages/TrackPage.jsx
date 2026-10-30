@@ -15,14 +15,14 @@ import Card, { PopIcon, RarityGem } from '../components/Card.jsx';
 import CoverArt from '../components/CoverArt.jsx';
 import ListenPanel, { directLink, listenLinks } from '../components/ListenPanel.jsx';
 import { Celebration } from '../components/Achievements.jsx';
-import { Avatar, Icon, Progress, RoyaltyIcon, useToast } from '../components/ui.jsx';
+import { Avatar, Icon, Progress, useToast } from '../components/ui.jsx';
 import { RatingValue, RatingsSection, itemPath, useItemRatings } from '../components/Rating.jsx';
 import { MissingState, PressDialog, Tracklist } from './AlbumPage.jsx';
 import NotFound from './NotFound.jsx';
 import { pageExists } from '../routes.jsx';
 import { RARITY, SHOWCASE_SLOTS } from '@shared/rules.js';
 import { post } from '../api.js';
-import { usePressCost, PROMO_PRESS_COST } from '../components/game/press.js';
+import { usePressCost } from '../components/game/press.js';
 import { VernirButton } from '../components/game/VernirButton.jsx';
 import { AddToListButton } from '../components/lists/AddToList.jsx';
 import { Discussions } from '../components/social/Discussions.jsx';
@@ -67,7 +67,7 @@ function BackLink({ to, label }) {
 /** Ma carte : exemplaires, date, popularité, qui la possède ; « Presser · N » si elle manque, « Exposer » sinon. */
 function MyCard({ page, onPress }) {
   const { t, date, error } = useI18n();
-  const { user, isAdmin, owned, applyState } = useGame();
+  const { user, owned, applyState } = useGame();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const { track, owners, albumCompletedBy } = page;
@@ -166,12 +166,13 @@ function MyCard({ page, onPress }) {
       <div className="trk-mine__actions">
         {!mine && cost != null && (
           <button type="button" className="btn btn--ghost" onClick={() => onPress(track.id)}>
-            <Icon name="press" /> {t('album.press')} · {isAdmin ? t('album.pressFreeShort') : <><RoyaltyIcon size={14} /> <span className="mono">{cost}</span></>}
+            <Icon name="press" /> {t('album.press')} · {t('album.pressFreeShort')}
           </button>
         )}
-        {!mine && cost == null && !press.loading && (
+        {/* Carte manquante : où l'obtenir (les joueurs ne l'achètent jamais à l'unité). */}
+        {!mine && cost == null && (
           <p className="small muted">
-            {press.locked ? t('game.press.promoLocked', { artist: track.artist, cost: PROMO_PRESS_COST }) : t('track.mine.promoHint')}
+            {t('track.mine.getHint')} <Link to="/trades" className="link-btn">{t('track.mine.getTrades')}</Link> · <Link to="/auctions" className="link-btn">{t('track.mine.getAuctions')}</Link>
           </p>
         )}
         {mine && (

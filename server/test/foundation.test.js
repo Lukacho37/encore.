@@ -21,7 +21,6 @@ const { CSP, securityHeaders } = await import('../app.js');
 const { devMailboxMode, isLocalUrl } = await import('../config.js');
 const { createJobs, nextRunAt } = await import('../jobs.js');
 const { createQuota, hashPassword, verifyPassword, needsRehash, parseCookies, SCRYPT_COST, dummyHash } = await import('../security.js');
-const { pressCost } = await import('../../shared/rules.js');
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 const call = (who, method, p, body) => api(app.base, typeof who === 'string' ? who : who?.cookie ?? '', method, p, body);
@@ -101,10 +100,6 @@ test('état partiel : après une suite d’actions, l’état fusionné par le s
   const done = s.achievements.find((a) => a.key === 'album:discovery');
   assert.ok(done && done.rank >= 1, 'album complété avec son rang');
   await check('boosters d’album');
-
-  const missing = app.catalog.albumTracks('abbey-road').find((t) => pressCost(t.rarity) != null && !s.cards.some((c) => c.t === t.id));
-  await apply('POST', '/collection/press', { trackId: missing.id });
-  await check('pressage');
 
   await apply('PUT', '/ratings/album/discovery', { score: 8 });
   await apply('PUT', `/ratings/track/${encodeURIComponent('discovery:01')}`, { score: 9 });
@@ -485,14 +480,14 @@ test('bus : événements émis après la validation de la transaction, un abonn�
   const quiet = console.error;
   console.error = () => {};
   try {
-    // Toutes les cartes de « 21 » sauf une, puis le pressage de la dernière : album complété.
+    // Toutes les cartes de « 21 » sauf une, puis un booster d'album (manquantes d'abord) : album complété.
     const tracks = app.catalog.albumTracks('21');
-    const last = tracks.find((t) => pressCost(t.rarity) != null);
+    const last = tracks[0];
     const ins = db.prepare("INSERT INTO cards (user_id, track_id, variant, count, first_at) VALUES (?, ?, 'std', 1, ?)");
     for (const t of tracks) if (t.id !== last.id) ins.run(p.user.id, t.id, Date.now());
     services.refreshProgress(p.user.id, ['21']);
     db.prepare('UPDATE users SET unique_cards = ?, royalties = 10000, bonus_packs = 3 WHERE id = ?').run(tracks.length - 1, p.user.id);
-    const pressed = await call(p, 'POST', '/collection/press', { trackId: last.id });
+    const pressed = await call(p, 'POST', '/packs/album', { albumId: '21' });
     assert.equal(pressed.status, 200, 'l’action réussit malgré l’abonné en panne');
     assert.equal(pressed.body.achievements.find((a) => a.key === 'album:21')?.rank, 1);
     const opened = await call(p, 'POST', '/packs/open', {});
@@ -508,13 +503,13 @@ test('bus : événements émis après la validation de la transaction, un abonn�
   assert.ok(events.every((e) => e.inTx === false), 'aucun abonné appelé pendant la transaction');
   const added = events.filter((e) => e.name === 'cards.added');
   assert.equal(added.length, 2);
-  assert.equal(added[0].payload.source, 'press');
+  assert.equal(added[0].payload.source, 'album-pack');
   assert.ok(added[0].payload.albumDeltas.some((d) => d.albumId === '21' && d.after === d.total));
   assert.ok(Array.isArray(added[0].payload.artistDeltas));
   for (const k of ['userId', 'source', 'cards', 'albumDeltas', 'artistDeltas', 'achievements', 'levelBefore', 'levelAfter']) assert.ok(k in added[1].payload, k);
   const completed = events.find((e) => e.name === 'album.completed');
   assert.deepEqual({ ...completed.payload, at: 0 }, { userId: p.user.id, albumId: '21', rank: 1, at: 0 });
-  assert.deepEqual(events.find((e) => e.name === 'pack.opened').payload, { userId: p.user.id, source: 'pack', count: 1 });
+  assert.deepEqual(events.find((e) => e.name === 'pack.opened' && e.payload.source === 'pack').payload, { userId: p.user.id, source: 'pack', count: 1 });
   assert.ok(events.find((e) => e.name === 'friend.requested').payload.requestId > 0);
   assert.equal(events.find((e) => e.name === 'friend.accepted').payload.userId, p.user.id);
 });

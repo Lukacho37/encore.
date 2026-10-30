@@ -23,7 +23,7 @@ import { DeluxeLine } from '../components/game/VernirButton.jsx';
 import { RatingInput, RatingValue, RatingsSection, itemPath, useItemRatings } from '../components/Rating.jsx';
 import { getAlbum, useAlbumDetail, useApi, useTrack } from '../state/catalog.js';
 import { useBoosterFlow } from '../state/boosterFlow.js';
-import { ECONOMY, albumReward, pressCost } from '@shared/rules.js';
+import { ECONOMY, albumReward } from '@shared/rules.js';
 import { post, api } from '../api.js';
 import { sound } from '../sound.js';
 import { storage } from '../storage.js';
@@ -42,14 +42,11 @@ import '../styles/studio.css';
 
 export function PressDialog({ trackId, onClose, onDone }) {
   const { t, error } = useI18n();
-  const { user, applyState, isAdmin } = useGame();
+  const { applyState } = useGame();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const track = useTrack(trackId || null);
-  // Coût lu par usePressCost (P1-D) : une promo se presse 1 200 royalties une fois un album de son artiste complété.
-  const press = usePressCost(track);
-  const cost = !track || isAdmin ? 0 : press.cost ?? pressCost(track.rarity) ?? 0;
-  const missing = Math.max(0, cost - (user?.royalties || 0));
+  // Pressage réservé à l'admin, gratuit (shared/rules.js) : les joueurs ne voient jamais cette fenêtre.
 
   const confirm = async () => {
     setBusy(true);
@@ -72,12 +69,11 @@ export function PressDialog({ trackId, onClose, onDone }) {
       {track && (
         <div className="press">
           <div className="press__card"><Card trackId={trackId} ghost /></div>
-          <p>{t('album.pressBody', { title: track.title, n: cost })}</p>
-          {missing > 0 && <p className="form-error">{t('album.pressMissing', { n: missing })}</p>}
+          <p>{t('album.pressBody', { title: track.title })}</p>
           <div className="press__actions">
             <button type="button" className="btn btn--ghost" onClick={onClose}>{t('common.cancel')}</button>
-            <button type="button" className="btn btn--primary" onClick={confirm} disabled={busy || missing > 0} data-autofocus>
-              <Icon name="press" /> {t('album.press')} · {isAdmin ? t('album.pressFree') : <><RoyaltyIcon size={14} /> <span className="mono">{cost}</span></>}
+            <button type="button" className="btn btn--primary" onClick={confirm} disabled={busy} data-autofocus>
+              <Icon name="press" /> {t('album.press')} · {t('album.pressFree')}
             </button>
           </div>
         </div>
@@ -98,7 +94,7 @@ export function TrackGrid({ tracks, onPress }) {
           <div key={tr.id} className="card-cell">
             <Card trackId={tr.id} variant={mine?.holo ? 'holo' : 'std'} ghost={!mine} count={mine ? mine.std + mine.holo : 0}
               onClick={() => openCard(tr.id)} />
-            {/* « Presser · N » (P1-D) : même rendu, coût réel (promo pressable après un album de l'artiste complété). */}
+            {/* « Presser · Gratuit » : admin seulement (PressButton ne rend rien pour un joueur). */}
             {!mine && onPress && <PressButton track={tr} onPress={onPress} />}
           </div>
         );
@@ -123,26 +119,22 @@ export function TrackGridSkeleton({ count = 12 }) {
  * à la page du morceau. `trackRatings` : `tracks` des notes de l'album ({ averages: { id: { avg, count } } }).
  * `currentId` : morceau mis en avant (page morceau, « Autres morceaux de l'album »).
  */
-/**
- * Pastille « Presser » d'une ligne de la tracklist : même coût que PressButton (usePressCost, P1-D), donc une promo
- * débloquée (un album de son artiste complété) se presse aussi depuis la tracklist ; rien si la carte n'est pas pressable.
- */
+/** Pastille « Presser » d'une ligne de la tracklist : admin seulement, comme PressButton (usePressCost). */
 function InlinePress({ track, onPress }) {
   const { t } = useI18n();
-  const { isAdmin } = useGame();
   const { cost } = usePressCost(track);
   if (cost == null || !onPress) return null;
   return (
     <button type="button" className="press-btn press-btn--inline" onClick={() => onPress(track.id)}
       aria-label={`${t('album.press')} · ${track.title}`}>
-      <Icon name="press" size={13} /> {isAdmin ? t('album.pressFree') : <span className="mono">{cost}</span>}
+      <Icon name="press" size={13} /> {t('album.pressFree')}
     </button>
   );
 }
 
 export function Tracklist({ tracks, trackRatings, onPress, currentId = null }) {
   const { t, error } = useI18n();
-  const { owned, ratings, isAdmin } = useGame();
+  const { owned, ratings } = useGame();
   const toast = useToast();
   const pending = useRef({});
   const [resetKey, setResetKey] = useState(0);
@@ -294,17 +286,14 @@ function AlbumSkeleton() {
 }
 
 /**
- * « Presser les N manquantes » : toutes les cartes manquantes de l'album, pressées une par une (POST
- * /collection/press, le serveur vérifie le prix et les royalties de chacune), dans l'ordre de l'album ; s'arrête à la
- * première erreur (royalties épuisées…). L'admin presse gratuitement.
+ * « Presser les N manquantes » (admin seulement, gratuit) : toutes les cartes manquantes de l'album, pressées une par
+ * une (POST /collection/press), dans l'ordre de l'album ; s'arrête à la première erreur.
  */
 function PressAllDialog({ open, tracks, onClose, onDone }) {
   const { t, num, error } = useI18n();
-  const { user, applyState, isAdmin } = useGame();
+  const { applyState } = useGame();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
-  const total = isAdmin ? 0 : tracks.reduce((n, tr) => n + (pressCost(tr.rarity) ?? 0), 0);
-  const missing = Math.max(0, total - (user?.royalties || 0));
   const confirm = async () => {
     setBusy(true);
     let done = 0;
@@ -330,12 +319,11 @@ function PressAllDialog({ open, tracks, onClose, onDone }) {
   return (
     <Modal open={open} onClose={busy ? undefined : onClose} title={t('studio.album.pressAllTitle')} className="modal--narrow">
       <div className="press st-pressall">
-        <p>{isAdmin ? t('studio.album.pressAllFree', { n: tracks.length }) : t('studio.album.pressAllBody', { n: tracks.length, cost: num(total) })}</p>
-        {missing > 0 && <p className="form-error">{t('studio.album.pressAllMissing', { n: num(missing) })}</p>}
+        <p>{t('studio.album.pressAllFree', { n: num(tracks.length) })}</p>
         <div className="press__actions">
           <button type="button" className="btn btn--ghost" onClick={onClose} disabled={busy}>{t('common.cancel')}</button>
-          <button type="button" className="btn btn--primary" onClick={confirm} disabled={busy || missing > 0} data-autofocus data-press-all-confirm="">
-            {busy ? <Spinner /> : <Icon name="press" />} {t('album.press')} · {isAdmin ? t('album.pressFree') : <><RoyaltyIcon size={14} /> <span className="mono">{num(total)}</span></>}
+          <button type="button" className="btn btn--primary" onClick={confirm} disabled={busy} data-autofocus data-press-all-confirm="">
+            {busy ? <Spinner /> : <Icon name="press" />} {t('album.press')} · {t('album.pressFree')}
           </button>
         </div>
       </div>
@@ -343,17 +331,15 @@ function PressAllDialog({ open, tracks, onClose, onDone }) {
   );
 }
 
-/** Actions de l'en-tête : Presser les manquantes · Rechercher (liste d'envies) · Ajouter à une liste · Partager. */
+/** Actions de l'en-tête : Presser les manquantes (admin) · Rechercher (liste d'envies) · Ajouter à une liste · Partager. */
 function AlbumActions({ album, missing, complete, onPressAll }) {
-  const { t, num } = useI18n();
-  const { isAdmin } = useGame();
-  const cost = isAdmin ? 0 : missing.reduce((n, tr) => n + (pressCost(tr.rarity) ?? 0), 0);
+  const { t } = useI18n();
   return (
     <div className="st-album-actions" role="group" aria-label={t('studio.album.actions')}>
       {missing.length > 0 && (
         <button type="button" className="btn btn--ghost btn--sm" onClick={onPressAll} data-press-all={missing.length}>
           <Icon name="press" size={16} /> {t('studio.album.pressMissing', { n: missing.length })}
-          <span className="st-album-actions__cost">· {isAdmin ? t('album.pressFreeShort') : <><RoyaltyIcon size={13} /> <span className="mono">{num(cost)}</span></>}</span>
+          <span className="st-album-actions__cost">· {t('album.pressFreeShort')}</span>
         </button>
       )}
       <WishlistToggle albumId={album.id} />
@@ -512,11 +498,11 @@ function AlbumView({ id }) {
   const genre = album.genre ? t(`genre.${album.genre}`) : null;
   const eyebrow = [album.code, genre && genre !== `genre.${album.genre}` ? genre : null, album.year].filter(Boolean).join(' · ');
   const mastered = achievements.has(`artist:${album.artistId}`);
-  // Cartes manquantes pressables (cartes d'album : barème de shared/rules.js), dans l'ordre de l'album.
+  // Cartes manquantes pressables (admin seulement, gratuit : shared/rules.js), dans l'ordre de l'album.
   // Album archivé (fournisseur détaché, P2-C) : plus de booster d'album ni de pressage (le serveur les refuse, 409
   // archived_item) ; la page reste ouverte avec la collection, les notes et les listes.
   const archived = !!album.archived;
-  const missing = tracks && !archived ? tracks.filter((tr) => !owned.has(tr.id) && (isAdmin || pressCost(tr.rarity) != null)) : [];
+  const missing = tracks && !archived ? tracks.filter((tr) => isAdmin && !owned.has(tr.id)) : [];
   const chooseView = (v) => {
     setView(v);
     storage.set('albummania.albumView', v);

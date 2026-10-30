@@ -1,12 +1,12 @@
 // Jeu de collection (PLAN.md 4.2.5 et 6, chantier P1-D) : albums recherchés et leurs places par niveau, partage du
-// ciblage des boosters (statistiques sur 2 000 boosters), pitié douce, promos ciblées et pressables, rareté au tirage
+// ciblage des boosters (statistiques sur 2 000 boosters), pitié douce, promos ciblées, pressage réservé à l'admin, rareté au tirage
 // (pulled_rarity), paliers de niveau, boosters spéciaux et leurs chances, cosmétiques, moment de complétion
 // (Pressage n° sous des complétions simultanées).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startApp, signupVerified, api } from './helpers.js';
 import {
-  rollPack, isHit, PITY_AFTER, WISHLIST_FOCUS, ADVANCED_FOCUS, FOCUS_CHANCE, PROMO_FOCUS, PROMO_PRESS_COST, wishlistMax,
+  rollPack, isHit, PITY_AFTER, WISHLIST_FOCUS, ADVANCED_FOCUS, FOCUS_CHANCE, PROMO_FOCUS, wishlistMax,
 } from '../../shared/rules.js';
 import { staticCatalog } from '../../shared/staticCatalog.js';
 import { parseBadgeKey, rewardFor } from '../../shared/badges.js';
@@ -178,31 +178,21 @@ test('promos : la moitié des promos tirées viennent des artistes du joueur', (
   assert.deepEqual(services.packFocus(uid).promoArtistIds().sort(), ['nirvana', 'the-beatles']);
 });
 
-test('promos pressables : 409 promo_locked, puis 1 200 royalties une fois un album de l’artiste complété', async () => {
+test('pressage réservé à l’admin : un joueur n’achète aucune carte précise, promo ou carte d’album', async () => {
   const dan = await signupVerified(app, { username: 'press_dan' });
   db.prepare('UPDATE users SET royalties = 5000 WHERE id = ?').run(dan.user.id);
-  const promo = staticCatalog.promos({ limit: 100 }).items.find((t) => t.artistId === 'nirvana');
-  const info = (await api(app.base, dan.cookie, 'GET', `/me/press/${enc(promo.id)}`)).body;
-  assert.deepEqual({ cost: info.cost, pressable: info.pressable, reason: info.reason }, { cost: null, pressable: false, reason: 'promo_locked' });
-  const locked = await api(app.base, dan.cookie, 'POST', '/collection/press', { trackId: promo.id });
-  assert.equal(locked.status, 409);
-  assert.equal(locked.body.error, 'promo_locked');
   services.adminCompleteCollection(dan.user.id, 'nevermind');
-  const open = (await api(app.base, dan.cookie, 'GET', `/me/press/${enc(promo.id)}`)).body;
-  assert.equal(open.cost, PROMO_PRESS_COST);
-  assert.equal(open.pressable, true);
-  const pressed = await api(app.base, dan.cookie, 'POST', '/collection/press', { trackId: promo.id });
-  assert.equal(pressed.status, 200, JSON.stringify(pressed.body));
-  assert.equal(pressed.body.spent, PROMO_PRESS_COST);
-  // Presser la promo complète la discographie de Nirvana (son seul album et sa promo) : médaille « Maître » argent,
-  // +100 royalties (PLAN.md 5.7, chantier P1-F). Les royalties des médailles gagnées s'ajoutent au solde attendu.
-  const badgeRoyalties = db.prepare("SELECT key FROM achievements WHERE user_id = ? AND key >= 'badge:' AND key < 'badge;'").all(dan.user.id)
-    .reduce((sum, r) => {
-      const b = parseBadgeKey(r.key);
-      return sum + (b ? rewardFor(b.family, b.tier).royalties : 0);
-    }, 0);
-  assert.equal(pressed.body.state.user.royalties, 5000 - PROMO_PRESS_COST + pressed.body.royalties + badgeRoyalties);
-  assert.equal((await api(app.base, dan.cookie, 'GET', `/me/press/${enc(promo.id)}`)).body.reason, 'owned');
+  const promo = staticCatalog.promos({ limit: 100 }).items.find((t) => t.artistId === 'nirvana');
+  const card = staticCatalog.albumTracks('abbey-road')[0];
+  for (const t of [promo, card]) {
+    const info = (await api(app.base, dan.cookie, 'GET', `/me/press/${enc(t.id)}`)).body;
+    assert.deepEqual({ cost: info.cost, pressable: info.pressable, reason: info.reason }, { cost: null, pressable: false, reason: 'admin_only' });
+    const refused = await api(app.base, dan.cookie, 'POST', '/collection/press', { trackId: t.id });
+    assert.equal(refused.status, 403);
+    assert.equal(refused.body.error, 'admin_only');
+  }
+  assert.equal(services.getUser(dan.user.id).royalties, 5000);
+  assert.ok(!services.state(dan.user.id).cards.some((c) => c.t === promo.id || c.t === card.id));
 });
 
 // ---------- pitié douce, rareté au tirage ----------
@@ -413,12 +403,12 @@ test('Pressage n° : rangs distincts sous des complétions simultanées ; compl�
   // Les tests précédents (centaines de boosters sur les 20 albums de la graine) ont pu compléter l'album avant eux.
   const before = db.prepare("SELECT COUNT(*) AS n FROM achievements WHERE key = 'album:exodus'").get().n;
   const expected = [1, 2, 3, 4, 5, 6].map((n) => before + n);
-  const missing = [];
   for (const p of players) {
     db.prepare('UPDATE users SET royalties = 10000 WHERE id = ?').run(p.user.id);
-    missing.push(services.adminAlmostAlbum(p.user.id, 'exodus').missing);
+    services.adminAlmostAlbum(p.user.id, 'exodus');
   }
-  const results = await Promise.all(players.map((p, i) => api(app.base, p.cookie, 'POST', '/collection/press', { trackId: missing[i] })));
+  // Booster d'album : les cartes manquantes passent avant, il complète l'album de chacun.
+  const results = await Promise.all(players.map((p) => api(app.base, p.cookie, 'POST', '/packs/album', { albumId: 'exodus' })));
   const ranks = results.map((r) => {
     assert.equal(r.status, 200, JSON.stringify(r.body));
     const ach = r.body.achievements.find((a) => a.key === 'album:exodus');

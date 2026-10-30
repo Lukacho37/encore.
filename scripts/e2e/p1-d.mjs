@@ -194,9 +194,9 @@ for (const [v, viewport] of Object.entries(VIEWPORTS)) {
     }
     await checkNoHorizontalScroll(page, `${v} page d'album`);
 
-    // Promo d'un artiste dont aucun album n'est complété : pas encore pressable.
+    // Pressage réservé à l'admin : un joueur n'achète aucune carte précise.
     const promo = await apiCall(page, 'GET', `/me/press/${encodeURIComponent('promo:hey-jude')}`);
-    if (promo.body?.reason !== 'promo_locked' || promo.body?.cost !== null) fail(`[${v}] promo verrouillée attendue : ${JSON.stringify(promo.body)}`);
+    if (promo.body?.reason !== 'admin_only' || promo.body?.cost !== null) fail(`[${v}] pressage refusé attendu : ${JSON.stringify(promo.body)}`);
   });
 
   // ---------- admin : album complété avec l'outil admin, moment de complétion, Pressage n° ----------

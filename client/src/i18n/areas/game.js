@@ -90,10 +90,6 @@ export default {
         none: 'Personne ne l’a encore complété : le Pressage n° 1 est à prendre.',
         friendsLabel: 'Tes amis qui l’ont complété',
       },
-      press: {
-        promoLocked: 'Complète un album de {artist} pour pouvoir presser cette promo ({cost} royalties).',
-        promoLockedShort: 'Promo verrouillée',
-      },
       vinylColor: 'Vinyle {name}',
     },
     wishlist: {
@@ -121,7 +117,7 @@ export default {
       title: { disquaire: 'Disquaire de quartier', legende: 'Légende du bac' },
     },
     rarityGuide: {
-      promoBody: 'Les promos n’apparaissent que dans la 5e carte d’un booster. Une fois sur deux ({p}), la promo tirée vient d’un artiste dont tu as des cartes ou un album recherché. Une promo se presse pour {cost} royalties dès que tu as complété un album de son artiste. Elles comptent pour devenir Maître d’un artiste.',
+      promoBody: 'Les promos n’apparaissent que dans la 5e carte d’un booster. Une fois sur deux ({p}), la promo tirée vient d’un artiste dont tu as des cartes ou un album recherché. Elles comptent pour devenir Maître d’un artiste.',
       focusTitle: 'Boosters ciblés',
       focusBody: 'Pour qu’un album se complète vraiment parmi {albums} albums, chaque carte d’un booster (hors promo) a {w} de chances de viser une carte qui te manque dans tes albums recherchés, et {a} de venir d’un de tes {n} albums commencés les plus avancés. Sans album recherché, ces {f} vont aux albums commencés.',
       wishlistSlots: 'Albums recherchés : {n} places, 4 de plus aux niveaux {levels}.',
@@ -146,20 +142,11 @@ export default {
       booster_opened: 'Ce booster a déjà été ouvert.',
       album_required: 'Choisis d’abord l’album de ce booster.',
       not_choice_booster: 'L’album de ce booster est déjà fixé.',
-      promo_locked: 'Complète un album de cet artiste pour pouvoir presser sa promo.',
       invalid_theme: 'Ce type de booster n’existe pas.',
       cosmetic_locked: 'Ce cosmétique n’est pas encore débloqué.',
       invalid_cosmetic: 'Ce cosmétique n’existe pas.',
       unknown_album: 'Cet album n’est pas (ou plus) au catalogue.',
       unknown_track: 'Cette carte n’est pas (ou plus) au catalogue.',
-      // Précise la clé de fr.js (les promos se pressent désormais, PLAN.md 6.4).
-      not_pressable: 'Cette promo ne se presse qu’une fois un album de son artiste complété.',
-    },
-    // Précise la page morceau (zone track, sans chantier en P1) : les promos se pressent désormais.
-    track: {
-      mine: {
-        promoHint: 'Une promo se presse pour 1 200 royalties dès que tu as complété un album de son artiste ; sinon, on la trouve en booster.',
-      },
     },
   },
   en: {
@@ -248,10 +235,6 @@ export default {
         none: 'Nobody has completed it yet: pressing #1 is up for grabs.',
         friendsLabel: 'Your friends who completed it',
       },
-      press: {
-        promoLocked: 'Complete an album by {artist} to press this promo ({cost} royalties).',
-        promoLockedShort: 'Promo locked',
-      },
       vinylColor: '{name} vinyl',
     },
     wishlist: {
@@ -279,7 +262,7 @@ export default {
       title: { disquaire: 'Neighbourhood record dealer', legende: 'Crate-digging legend' },
     },
     rarityGuide: {
-      promoBody: 'Promos only show up as the 5th card of a pack. One time in two ({p}), the promo drawn comes from an artist you have cards of or a wanted album by. A promo can be pressed for {cost} royalties once you’ve completed an album by its artist. They count towards mastering an artist.',
+      promoBody: 'Promos only show up as the 5th card of a pack. One time in two ({p}), the promo drawn comes from an artist you have cards of or a wanted album by. They count towards mastering an artist.',
       focusTitle: 'Targeted packs',
       focusBody: 'So that an album really gets completed among {albums} albums, each card in a pack (except promos) has a {w} chance to target a card you’re missing from your wanted albums, and {a} to come from one of your {n} most advanced started albums. Without a wanted album, the full {f} goes to started albums.',
       wishlistSlots: 'Wanted albums: {n} slots, 4 more at levels {levels}.',
@@ -304,18 +287,11 @@ export default {
       booster_opened: 'This pack has already been opened.',
       album_required: 'Pick this pack’s album first.',
       not_choice_booster: 'This pack’s album is already set.',
-      promo_locked: 'Complete an album by this artist to press their promo.',
       invalid_theme: 'This kind of pack doesn’t exist.',
       cosmetic_locked: 'This cosmetic isn’t unlocked yet.',
       invalid_cosmetic: 'This cosmetic doesn’t exist.',
       unknown_album: 'This album isn’t (or is no longer) in the catalogue.',
       unknown_track: 'This card isn’t (or is no longer) in the catalogue.',
-      not_pressable: 'This promo can only be pressed once you’ve completed an album by its artist.',
-    },
-    track: {
-      mine: {
-        promoHint: 'A promo can be pressed for 1,200 royalties once you’ve completed an album by its artist; otherwise, find it in packs.',
-      },
     },
   },
 };

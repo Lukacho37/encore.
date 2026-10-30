@@ -665,8 +665,10 @@ function addCards(u, cards, source) {
     const newVariant = !mine[k];
     mine[k] = { count: (mine[k]?.count || 0) + 1, at: mine[k]?.at || now, r: mine[k]?.r || rarity };
     owned.add(trackId);
-    xp += xpForCard(rarity, newTrack);
-    if (newTrack && source !== 'press') cardRoyalties += newCardRoyalties(rarity);
+    // Carte reçue par échange ou aux enchères : ni XP ni royalties (comme services.addCards).
+    const rewarded = source !== 'trade' && source !== 'auction';
+    if (rewarded) xp += xpForCard(rarity, newTrack);
+    if (newTrack && source !== 'press' && rewarded) cardRoyalties += newCardRoyalties(rarity);
     return { trackId, variant, rarity, newTrack, newVariant };
   });
   const ach = achOf(u.id);
@@ -1114,6 +1116,8 @@ const routes = [
     const admin = isAdmin(u);
     const n = Math.floor(Number(body.count) || 1);
     if (n < 1 || n > (admin ? 50 : 1)) fail(400, 'invalid_count');
+    const genre = body.genre == null || body.genre === '' || body.genre === 'all' ? null : body.genre;
+    if (genre && !THEME_GENRES.includes(genre)) fail(400, 'invalid_genre');
     if (!admin) {
       if (u.packs + u.bonusPacks < 1) fail(409, 'no_packs');
       if (u.packs > 0) {
@@ -1122,9 +1126,9 @@ const routes = [
       } else u.bonusPacks -= 1;
     }
     // Ciblage (liste d'envies, albums avancés, promos de ses artistes) et pitié douce, comme le serveur.
-    const { packs, pity } = rollSeries(n, u.pity || 0, packFocus(u.id));
+    const { packs, pity } = rollSeries(n, u.pity || 0, genre ? { theme: { genres: [genre] } } : packFocus(u.id));
     u.pity = pity;
-    return { packs: packs.map((p) => p.length), ...addCards(u, packs.flat(), admin ? 'admin-pack' : 'pack'), pity, state: partialState() };
+    return { packs: packs.map((p) => p.length), ...addCards(u, packs.flat(), admin ? 'admin-pack' : 'pack'), pity, genre, state: partialState() };
   }],
   // Booster d'album : 5 cartes de l'album choisi, en priorité celles qui manquent ; payé en royalties (gratuit pour l'admin).
   ['POST', /^\/packs\/album$/, ({ body }) => {

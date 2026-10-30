@@ -21,8 +21,9 @@ import passport from './passport.js';
 import sets from './sets.js';
 import enrich from './enrich.js';
 import workshop from './workshop.js';
+import market from './market.js';
 
 export default [
   collection, home, album, profile, admin,
-  track, shell, legal, search, safety, social, studio, lists, game, discover, play, passport, sets, enrich, workshop,
+  track, shell, legal, search, safety, social, studio, lists, game, discover, play, passport, sets, enrich, workshop, market,
 ];

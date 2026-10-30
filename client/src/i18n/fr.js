@@ -186,6 +186,7 @@ export default {
     next: 'Prochain booster gratuit dans {time}',
     full: 'Stock gratuit plein ({max}/{max}) : ouvre-en un pour relancer le minuteur.',
     open: 'Ouvrir un booster',
+    genreLabel: 'Genre du booster',
     openN: 'Ouvrir ×{n}',
     empty: 'Plus de booster pour l’instant',
     unlimited: 'Admin : boosters illimités',

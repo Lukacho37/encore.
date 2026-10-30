@@ -87,6 +87,10 @@ export function Icon({ name, size = 18 }) {
       return <svg {...common}><circle cx="6" cy="12" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="18" cy="12" r="1.2" /></svg>;
     case 'quote':
       return <svg {...common}><path d="M10 7H6.5A1.5 1.5 0 0 0 5 8.5V12h4.5v1.5A3.5 3.5 0 0 1 6 17" /><path d="M19 7h-3.5A1.5 1.5 0 0 0 14 8.5V12h4.5v1.5A3.5 3.5 0 0 1 15 17" /></svg>;
+    case 'swap':
+      return <svg {...common}><path d="M7 4 3 8l4 4" /><path d="M3 8h14" /><path d="m17 20 4-4-4-4" /><path d="M21 16H7" /></svg>;
+    case 'gavel':
+      return <svg {...common}><path d="m14 4 6 6" /><path d="m11 7 6 6" /><path d="m12.5 5.5-5 5 4 4 5-5" /><path d="M9.5 12.5 3 19l2 2 6.5-6.5" /><path d="M13 21h8" /></svg>;
     case 'chevron':
       return <svg {...common}><path d="M9 5l7 7-7 7" /></svg>;
     default:

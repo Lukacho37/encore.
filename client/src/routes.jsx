@@ -35,6 +35,8 @@ export const ROUTES = [
   { path: '/search', page: 'SearchPage' },
   { path: '/discover', page: 'Discover' },
   { path: '/collection', page: 'Collection' },
+  { path: '/auctions', page: 'Auctions' },
+  { path: '/trades', page: 'Trades' },
   { path: '/collection/:tab', page: 'Collection' },
   { path: '/album/:id', page: 'AlbumPage' },
   { path: '/track/:id', page: 'TrackPage' },

@@ -16,7 +16,8 @@ import CoverArt from '../components/CoverArt.jsx';
 import { AlbumTile, AlbumTileSkeleton } from '../components/AlbumTile.jsx';
 import { useCardModal } from '../components/CardModal.jsx';
 import { Icon, Progress, Royalties, RoyaltyIcon, formatDuration, useNow } from '../components/ui.jsx';
-import { ECONOMY, FOCUS_CHANCE } from '@shared/rules.js';
+import { ECONOMY, FOCUS_CHANCE, THEME_GENRES } from '@shared/rules.js';
+import { storage } from '../storage.js';
 import { useAlbums } from '../state/catalog.js';
 import { useBoosterFlow } from '../state/boosterFlow.js';
 import { SpecialBoosters } from '../components/game/SpecialBoosters.jsx';
@@ -208,6 +209,8 @@ function HomeFeed({ onAlbumPack }) {
   );
 }
 
+const PACK_GENRE_KEY = 'albummania.packGenre';
+
 export default function Home() {
   const { t, num } = useI18n();
   const { packs, user, cards, duplicates, duplicatesValue, isAdmin } = useGame();
@@ -216,6 +219,13 @@ export default function Home() {
   const { openFree: open, openAlbum, buy, recycle, overlay, busy } = useBoosterFlow();
 
   const canOpen = packs.unlimited || packs.available > 0;
+  // Genre du booster gratuit, gardé d'une visite à l'autre : « Tous les genres » ou un seul genre.
+  const [genre, setGenre] = useState(() => (THEME_GENRES.includes(storage.get(PACK_GENRE_KEY)) ? storage.get(PACK_GENRE_KEY) : 'all'));
+  const pickGenre = (g) => {
+    setGenre(g);
+    storage.set(PACK_GENRE_KEY, g);
+  };
+  const openPack = (n) => open(n, genre === 'all' ? null : genre);
 
   const recent = useMemo(() => {
     const seen = new Set();
@@ -226,7 +236,7 @@ export default function Home() {
     <div className="home">
       {/* Héros Boosters et rangée Boutique / Doublons / Blind test : balisage et rendu inchangés (DESIGN-OVERRIDE). */}
       <section className="hero" id="booster">
-        <button type="button" className="hero__pack" onClick={() => canOpen && open(1)} disabled={!canOpen} aria-label={t('home.open')}>
+        <button type="button" className="hero__pack" onClick={() => canOpen && openPack(1)} disabled={!canOpen} aria-label={t('home.open')}>
           <PackArt className="pack--float" />
         </button>
         <div className="hero__panel">
@@ -237,12 +247,21 @@ export default function Home() {
           {!packs.unlimited && <PackTimer />}
           {!packs.unlimited && packs.bonus > 0 && <p className="muted small">{t('home.bonus', { n: packs.bonus })}</p>}
           <RarityGuideButton className="link-btn hero__help" />
+          <label className="hero__genre">
+            <span className="small muted">{t('home.genreLabel')}</span>
+            <span className="select">
+              <select value={genre} onChange={(e) => pickGenre(e.target.value)} data-pack-genre>
+                <option value="all">{t('genre.all')}</option>
+                {THEME_GENRES.map((g) => <option key={g} value={g}>{t(`genre.${g}`)}</option>)}
+              </select>
+            </span>
+          </label>
           <div className="hero__actions">
-            <button type="button" className="btn btn--primary btn--xl" onClick={() => open(1)} disabled={!canOpen}>
+            <button type="button" className="btn btn--primary btn--xl" onClick={() => openPack(1)} disabled={!canOpen}>
               <Icon name="pack" /> {canOpen ? t('home.open') : t('home.empty')}
             </button>
             {isAdmin && (
-              <button type="button" className="btn btn--ghost btn--xl" onClick={() => open(10)}>{t('home.openN', { n: 10 })}</button>
+              <button type="button" className="btn btn--ghost btn--xl" onClick={() => openPack(10)}>{t('home.openN', { n: 10 })}</button>
             )}
           </div>
         </div>

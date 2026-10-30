@@ -186,6 +186,7 @@ export default {
     next: 'Next free pack in {time}',
     full: 'Free stock is full ({max}/{max}): open one to restart the timer.',
     open: 'Open a pack',
+    genreLabel: 'Booster genre',
     openN: 'Open ×{n}',
     empty: 'No packs left for now',
     unlimited: 'Admin: unlimited packs',

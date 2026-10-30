@@ -39,6 +39,8 @@ function itemHref(itemType, itemId, reviewId) {
 export function notificationHref(n) {
   const { kind, target, data = {} } = n;
   const actor = n.actors?.[0];
+  if (kind.startsWith('trade_')) return '/trades';
+  if (kind.startsWith('auction_')) return '/auctions';
   if (kind === 'friend_request') return '/friends';
   if (kind === 'friend_accept') return actor ? `/u/${enc(actor.username)}` : '/friends';
   if (kind === 'terms_updated') return pageExists('Legal') ? '/legal/terms' : null;

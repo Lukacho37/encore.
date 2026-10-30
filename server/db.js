@@ -228,6 +228,44 @@ CREATE TABLE IF NOT EXISTS dev_emails (
 
 // Tables ajoutées par la refonte (P0 à P3), créées dès P0 même si un niveau suivant est le premier à s'en servir.
 const NEW_TABLES = `
+CREATE TABLE IF NOT EXISTS auctions (
+  id INTEGER PRIMARY KEY,
+  seller_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  track_id TEXT NOT NULL,
+  variant TEXT NOT NULL DEFAULT 'std' CHECK (variant IN ('std','holo')),
+  rarity TEXT NOT NULL,
+  start_price INTEGER NOT NULL,
+  bid INTEGER,
+  bidder_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  bids INTEGER NOT NULL DEFAULT 0,
+  ends_at INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','sold','unsold','cancelled')),
+  created_at INTEGER NOT NULL,
+  settled_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS auction_bids (
+  id INTEGER PRIMARY KEY,
+  auction_id INTEGER NOT NULL REFERENCES auctions(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  amount INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS trades (
+  id INTEGER PRIMARY KEY,
+  from_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  to_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  give_track TEXT NOT NULL,
+  give_variant TEXT NOT NULL DEFAULT 'std' CHECK (give_variant IN ('std','holo')),
+  want_track TEXT NOT NULL,
+  want_variant TEXT NOT NULL DEFAULT 'std' CHECK (want_variant IN ('std','holo')),
+  rarity TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','declined','cancelled','failed')),
+  created_at INTEGER NOT NULL,
+  decided_at INTEGER
+);
+
 -- ===== Provenance du catalogue et recherche =====
 CREATE TABLE IF NOT EXISTS external_ids (
   entity_type TEXT NOT NULL CHECK (entity_type IN ('artist','album','track')),
@@ -699,6 +737,11 @@ export const SCHEMA_VERSION = STEPS[STEPS.length - 1].v;
 
 // Index du catalogue d'avant la refonte (même texte), puis ceux de la section 3.5.
 export const INDEXES = `
+CREATE INDEX IF NOT EXISTS auctions_open ON auctions(status, ends_at);
+CREATE INDEX IF NOT EXISTS auctions_seller ON auctions(seller_id, status);
+CREATE INDEX IF NOT EXISTS auction_bids_user ON auction_bids(user_id, auction_id);
+CREATE INDEX IF NOT EXISTS trades_to ON trades(to_id, status);
+CREATE INDEX IF NOT EXISTS trades_from ON trades(from_id, status);
 CREATE INDEX IF NOT EXISTS cat_albums_artist ON cat_albums(artist_id);
 CREATE INDEX IF NOT EXISTS cat_albums_genre ON cat_albums(genre, fans);
 CREATE INDEX IF NOT EXISTS cat_albums_year ON cat_albums(year);

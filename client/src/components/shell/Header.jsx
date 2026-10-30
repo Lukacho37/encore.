@@ -39,6 +39,7 @@ export function useNavLinks() {
     { id: 'boosters', to: '/', label: t('nav.boosters'), icon: 'pack', end: true },
     { id: 'discover', to: '/discover', label: t('nav.discover'), icon: 'compass' },
     { id: 'collection', to: '/collection', label: t('nav.collection'), icon: 'grid' },
+    { id: 'auctions', to: '/auctions', label: t('nav.auctions'), icon: 'gavel' },
     { id: 'friends', to: '/friends', label: t('nav.friends'), icon: 'users', badge: pendingFriends },
     { id: 'studio', to: '/studio', label: t('nav.studioTab'), icon: 'user' },
   ].filter((l) => l.id !== 'discover' || pageExists('Discover'));

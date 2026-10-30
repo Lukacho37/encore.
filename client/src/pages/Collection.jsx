@@ -683,15 +683,9 @@ export default function Collection() {
 
   return (
     <div className="collection">
+      {/* Titre seul : un « 12 / 365 353 morceaux » géant découragerait plus qu'il n'informe (demande du propriétaire). */}
       <header className="page-head">
-        <div>
-          <span className="eyebrow">{t('collection.title')}</span>
-          <h1>{t('collection.overall', { owned: stats.total.owned, total: stats.total.total })}</h1>
-        </div>
-        <div className="page-head__progress">
-          <Progress value={stats.total.owned} max={stats.total.total} color="var(--paper)" size="lg" label={t('collection.title')} />
-          <span className="mono">{pct(stats.total.pct)}</span>
-        </div>
+        <h1>{t('collection.title')}</h1>
       </header>
 
       {/* Téléphone : une ligne au lieu des trois compteurs et des raretés, détaillés dans la feuille « Statistiques ». */}

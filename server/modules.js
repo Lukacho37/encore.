@@ -32,10 +32,11 @@ import * as sets from './sets.js';
 import * as events from './events.js';
 import * as enrich from './enrich.js';
 import * as workshop from './workshop.js';
+import * as market from './market.js';
 
 export const MODULES = [
   moderation, notifications, search, ratings, tracks, legal, account, lists, collection, social, feed, studio,
-  match, onboarding, discover, quests, badges, battles, passport, sets, events, enrich, workshop,
+  match, onboarding, discover, quests, badges, battles, passport, sets, events, enrich, workshop, market,
 ];
 
 export default MODULES;

@@ -1,7 +1,7 @@
 // Ouverture des boosters (machine d'états partagée) — chantier P0-B (PLAN.md 9.2).
 // La logique copiée hier dans Home.jsx, AlbumPage.jsx et Admin.jsx vit ici une seule fois :
 //   const flow = useBoosterFlow();
-//   flow.openFree(count)      boosters gratuits / achetés (POST /packs/open)
+//   flow.openFree(count, genre) boosters gratuits / achetés (POST /packs/open), d'un seul genre si `genre`
 //   flow.openAlbum(album|id)  booster d'album (POST /packs/album) : l'album entier ({ id, art, title… }) ou son id
 //   flow.openSpecial(id)      booster spécial de l'inventaire (POST /me/boosters/:id/open, P1-D)
 //   flow.buy()                acheter un booster en royalties (POST /shop/buy-pack)
@@ -36,7 +36,8 @@ export function useBoosterFlow({ onClose } = {}) {
     setOpening({ promise, count: 1, key: Date.now(), ...extra });
   }, []);
 
-  const openFree = useCallback((count = 1) => start(post('/packs/open', { count }), { count }), [start]);
+  // genre : un des genres des boosters thématiques (choisi sur l'accueil), sinon tous les genres.
+  const openFree = useCallback((count = 1, genre = null) => start(post('/packs/open', { count, ...(genre && { genre }) }), { count }), [start]);
 
   // Booster d'album : 5 cartes de cet album, celles qui manquent d'abord (payé en royalties).
   const openAlbum = useCallback((albumOrId) => {

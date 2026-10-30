@@ -5295,6 +5295,20 @@ button.showcase__empty:hover {
   margin: 0;
 }
 
+/* Genre du booster gratuit : sous le guide des raretés, au-dessus du bouton d'ouverture. */
+.hero__genre {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.hero__genre .select {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .hero__help {
   font-size: 13.5px;
 }

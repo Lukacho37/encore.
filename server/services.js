@@ -516,6 +516,9 @@ export function createServices(db, catalog, { bus = null } = {}) {
     let xp = 0;
     // Royalties des nouvelles cartes (pas pour une carte pressée : on vient de la payer).
     let cardRoyalties = 0;
+    // Carte reçue par échange ou aux enchères (server/market.js) : ni XP ni royalties, sinon deux amis pourraient
+    // s'échanger la même paire en boucle.
+    const rewarded = source !== 'trade' && source !== 'auction';
     const newByArtist = new Map();
     const results = list.map(({ trackId, variant }) => {
       const view = views.get(trackId);
@@ -525,10 +528,10 @@ export function createServices(db, catalog, { bus = null } = {}) {
       upsert.run(user.id, trackId, variant, now, rarity);
       owned.add(trackId);
       seenVariants.add(`${trackId}|${variant}`);
-      xp += xpForCard(rarity, newTrack);
+      if (rewarded) xp += xpForCard(rarity, newTrack);
       if (newTrack) {
         newByArtist.set(view.artistId, (newByArtist.get(view.artistId) || 0) + 1);
-        if (source !== 'press') cardRoyalties += newCardRoyalties(rarity);
+        if (source !== 'press' && rewarded) cardRoyalties += newCardRoyalties(rarity);
       }
       return { trackId, variant, rarity, newTrack, newVariant };
     });
@@ -685,7 +688,15 @@ export function createServices(db, catalog, { bus = null } = {}) {
     return { packs, pity: n };
   }
 
-  function openPacks(userId, count = 1) {
+  /** Genre choisi pour un booster gratuit (accueil) : un des genres des boosters thématiques, sinon aucun. */
+  function packGenre(raw) {
+    if (raw == null || raw === '' || raw === 'all') return null;
+    if (typeof raw !== 'string' || !THEME_GENRES.includes(raw)) throw new HttpError(400, 'invalid_genre');
+    return raw;
+  }
+
+  function openPacks(userId, count = 1, rawGenre = null) {
+    const genre = packGenre(rawGenre);
     return atomic(() => {
       const user = syncPacks(getUser(userId));
       const admin = isAdmin(user);
@@ -701,13 +712,14 @@ export function createServices(db, catalog, { bus = null } = {}) {
           q('UPDATE users SET bonus_packs = bonus_packs - 1 WHERE id = ?').run(user.id);
         }
       }
-      const { packs, pity } = rollSeries(n, user.pity ?? 0, packFocus(userId));
+      // Genre choisi : toutes les cartes du booster viennent de ce genre (le ciblage des albums commencés s'efface).
+      const { packs, pity } = rollSeries(n, user.pity ?? 0, genre ? { theme: { genres: [genre] } } : packFocus(userId));
       q('UPDATE users SET pity = ? WHERE id = ?').run(pity, user.id);
       user.pity = pity;
       const source = admin ? 'admin-pack' : 'pack';
       const result = addCards(user, packs.flat(), source);
-      later('pack.opened', { userId, source, count: n });
-      return { packs: packs.map((p) => p.length), ...result, pity };
+      later('pack.opened', { userId, source, count: n, ...(genre && { theme: `genre:${genre}` }) });
+      return { packs: packs.map((p) => p.length), ...result, pity, genre };
     });
   }
 

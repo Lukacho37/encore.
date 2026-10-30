@@ -195,7 +195,7 @@ export function createApp({ dbFile, db: openedDb } = {}) {
   const full = (req) => services.state(req.user.id);
 
   api.post('/packs/open', (req, res) => {
-    const result = services.openPacks(req.user.id, req.body.count);
+    const result = services.openPacks(req.user.id, req.body.count, req.body.genre);
     res.json({ ...result, state: partial(req) });
   });
   api.post('/packs/album', (req, res) => {

@@ -13,7 +13,7 @@ const validate = await import('../validate.js');
 const periods = await import('../../shared/periods.js');
 
 const ORDER = ['moderation', 'notifications', 'search', 'ratings', 'tracks', 'legal', 'account', 'lists', 'collection', 'social',
-  'feed', 'studio', 'match', 'onboarding', 'discover', 'quests', 'badges', 'battles', 'passport', 'sets', 'events', 'enrich', 'workshop'];
+  'feed', 'studio', 'match', 'onboarding', 'discover', 'quests', 'badges', 'battles', 'passport', 'sets', 'events', 'enrich', 'workshop', 'market'];
 
 // Module de test ajouté en fin de registre le temps de démarrer l'application.
 const probe = {
@@ -36,7 +36,7 @@ const app = await startApp();
 MODULES.splice(MODULES.indexOf(probe), 1);
 test.after(() => app.close());
 
-test('registre : les 23 modules du plan, dans l’ordre, chacun au contrat', () => {
+test('registre : les 24 modules du plan, dans l’ordre, chacun au contrat', () => {
   assert.deepEqual(MODULES.map((m) => m.name), ORDER);
   for (const m of MODULES) {
     assert.equal(typeof m.init, 'function', m.name);
